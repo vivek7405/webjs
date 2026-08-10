@@ -4,13 +4,25 @@ import '#components/theme-toggle.ts';
 export const metadata = {
   title: 'WebJs Gallery',
   description: 'Interactive showcase and single-concept feature gallery for WebJs applications.',
-  // app/icon.ts SERVES the favicon at /icon, but a metadata route is not
-  // auto-linked: the framework emits `<link rel="icon">` only from
-  // metadata.icons. Without this the head pointed at nothing and the browser
-  // fell back to /favicon.ico, which the gallery does not ship, so the tab
-  // showed no mark at all. Declare it here, never as a hand-written <link>,
-  // so the URL stays in one place.
-  icons: { icon: { url: '/icon', type: 'image/svg+xml', sizes: 'any' } },
+  // The WebJs brand mark, byte-identical to what webjs.dev serves, so the
+  // gallery reads as the same product in a tab strip rather than as a
+  // separate site. Declared here and never as a hand-written <link>: the
+  // framework emits `<link rel="icon">` only from metadata.icons, which is
+  // also what the scaffold's generated layout does.
+  //
+  // Raster is declared FIRST on purpose. Google's favicon crawler takes the
+  // first usable icon and wants a square raster whose side is a multiple of
+  // 48px, which is why the 192 exists (512 % 48 is 32, so the full-size mark
+  // does not qualify). public/favicon.ico rides along unlinked: the framework
+  // serves it at the origin root as the fallback for crawlers that read no
+  // markup at all.
+  icons: {
+    icon: [
+      { url: '/public/favicon-192.png', type: 'image/png', sizes: '192x192' },
+      { url: '/public/favicon.svg', type: 'image/svg+xml', sizes: 'any' },
+    ],
+    apple: { url: '/public/apple-touch-icon.png', sizes: '180x180' },
+  },
 };
 
 export default function RootLayout({ children }: { children: unknown }) {

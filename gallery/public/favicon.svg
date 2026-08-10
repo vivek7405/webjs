@@ -1,0 +1,23 @@
+<!-- Placement of the W inside the tile, measured rather than eyeballed.
+     HORIZONTAL: deliberately not bounding-box centred. The forward lean throws
+     the top-right tip and the bottom-left foot out to the extremes, so matching
+     the box margins pushes the letter's weight up and to the left and the mark
+     reads static and adrift. What is centred here is the ink's CENTRE OF MASS,
+     which lands within 1.2% of the tile centre while the thin tips run to the
+     edges. Margins are therefore uneven (L 17.1% R 6.5%) and must stay uneven.
+     VERTICAL: centred normally, mass on the tile centre (T 20.6% B 19.4%).
+     The letter previously sat 4.5% low, which was residue from the original
+     drawing rather than a decision, and read as a gap above the mark.
+     The slice rect is positioned against the W, so move the two together.
+     Owner call, 2026-07-30. -->
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 120 120">
+  <!-- P6d Velocity W favicon: dark rounded tile, the exact hero W (thicker
+       stroke, lower middle chevron, forward lean) scaled in, with the slice. -->
+  <rect x="2" y="2" width="116" height="116" rx="30" fill="#0b0b0f" stroke="#3a3a42" stroke-width="3"/>
+  <g transform="translate(8,22.5) scale(0.4)">
+    <g transform="translate(40,0) skewX(-14)">
+      <path d="M10 10 L60 150 L110 66 L160 150 L210 10" fill="none" stroke="#fff" stroke-width="32" stroke-linejoin="miter" stroke-linecap="butt"/>
+    </g>
+  </g>
+  <rect x="8" y="52.5" width="104" height="7" fill="#0b0b0f"/>
+</svg>
