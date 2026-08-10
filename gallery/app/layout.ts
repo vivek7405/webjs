@@ -159,6 +159,25 @@ export default function RootLayout({ children }: { children: unknown }) {
         @media (prefers-reduced-motion: reduce) {
           *, *::before, *::after { animation-duration: 0.01ms !important; animation-iteration-count: 1 !important; transition-duration: 0.01ms !important; }
         }
+        /* The feature-page sidebar lives in app/features/layout.ts, which is
+           SCAFFOLD PAYLOAD and cannot be edited from here. It pins with
+           top: 1.5rem, measured against an in-flow navbar (its own comment says
+           so), so under this app's fixed header it would pin 33px UNDER the bar
+           and sit behind the blur wherever the page is long enough to hold the
+           pin. Re-express the offset against --header-h, which the measure
+           script keeps current. Scoped to the lg breakpoint because below it the
+           payload hides the aside and renders its own in-flow back link.
+
+           This does NOT make the sidebar hold its pin on a short page. The
+           payload caps it at calc(100dvh - 7.5rem), so it is nearly as tall as
+           its own grid row and has about 10px of travel before the row runs out,
+           measured on /features/components. That is inherent to the payload
+           layout and is identical with the header in flow or out of it (the back
+           link lands within 1px either way), so it is not something this change
+           introduced and not something it can fix from here. */
+        @media (min-width: 1024px) {
+          main aside.sticky { top: calc(var(--header-h) + 1.5rem); }
+        }
       </style>
     </head>
     <body>
@@ -189,7 +208,7 @@ export default function RootLayout({ children }: { children: unknown }) {
       <!-- Explicit z-1: a relative element with no z-index does not reliably
            sit above the fixed glow layer. -->
       <div class="relative z-1">
-        <main class="min-h-[calc(100dvh-3.5rem)] max-w-5xl mx-auto px-4 sm:px-6 py-8">
+        <main class="min-h-[calc(100dvh-var(--header-h))] max-w-5xl mx-auto px-4 sm:px-6 py-8">
           ${children}
         </main>
         <!-- Written inline rather than extracted to lib/ui/, because

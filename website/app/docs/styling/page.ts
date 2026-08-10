@@ -12,6 +12,23 @@ export default function Styling() {
 
     <p>In dev the scaffold keeps that stylesheet fresh with an on-request recompile (a <code>webjs.dev.regenerate</code> rule), not a background <code>tailwindcss --watch</code>. When a source changes, the dev server recompiles <code>public/tailwind.css</code> before serving it, so a newly added utility class is never rendered unstyled and there is no watch process that can die or lag. Prod builds the same file once before serving, so dev and prod share the identical compile.</p>
 
+    <h3><code>@theme</code> and <code>@theme inline</code> are not interchangeable</h3>
+    <p>Tailwind v4 offers both, the scaffold emits <code>@theme inline</code>, and they differ in one way that is silent when you get it wrong: whether the token reaches <code>:root</code> as a real custom property. Measured on Tailwind 4.3:</p>
+
+    <table>
+      <thead>
+        <tr><th>Block</th><th>Used only through a utility</th><th>Written as a raw <code>var(--color-x)</code> in scanned source</th><th>Unused</th></tr>
+      </thead>
+      <tbody>
+        <tr><td><code>@theme</code></td><td>emitted</td><td>emitted</td><td>dropped</td></tr>
+        <tr><td><code>@theme inline</code></td><td><strong>not</strong> emitted, the value is substituted into the utility</td><td>emitted</td><td>dropped</td></tr>
+      </tbody>
+    </table>
+
+    <p>The cell that bites is <code>inline</code> plus utility-only usage. Nothing on the page can inherit <code>--color-x</code>, so a raw <code>var(--color-x)</code> written somewhere Tailwind never scanned resolves to nothing and the declaration silently falls back to its initial value, which for a border or an outline means <code>currentColor</code>.</p>
+
+    <p>Scanned is wider than it looks, and that is the part worth knowing. Tailwind reads source files as raw text, so a <code>var(--color-ring)</code> inside a component's <code>static styles</code> template counts and forces emission, exactly like one written in the stylesheet. So the rule is not that shadow components need a plain <code>@theme</code>. It is: if a token is used only through utilities <em>and</em> something outside the scanned source has to inherit it, map that token with a plain <code>@theme</code>. Anything under a configured <code>@source</code> needs no special handling. Either way a token nothing references is dropped, so an unused mapping is dead configuration rather than a safety net.</p>
+
     <code-block>// public/input.css (compiled to a static public/tailwind.css by css:build,
 // which the dev / start tasks run automatically). The @theme maps live here.
 @import "tailwindcss";
