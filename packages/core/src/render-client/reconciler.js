@@ -8,7 +8,7 @@ import {
   formActionId, assertIdentifiableAction, FORM_ACTION_FIELD,
 } from '../form-action.js';
 import { isLive } from '../directives.js';
-import { RENDERING, drainRendererBackstop } from '../slot.js';
+import { RENDERING, SLOT_OWNER, SLOT_STATE, drainRendererBackstop } from '../slot.js';
 import { compile, templateCache, submitterActionBindings, INSTANCE } from './template-compiler.js';
 import {
   applyPart, bindPart, currentRenderRoot, setCurrentRenderRoot,
@@ -177,13 +177,28 @@ function createInstance(tr, container) {
 
   /** @type any */ (container).replaceChildren(startNode, ...frag.childNodes, endNode);
 
+  // Slot parts have no value-hole to drive applyPart from the loop above.
+  // Apply them once now that the fragment is inserted into the live
+  // container, so each slot can locate its host by walking parents and
+  // schedule the first projection through slot.js. Stamp each slot with the
+  // host whose TEMPLATE produced it (this container), so a FORWARDED slot
+  // (rendered here but nested inside a child component) routes to this host
+  // rather than to the child the structural walk would pick. Only an element
+  // container is a host; a fragment/shadow container leaves the structural
+  // path in place.
+  //
+  // These MUST be the symbols slot.js created. They are `Symbol(...)`, which
+  // is unique per call, not `Symbol.for(...)`, which looks one up in the
+  // global registry by string. Reaching for the registry produces a different
+  // symbol that no host carries, so `ownerHost` is always null, the stamp
+  // never lands, and a forwarded slot silently routes to the wrong host.
   const ownerHost =
-    /** @type {any} */ (container).nodeType === 1 && /** @type {any} */ (container)[Symbol.for('webjs.slotState')]
+    /** @type {any} */ (container).nodeType === 1 && /** @type {any} */ (container)[SLOT_STATE]
       ? container
       : null;
   for (const part of bound) {
     if (part.kind === 'slot') {
-      if (ownerHost && part.slotEl) /** @type {any} */ (part.slotEl)[Symbol.for('webjs.slotOwner')] = ownerHost;
+      if (ownerHost && part.slotEl) /** @type {any} */ (part.slotEl)[SLOT_OWNER] = ownerHost;
       applyPart(part, undefined, undefined, [], reconcileFormActions);
     }
   }
