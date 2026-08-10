@@ -31,6 +31,16 @@ export const DOCS_START_PATH = '/docs/getting-started';
  * because already-published CLI versions fetch from them.
  */
 export const UI_PATH = '/ui';
+
+/**
+ * The feature gallery is its own deployed WebJs app (a scaffolded app running
+ * the framework's own demos), so unlike the docs and the component library it
+ * is a real cross-origin URL rather than a path this app serves. It opens in a
+ * new tab for that reason: the client router only handles same-origin links,
+ * and sending a reader off-site mid-visit is the case the new-tab cue exists
+ * for.
+ */
+export const GALLERY_URL = 'https://gallery.webjs.dev';
 export const GH_URL = 'https://github.com/webjsdev/webjs';
 export const DISCORD_URL = 'https://discord.gg/qZScjWWNA8';
 export const X_URL = 'https://x.com/webjsdev';

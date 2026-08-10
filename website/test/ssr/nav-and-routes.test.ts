@@ -69,6 +69,28 @@ test('the header still carries the rest of the nav', async () => {
   }
 });
 
+test('both header and footer link the gallery, safely, in a new tab', async () => {
+  // The gallery is a separate deployment, so it is the one chrome entry that
+  // has to carry the full cross-origin treatment: the noopener/noreferrer pair
+  // (a target="_blank" link without it hands the opened page a window.opener
+  // handle back into this one) and the screen-reader cue that every other
+  // external link in the chrome already carries. Both surfaces are asserted
+  // because they are edited in different files and adding one alone is the
+  // easy half-done change.
+  const header = (await renderLayout()).split('<footer')[0];
+  for (const [surface, out] of [['header', header], ['footer', await renderToString(siteFooter())]] as const) {
+    const at = out.indexOf('href="https://gallery.webjs.dev"');
+    assert.ok(at >= 0, `${surface} links the gallery`);
+    const anchor = out.slice(at);
+    assert.ok(
+      anchor.startsWith('href="https://gallery.webjs.dev" target="_blank" rel="noopener noreferrer"'),
+      `${surface} gallery link opens safely in a new tab`,
+    );
+    assert.ok(anchor.slice(0, 400).includes('opens in a new tab'), `${surface} announces the new-tab context`);
+    assert.ok(anchor.slice(0, 400).includes('>Gallery'), `${surface} gallery link is labelled`);
+  }
+});
+
 test('the sitemap lists /why-webjs and not the old /why', async () => {
   const xml = String(await Sitemap());
   assert.ok(xml.includes('<loc>https://webjs.dev/why-webjs</loc>'), 'lists the new path');

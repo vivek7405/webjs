@@ -1,5 +1,5 @@
 import { html } from '@webjsdev/core';
-import { DOCS_START_PATH, UI_PATH, GH_URL, DISCORD_URL, X_URL, BLUESKY_URL, NEW_TAB } from '#lib/links.ts';
+import { DOCS_START_PATH, UI_PATH, GALLERY_URL, GH_URL, DISCORD_URL, X_URL, BLUESKY_URL, NEW_TAB } from '#lib/links.ts';
 import { brandLockup } from '#lib/design/brand.ts';
 
 /**
@@ -27,6 +27,7 @@ export function siteFooter() {
           <div class="flex flex-col gap-3">
             <h4 class="text-xs font-bold uppercase tracking-wider text-fg">Product</h4>
             <a class="text-fg-muted hover:text-accent no-underline text-sm transition-colors" href=${DOCS_START_PATH}>Docs</a>
+            <a class="text-fg-muted hover:text-accent no-underline text-sm transition-colors" href=${GALLERY_URL} target="_blank" rel="noopener noreferrer">Gallery${NEW_TAB}</a>
             <a class="text-fg-muted hover:text-accent no-underline text-sm transition-colors" href=${UI_PATH}>UI components</a>
             <a class="text-fg-muted hover:text-accent no-underline text-sm transition-colors" href="/#templates">Templates</a>
           </div>

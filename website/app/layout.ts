@@ -2,7 +2,7 @@ import { html, cspNonce, asset } from '@webjsdev/core';
 import type { LayoutProps } from '@webjsdev/core';
 import '#components/theme-toggle.ts';
 import '#components/site-nav-menu.ts';
-import { DOCS_START_PATH, UI_PATH, GH_URL, NEW_TAB } from '#lib/links.ts';
+import { DOCS_START_PATH, UI_PATH, GALLERY_URL, GH_URL, NEW_TAB } from '#lib/links.ts';
 import { THEME_STORAGE_KEY, FORCED_THEMES } from '#lib/theme.ts';
 import { siteFooter } from '#lib/ui/site-footer.ts';
 import { brandLockup } from '#lib/design/brand.ts';
@@ -30,6 +30,7 @@ const NAV = [
   { label: 'Blog', href: '/blog', ext: false },
   { label: 'Compare', href: '/compare', ext: false },
   { label: 'Changelog', href: '/changelog', ext: false },
+  { label: 'Gallery', href: GALLERY_URL, ext: true },
   { label: 'GitHub', href: GH_URL, ext: true },
 ];
 
