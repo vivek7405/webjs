@@ -69,7 +69,13 @@ services:
     environment:
       PORT: "5005"
       DATABASE_URL: file:/data/dev.db
-      AUTH_SECRET: ${AUTH_SECRET:-change-me-at-least-32-characters-long!}
+      AUTH_SECRET:    ${AUTH_SECRET:-change-me-at-least-32-characters-long!}
+      # The sessions card THROWS at module load without this in production, and
+      # the image sets NODE_ENV=production, so omitting it 500s every route the
+      # sessions segment middleware wraps. The file-storage card signs its
+      # download links with FILE_URL_SECRET and only falls back to a dev value.
+      SESSION_SECRET:  ${SESSION_SECRET:-change-me-at-least-32-characters-long!}
+      FILE_URL_SECRET: ${FILE_URL_SECRET:-change-me-at-least-32-characters-long!}
     volumes:
       - gallery-data:/data
 

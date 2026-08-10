@@ -8,11 +8,15 @@ export const metadata = {
   description: 'Explore WebJs features, interactive components, and real working examples.',
 };
 
-// The hover affordance for a whole-card link. cardClass() takes the panel's own
-// extra classes as a string, so the hover state composes with the base surface.
-const CARD_LINK = cardClass('transition-colors hover:border-border-strong');
-
 export default function Home() {
+  // The hover affordance for a whole-card link. cardClass() takes the panel's
+  // own extra classes as a string, so the hover state composes with the base
+  // surface. Built HERE rather than at module scope on purpose: a top-level
+  // call is a module side effect, which pins this page into the browser bundle
+  // and drags card.ts, badge.ts, nav.ts and cn.ts along with it for a page that
+  // has no client behaviour at all.
+  const CARD_LINK = cardClass('transition-colors hover:border-border-strong');
+
   // Flatten the groups here rather than at module scope, so the card can label
   // itself with the group it came from (NavItem itself carries no category).
   const features = FEATURE_GROUPS.flatMap((g) => g.items.map((item) => ({ ...item, category: g.label })));

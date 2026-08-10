@@ -150,7 +150,7 @@ the Tailwind stylesheet is recompiled on request when a source changes
 
 ```sh
 npm install                          # once, from the repo root (installs every workspace)
-npm run dev                          # both apps at once
+npm run dev                          # all three apps at once
 ```
 
 Default ports (port 5000 is skipped because macOS reserves it for the
@@ -160,7 +160,7 @@ AirPlay Receiver / Control Center):
 |---|---|---|---|
 | Landing site, docs, UI gallery | `website/` | 5001 | `WEBSITE_PORT` |
 | Example blog | `examples/blog/` | 5004 | `BLOG_PORT` |
-| Feature gallery | `gallery/` | 5005 | `PORT` |
+| Feature gallery | `gallery/` | 5005 | `GALLERY_PORT` |
 
 **Run a single app** (from its directory). Each honors a `PORT` env var:
 
@@ -169,10 +169,10 @@ cd website && npm run dev            # landing site + docs on 5001
 PORT=8080 npm run dev                # ...or on 8080
 ```
 
-**Override ports when running both** via the per-app env vars:
+**Override ports when running all three** via the per-app env vars:
 
 ```sh
-WEBSITE_PORT=8001 BLOG_PORT=8004 npm run dev
+WEBSITE_PORT=8001 BLOG_PORT=8004 GALLERY_PORT=8005 npm run dev
 ```
 
 > Use the `PORT` / `*_PORT` env vars, **not** a `--port` flag. `npm run dev
