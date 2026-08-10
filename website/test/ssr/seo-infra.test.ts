@@ -23,11 +23,9 @@ import assert from 'node:assert/strict';
 import { readFileSync, statSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { html } from '@webjsdev/core';
-import { renderToString } from '@webjsdev/core/server';
-import RootLayout, { generateMetadata } from '#app/layout.ts';
+import { createRequestHandler } from '@webjsdev/server';
+import { generateMetadata } from '#app/layout.ts';
 import Robots from '#app/robots.ts';
-import { layoutProps } from '#test/helpers/layout-props.ts';
 
 const WEBSITE_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..', '..');
 
@@ -37,13 +35,39 @@ function pngSize(path: string): { width: number; height: number } {
   return { width: buf.readUInt32BE(16), height: buf.readUInt32BE(20) };
 }
 
-test('the declared favicon size matches the real asset and clears Google 48px floor', async () => {
-  const out = await renderToString(RootLayout(layoutProps(html`<main>x</main>`)));
-  const match = out.match(/<link rel="icon" href="\/public\/([\w.-]+\.png)"[^>]*sizes="(\d+)x(\d+)"/);
-  assert.ok(match, 'declares a PNG icon with an explicit sizes attribute');
+/**
+ * The icon `<link>` tags the site actually serves, in head order.
+ *
+ * These read the SERVED page rather than `renderToString(RootLayout(...))`.
+ * The layout used to hand-write its icon tags into its own shell, so rendering
+ * the layout alone saw them; they are declared through `metadata.icons` now and
+ * the framework splices them into <head>, which a bare layout render cannot
+ * show. Rendering the app is also the more honest assertion: the tags could
+ * come from markup, from `metadata.icons`, or from an auto-linked `app/icon.*`
+ * route, and a browser cannot tell the difference, so neither should this.
+ */
+async function servedIconLinks(): Promise<string[]> {
+  const app = await createRequestHandler({ appDir: WEBSITE_ROOT, dev: true });
+  const res = await app.handle(new Request('http://localhost/'));
+  assert.equal(res.status, 200, 'the home page renders');
+  // Browsers ignore a favicon <link> in <body>, so only the head counts.
+  const head = (await res.text()).split('</head>')[0];
+  return [...head.matchAll(/<link rel="[^"]*icon[^"]*"[^>]*>/g)].map((m) => m[0]);
+}
 
-  const [, file, declaredW, declaredH] = match!;
+/** Pull an attribute off one rendered tag, order-independently. */
+const attr = (tag: string, name: string): string | undefined =>
+  (tag.match(new RegExp(`${name}="([^"]*)"`)) || [])[1];
+
+test('the declared favicon size matches the real asset and clears Google 48px floor', async () => {
+  const png = (await servedIconLinks()).find((l) => attr(l, 'type') === 'image/png');
+  assert.ok(png, 'serves a PNG icon with an explicit type');
+
+  const sizes = attr(png!, 'sizes');
+  assert.ok(sizes, 'the PNG icon declares a size');
+  const [declaredW, declaredH] = sizes!.split('x');
   const declared = Number(declaredW);
+  const file = attr(png!, 'href')!.replace(/^\/public\//, '');
   const { width, height } = pngSize(resolve(WEBSITE_ROOT, 'public', file));
 
   assert.equal(declaredW, declaredH, 'declared as square');
@@ -57,21 +81,34 @@ test('the declared favicon size matches the real asset and clears Google 48px fl
 });
 
 test('the apple-touch icon points at a correctly sized asset', async () => {
-  const out = await renderToString(RootLayout(layoutProps(html`<main>x</main>`)));
-  const match = out.match(/<link rel="apple-touch-icon" sizes="(\d+)x\d+" href="\/public\/([\w.-]+\.png)"/);
-  assert.ok(match, 'declares an apple-touch-icon with a size');
-  const { width } = pngSize(resolve(WEBSITE_ROOT, 'public', match![2]));
-  assert.equal(Number(match![1]), width, 'the declared apple-touch size matches the real asset');
+  const apple = (await servedIconLinks()).find((l) => attr(l, 'rel') === 'apple-touch-icon');
+  assert.ok(apple, 'serves an apple-touch-icon');
+  const file = attr(apple!, 'href')!.replace(/^\/public\//, '');
+  const { width } = pngSize(resolve(WEBSITE_ROOT, 'public', file));
+  assert.equal(Number(attr(apple!, 'sizes')!.split('x')[0]), width,
+    'the declared apple-touch size matches the real asset');
 });
 
-test('the raster icon is declared before the SVG', async () => {
+test('the raster icon is served before the SVG', async () => {
   // Google's favicon crawler takes the first usable icon. The SVG led before,
   // and raster is the format search results reliably render.
-  const out = await renderToString(RootLayout(layoutProps(html`<main>x</main>`)));
-  const png = out.indexOf('type="image/png"');
-  const svg = out.indexOf('href="/public/favicon.svg"');
-  assert.ok(png > -1 && svg > -1, 'both icons are declared');
-  assert.ok(png < svg, 'the PNG is declared ahead of the SVG');
+  const links = await servedIconLinks();
+  const png = links.findIndex((l) => attr(l, 'type') === 'image/png');
+  const svg = links.findIndex((l) => attr(l, 'type') === 'image/svg+xml');
+  assert.ok(png > -1 && svg > -1, 'serves both a PNG and an SVG icon');
+  assert.ok(png < svg, 'the PNG comes first in the head');
+});
+
+test('every icon the site links is actually served', async () => {
+  // A head naming a URL nothing answers is invisible from the app and only
+  // shows as a missing tab mark, which is exactly how this class of defect
+  // reached production on gallery.webjs.dev.
+  const app = await createRequestHandler({ appDir: WEBSITE_ROOT, dev: true });
+  for (const link of await servedIconLinks()) {
+    const href = attr(link, 'href')!;
+    const res = await app.handle(new Request(`http://localhost${href}`));
+    assert.equal(res.status, 200, `${href} is served, not a 404`);
+  }
 });
 
 test('favicon.ico exists so the origin-root fallback resolves', () => {
