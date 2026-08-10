@@ -24,6 +24,7 @@ to these `references/`:
 | `references/built-ins.md` | Auth, caching, env vars, rate limit, file storage, the `webjs` config block |
 | `references/runtime.md` | Node vs Bun, running the app, deploying, runtime-specific differences |
 | `references/service-worker.md` | Offline support, an asset cache, the opt-in service worker |
+| `references/module-structure.md` | Module size (target 800, ceiling around 1000), SOLID / DRY / KISS as judgment, and the procedure for barrelling a large module into a directory |
 | `references/muscle-memory-gotchas.md` | **READ FIRST** when writing components or routes. Next.js / Lit patterns that break WebJs, with the webjs-shaped fix for each |
 
 Repo-root `framework-dev.md` covers monorepo dev (only when editing WebJs
@@ -92,6 +93,37 @@ The full substitution table, the traps in each replacement, and the reasoning be
 ### Autonomous mode (sandbox / bypass permissions)
 
 When interactive approval is disabled, never block on questions. Auto-decide: cut the task's worktree from `origin/main` (auto-create `<prefix>/<task-slug>` per the label scheme); auto-rebase if the parent moved; auto-merge when ready; **delete** feature/fix branches after merge but **keep** long-lived ones (dev, staging, release/*); auto-generate meaningful commit messages; fix failing tests / convention violations rather than asking. Autonomous mode is MORE disciplined, not less, with the same quality bar.
+
+### Module structure and file size
+
+Design by judgment, not by a line counter. SOLID, DRY, and KISS apply here as
+prose guidance, deliberately outside `webjs check`, which carries correctness
+rules only. Single responsibility is about what a module OWNS (statable in one
+sentence with no "and"), DRY is about knowledge rather than text, and KISS
+matters more in a framework than in an app because the source ships unbundled
+and IS the documentation surface an agent reads.
+
+**A source module targets 800 lines and should stay around 1000 at the most.**
+The ceiling is approximate: 1040 is fine, 1900 is a signal that a second
+responsibility crept in. A barrel is exempt. No CI guard enforces this, because
+a line-count gate is a proxy metric that fights cohesion and needs an exemption
+list that rots. The number came from measuring the frameworks WebJs takes its
+cues from, where `lit-html.ts` is 2303 lines, `reactive-element.ts` is 1754, and
+Vite's `server/index.ts` is 1447. All of them draw seams by responsibility and
+let the orchestration entry stay large.
+
+**When you do split a module, it is a MOVE, not a rewrite.** Retyping a function
+while relocating it is how a refactor with an unchanged export surface ships
+behaviour changes. The original file keeps its path and becomes a barrel over a
+sibling directory named after it. Mutable module-scope state goes with its
+WRITERS, since an ESM import binding cannot be assigned; when two modules write
+it, the owner exposes a one-statement accessor. Never swap `Symbol('x')` for
+`Symbol.for('x')`. Re-point any drift guard that reads the barrelled file by
+path, because an `assert.doesNotMatch` in one starts passing VACUOUSLY. Rebuild
+`packages/core/dist` before e2e or Bun, and run the browser suite: a split's
+characteristic defects are post-hydration, so the export surface and the SSR
+bytes are both unchanged and node tests stay green. Full procedure and the
+verification commands in `references/module-structure.md`.
 
 ### Code workflow (mandatory)
 

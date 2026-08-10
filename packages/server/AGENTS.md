@@ -192,6 +192,34 @@ and the reader key set never diverge (a counterfactual unknown key proves
 `additionalProperties:false` would flag it); the type fixture
 `test/types/webjs-config.test-d.ts` asserts the type matches.
 
+## Module size and barrel splits
+
+`dev.js`, `ssr.js`, `check.js` and `vendor.js` are barrels over sibling
+directories. The rule is in
+`../../.agents/skills/webjs/references/module-structure.md`: target 800 lines,
+around 1000 at the most, barrels exempt, no CI guard, and a split is a MOVE
+rather than a rewrite.
+
+Two traps are specific to this package:
+
+1. **A relative `import.meta.url` walk breaks when a file moves deeper.**
+   `locateCoreDir`'s workspace fallback walked three levels up to reach
+   `packages/`; moving it into `dev/` made that four. The wrong path resolved to
+   a directory that does not exist and every `/__webjs/core/*` request 404d,
+   while the importmap still pointed there.
+2. **The Bun parity hook matches on path.**
+   `.claude/hooks/require-bun-parity-with-runtime-src.sh` matched the literal
+   `/ssr\.js` and `/dev\.js`, so a nested `ssr/head.js` or `dev/app-config.js`
+   matched nothing and SILENTLY skipped the gate. Widen the pattern in the same
+   PR that creates the directory.
+
+Behaviour this package owns that a rewrite quietly changes, all caught only by
+tests rather than by the export surface: the `no-store` headers and response
+shapes on `/__webjs/health` and `/__webjs/ready`, the top-level middleware
+wrapper in the request path, the `durationMs` field on the structured access
+log, and the unconditional csp-nonce hole in the SSR head template (making it
+conditional leaves a CSP-off document one newline shorter than a CSP-on one).
+
 ## Package-specific invariants
 
 1. **Source-file branch is gated by the browser-bound module graph.**

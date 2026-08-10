@@ -115,6 +115,37 @@ superset. `routes.d.ts`'s `WebjsRoutes` / `RouteParamMap` are EMPTY by default
 (so `Route = string`); `webjs types` generates `.webjs/routes.d.ts` to augment
 them per app.
 
+## Module size and barrel splits
+
+Several modules here are barrels over a sibling directory (`component.js`,
+`render-client.js`, `render-server.js`, `router-client.js`, `slot.js`). The rule
+that produced them, and that any future split must follow, is in
+`../../.agents/skills/webjs/references/module-structure.md`. Target 800 lines,
+around 1000 at the most, barrels exempt, no CI guard.
+
+Three things bite specifically in this package:
+
+1. **The barrel keeps the original path.** `package.json` `exports` maps
+   `./client-router` at `./src/router-client.js`, the 26 hand-written `.d.ts`
+   overlays are matched to their runtime sibling BY PATH by two guard tests, and
+   32 test files import `src/router-client.js` relatively. Renaming a barrel to
+   match its subpath breaks all three for no behaviour gain.
+2. **Symbol identity.** `slot.js` creates `SLOT_STATE` and `SLOT_OWNER` with
+   `Symbol()`. Substituting `Symbol.for()` yields a registry symbol no host
+   carries, so every lookup returns `undefined`, forwarded-slot stamping stops
+   happening, and nothing outside the browser suite notices.
+3. **Mutable state goes with its writers.** An ESM import binding cannot be
+   assigned, so `inBrowser` sits with `installSlotPolyfills`, the `N_*` natives
+   sit with `captureNatives`, and the client router's `restoreGeneration`,
+   `currentNavigationToken` and `prefetchViewObserver` each expose a
+   one-statement accessor for the navigator to call. Keep importing a binding
+   that is also READ: dropping it leaves a free variable that throws only when
+   its line runs.
+
+Rebuild `dist` before e2e or Bun (they resolve the built bundle, so a src-only
+edit is invisible and a counterfactual passes vacuously), and run
+`npm run test:browser` for any renderer, router, component, or slot change.
+
 ## Package-specific invariants
 
 1. **No build step in your edit-and-refresh loop.** `.js` only,

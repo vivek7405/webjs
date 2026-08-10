@@ -4,6 +4,47 @@ Read this only when editing the WebJs monorepo (this repo), not a scaffolded app
 
 ---
 
+### Splitting a large module in `packages/`
+
+The framework's own source is where the 800-line target and the roughly-1000
+ceiling actually bite, since `packages/` is plain `.js` with JSDoc and several
+subsystems grew past both. The naming rule is settled for the whole monorepo:
+**the original file keeps its path and becomes the barrel, and its parts land in
+a sibling directory named after it** (`src/slot.js` stays, parts go in
+`src/slot/`). Do not rename a barrel to match its public `exports` subpath. The
+`package.json` `exports` map, the hand-written `.d.ts` overlays and the two
+guard tests that derive a runtime sibling from an overlay path, the docs pages
+that print importmap examples, and every relative test import all key off the
+current path.
+
+A split is a MOVE. Verify it two ways before running anything else: the barrel's
+runtime export set must be identical to the pre-split module's in BOTH
+directions (`added` empty too, since a behaviour-preserving split adds no public
+surface), and every code line must survive byte-identical once comments and the
+added `export ` prefix are normalized away. Any line that changed needs a reason
+in the commit message.
+
+Four monorepo-specific traps, each of which has already cost a debugging session
+here:
+
+- **`packages/core/dist` is a symlink into the primary checkout in a linked
+  worktree.** Building through it clobbers the primary's bundle, and NOT
+  building means e2e and Bun resolve the pre-split code and pass vacuously.
+  Replace the symlink with a real directory in the worktree, then
+  `node scripts/build-framework-dist.js`.
+- **A relative `import.meta.url` walk breaks when the file moves one level
+  deeper.** `locateCoreDir`'s workspace fallback resolved three levels up to
+  reach `packages/`, and after the move needed four. It silently pointed at a
+  directory that does not exist, and every `/__webjs/core/*` request 404d.
+- **Drift guards read source files by path.** Point each at the barrel PLUS
+  every module beneath it. An `assert.match` fails loudly, but an
+  `assert.doesNotMatch` starts passing vacuously.
+- **The browser suite is mandatory** for a renderer, router, component, or slot
+  split. Those defects are post-hydration, so `npm test` stays green and
+  `webjs elision --verify` still reports byte parity.
+
+---
+
 ### Deploying the in-repo apps (Docker image + readiness gate)
 
 The two in-repo apps (`website`, which serves the documentation at `/docs` and the component gallery at `/ui`, and `examples/blog`) deploy from ONE image built by the root `Dockerfile`, each run as a separate service with its own `PORT` (compose sets it locally, the platform injects it in prod). `compose.yaml` is local parity for that setup; the platform never reads it.

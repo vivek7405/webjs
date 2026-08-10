@@ -51,6 +51,7 @@ Classify the task first, then load the smallest useful reference set. Each refer
 | Auth, caching, env vars, rate limit, file storage, the `webjs` config block  | `references/built-ins.md`                      |
 | Node vs Bun, running the app, deploying, runtime-specific differences        | `references/runtime.md`                        |
 | Offline support, an asset cache, the opt-in service worker                   | `references/service-worker.md`                 |
+| Splitting a large file, or how big a module may be                            | `references/module-structure.md`              |
 | A pattern that feels like Next.js or Lit but might not transfer              | `references/muscle-memory-gotchas.md`         |
 
 Common bundles:
