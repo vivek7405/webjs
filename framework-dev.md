@@ -130,6 +130,29 @@ It is conservative. A worktree is removed ONLY when it is a linked (non-primary)
 
 The fix only repairs the LOCAL checkout. Commits and branches are always safe on GitHub regardless.
 
+### Agent config in this repo: `.claude/` is canonical, `.agents/` mirrors it
+
+Workflow skills live once at `.claude/skills/<name>/SKILL.md`. Antigravity reads
+`<workspace-root>/.agents/skills/<folder>/SKILL.md`, so each one is mirrored as a
+RELATIVE symlink `.agents/skills/<name> -> ../../.claude/skills/<name>`. Adding a
+skill means adding the directory, the symlink, and a bullet in
+`.agents/rules/workflow.md`; `test/repo-health/agent-skill-parity.test.mjs`
+fails when the three drift apart. Create the link with `ln -s` so git records
+mode `120000`, and keep the target relative, or
+`test/repo-health/no-committed-symlinks.test.mjs` rejects it.
+
+Two entries under `.agents/skills/` are not mirrors. `webjs/` is the real
+committed teaching skill (`scripts/sync-scaffold-skill.mjs` bundles it into the
+CLI at prepack), and `omarchy` is a machine-local absolute symlink kept
+untracked by `.gitignore:98`.
+
+Lifecycle HOOKS stay Claude-only on purpose. Antigravity supports a workspace
+`.agents/hooks.json`, but its blocking protocol (stdout `{"decision":"deny"}`),
+its context-injection shape (`injectSteps`), and its tool vocabulary all differ
+from Claude Code's, so a mirror is a protocol port rather than a config copy, and
+a generated copy would be the duplicated rule set root `AGENTS.md` rules out. The
+gates that bind every agent are `.hooks/pre-commit` and CI (#1372).
+
 ---
 
 ### Scaffold teaching-coverage gate (`gallery-coverage.test.js`)

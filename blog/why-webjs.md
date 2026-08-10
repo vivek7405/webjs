@@ -65,7 +65,7 @@ What that translates to:
 
 - **Conventions are enforced by tooling.** `webjs check` lints the rules that can be checked mechanically. The pre-commit hook refuses commits that break tests, refuses commits to `main`, auto-generates changelog entries on version bumps. The framework guards itself in the seams where mistakes happen, not in a doc page.
 
-- **AGENTS.md is the contract.** Every scaffolded WebJs app ships with `AGENTS.md` at the root: file conventions, public API, framework invariants, recipes, and a "deliberately deferred" list so the agent does not try to add a bundler. The same content lands as `CLAUDE.md`, `.cursorrules`, `.agents/rules/workflow.md` (Antigravity), `.github/copilot-instructions.md`. One source of truth, every major coding agent reads it.
+- **AGENTS.md is the contract.** Every scaffolded WebJs app ships with `AGENTS.md` at the root: file conventions, public API, framework invariants, recipes, and a "deliberately deferred" list so the agent does not try to add a bundler. Cursor, opencode, Antigravity, and Copilot's coding agent read that file natively, and Claude Code gets a one-line `CLAUDE.md` pointing at it. One source of truth, every major coding agent reads it.
 
 - **No build step means console parity.** When DevTools shows an error at `app/posts/[slug]/page.ts:42:8`, the agent opens that exact path and jumps to that exact line. The file on disk is what the runtime sees.
 

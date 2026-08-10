@@ -34,13 +34,18 @@ test('no tracked symlink points outside the repo', () => {
   const links = out
     .split('\n')
     .filter((l) => l.startsWith('120000 '))
-    .map((l) => l.split('\t').slice(1).join('\t'))
-    .filter(Boolean);
+    .map((l) => ({ oid: l.split(' ')[1], path: l.split('\t').slice(1).join('\t') }))
+    .filter((l) => l.path);
 
   const escaping = [];
-  for (const path of links) {
-    // The blob content of a symlink IS its target string.
-    const target = execFileSync('git', ['cat-file', '-p', `HEAD:${path}`], {
+  for (const { oid, path } of links) {
+    // The blob content of a symlink IS its target string. Read it by OID rather
+    // than as `HEAD:<path>`, so a STAGED but not yet committed link is checked
+    // too: `ls-files -s` above enumerates the index, and resolving against HEAD
+    // mixed two snapshots, throwing a raw `fatal: path ... exists on disk, but
+    // not in 'HEAD'` at exactly the moment someone adds a symlink and needs
+    // this guard to judge it (#1372).
+    const target = execFileSync('git', ['cat-file', '-p', oid], {
       cwd: repoRoot,
       encoding: 'utf8',
     }).trim();
