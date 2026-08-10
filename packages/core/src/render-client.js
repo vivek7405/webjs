@@ -750,11 +750,10 @@ function buildFormActionRecord(el, onEl, parts) {
  * record.
  *
  * FORMS FIRST, submitters second, regardless of the order the records were
- * collected in. A submitter asks whether its enclosing form is bound, and the
- * cheapest true answer is the identity field the form's own reconcile just
- * inserted. Document order gets this right for a form and a button in the SAME
- * template, but not for a `<form>` whose submitter arrives through a nested
- * template, so the ordering is made explicit rather than relied upon.
+ * collected in. Nothing reads an enclosing form's boundness any more (#1307
+ * made a bound submitter self-sufficient), but the ordering still makes a
+ * form's RELEASE run before its submitters reconcile, so it is kept rather
+ * than churned. See the note in the body.
  *
  * @param {FormActionRecord[] | null} formActions
  * @param {BoundPart[]} bound

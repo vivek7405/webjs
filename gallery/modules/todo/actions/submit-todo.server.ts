@@ -21,17 +21,12 @@ import { deleteTodo } from './delete-todo.server.ts';
 // control's visible label), and a bound submitter cannot carry its own
 // `name`/`value`, which is exactly the channel `name="intent"` uses below.
 //
-// Third thing to know, and the one that fails silently: the enclosing <form>
-// has to be bound too, because `method="post"` and the enctype are supplied on
-// the form's start tag and a per-button action cannot retrofit them. The
-// renderer refuses an unbound form it can see, but a submitter inside a
-// COMPONENT is a cannot-tell (the component renders in its own pass with no
-// view of the host page) and binds anyway. What happens then depends on that
-// form: one still declaring `method="post"` works (the identity rides the
-// button's own name/value pair into the body), but one with no method submits as
-// a GET, so the identity rides the query string and the action never runs while
-// the page returns 200. Run `webjs check`: `submitter-needs-bound-form` finds
-// these across modules.
+// Third thing to know: no `formaction` url is emitted, because the identity
+// travels in the body instead. So the submission targets whatever the FORM
+// targets, and a form declaring `action="/x"` sends its buttons there. The
+// action still runs when `/x` is a PAGE route; against a `route.ts` or another
+// origin the identity is ignored and nothing runs, which the dev-time client
+// guard reports at submit time.
 //
 // With JS the component intercepts the submit and calls the underlying action
 // directly for the optimistic path, so this runs only with JS off.
