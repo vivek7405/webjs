@@ -45,6 +45,8 @@ export default rateLimit({ window: '1m', max: 10 });</code-block>
 
     <p><strong>When you're fronted by a reverse proxy or CDN</strong> (Cloudflare, nginx, Caddy, Railway, Fly, Render, Vercel, Heroku), the socket IP is the proxy, not the user. Every request shares the same IP and the limiter buckets everyone together. Opt in to forwarded-header parsing:</p>
 
+    <p>A proxy POOL fails the other way, and it is the failure you are more likely to hit, because it does not look like a failure at all. Each proxy in the pool is a separate peer, so each gets its own full allowance and your effective limit is the configured one multiplied by the pool size. The headers stay plausible throughout: every response carries a <code>X-RateLimit-Remaining</code> that counts down correctly for its own bucket, so the limiter reads as working while no visitor is ever refused. The tell is that a fresh connection restarts the count while requests sharing one keep-alive connection do count down. This is what shipped in the feature gallery's rate-limit demo, which is why that demo now sets <code>trustProxy: true</code>.</p>
+
     <code-block>// app/api/auth/middleware.ts
 import { rateLimit } from '@webjsdev/server';
 
