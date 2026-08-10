@@ -61,6 +61,11 @@
      app/layout.ts so the ring and its halo are the same hue. */
   --color-primary-tint:           var(--primary-tint);
 
+  /* One extra semantic shadcn does not ship: success (a couple of status
+     affordances use it). Added the canonical @theme way, not a parallel
+     vocabulary. */
+  --color-success:                var(--success);
+
   --font-display: var(--font-display);
   --font-sans:  var(--font-sans);
   --font-serif: var(--font-serif);
