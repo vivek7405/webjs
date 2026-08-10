@@ -703,43 +703,101 @@ async function tryServeFrameworkStatic(path, method, { coreDir, appDir, dev, ver
 async function handleCore(req, ctx) {
   const { state, appDir, coreDir, dev, reportError, reportDevError, hasOnError, logger, cspEnabled, allowedOrigins } = ctx;
   const url = new URL(req.url);
+  // Decode percent-encoded characters so filesystem lookups match real
+  // filenames. Dynamic route segments like `[slug]` and route groups like
+  // `(marketing)` contain chars that browsers percent-encode in URLs
+  // (`%5B`, `%5D`, `%28`, `%29`). Without decoding, the server joins the
+  // encoded path with the app directory → file not found → 404 → no JS
+  // loads → no interactivity.
   let path;
   try { path = decodeURIComponent(url.pathname); } catch { path = url.pathname; }
   const method = req.method.toUpperCase();
+  // Content-hash fingerprint (#243): a `?v=` query marks a content-addressed
+  // asset url that may be served `immutable` (the hash busts the cache on a
+  // byte change). The pathname (query stripped by `url.pathname`) resolves the
+  // file as today; only the cache header changes when `?v` is present.
   const versioned = url.searchParams.has('v');
 
+  // Health / readiness probes (`/__webjs/health`, `/__webjs/ready`) and the
+  // framework-internal static assets (`/__webjs/core/*`, `/__webjs/reload.js`,
+  // `/__webjs/reload-worker.js`, downloaded `/__webjs/vendor/*`) are served in
+  // `handle()` BEFORE ensureReady,
+  // so they are not repeated here. This fallback covers the (currently
+  // unreachable) case of handleCore being entered for one of those assets, so
+  // the routing stays correct if a future caller bypasses the early path.
   const frameworkStatic = await tryServeFrameworkStatic(path, method, { coreDir, appDir, dev, versioned });
   if (frameworkStatic) return frameworkStatic;
 
+  // Internal server-action RPC endpoint
   const actMatch = /^\/__webjs\/action\/([a-f0-9]+)\/([A-Za-z0-9_$]+)$/.exec(path);
   if (actMatch) {
+    // HTTP-verb actions (#488): any RPC verb may hit the endpoint; invokeAction
+    // enforces the action's DECLARED method (405 + Allow on a mismatch) and
+    // reads args from the URL (GET/DELETE) or the body (POST/PUT/PATCH).
     if (!['GET', 'POST', 'PUT', 'PATCH', 'DELETE'].includes(method)) {
       return new Response('method not allowed', { status: 405 });
     }
+    // Pass the onError sink (issue #239): a server action that throws
+    // unexpectedly is reported to the APM hook before the sanitized 500.
     const onActionError = reportError ? (e) => reportError(e, req, 'action') : undefined;
     return invokeAction(state.actionIndex, actMatch[1], actMatch[2], req, onActionError, allowedOrigins);
   }
 
+  // Static: /public/*, plus a small set of ROOT assets that must serve at the
+  // site root even though they live under public/. A service worker registered
+  // at /sw.js scopes to the origin root, so it MUST serve at / (not
+  // /public/sw.js), and so must its offline fallback. Same remap shape as the
+  // /favicon.ico special-case below. (#830)
   const ROOT_ASSETS = { '/sw.js': '/public/sw.js', '/offline.html': '/public/offline.html' };
   if (path.startsWith('/public/') || path === '/favicon.ico' || path in ROOT_ASSETS) {
     const p = path === '/favicon.ico' ? '/public/favicon.ico' : (ROOT_ASSETS[path] || path);
     const abs = join(appDir, p);
+    // Containment check. `join` normalises `..` segments, so a path
+    // like `/public/%2E%2E/secret/x.svg` decodes (after URL parsing,
+    // which doesn't touch `%2E`) to `/public/../secret/x.svg` and
+    // `join(appDir, ...)` resolves it to `appDir/secret/x.svg`. The
+    // resulting `abs` could be inside `appDir` but OUTSIDE `appDir/
+    // public/`, exposing files the user reasonably thought were
+    // private under their non-public directories. Reject anything
+    // that doesn't stay under `appDir/public/` (and the favicon
+    // exception, which is already validated above).
     const publicRoot = join(appDir, 'public') + sep;
     if (!abs.startsWith(publicRoot)) {
       return new Response(null, { status: 404 });
     }
+    // On-request regeneration (#967): in dev, if a `webjs.dev.regenerate` rule
+    // matches this output and it is stale (a source is newer, or it is missing),
+    // rebuild it to completion BEFORE serving, so a newly added utility class is
+    // never served stale. No-op when no rule matches or the output is fresh, and
+    // never runs in prod (rules are empty there). This replaces the fragile
+    // `tailwindcss --watch` that could die mid-session and serve stale CSS.
     if (dev && state.regenerateRules.length) {
       await maybeRegenerate(appDir, p.replace(/^\/+/, ''), state.regenerateRules);
     }
+    // A `?v=<hash>` public asset is content-addressed -> immutable (#243).
     if (await exists(abs)) {
       const res = await fileResponse(abs, { dev, immutable: versioned });
+      // A worker served below its registration path only controls that subtree
+      // unless the response opts it up to the root scope. (#830)
       if (path === '/sw.js') res.headers.set('Service-Worker-Allowed', '/');
       return res;
     }
   }
 
+  // User source modules (served as ES modules, with action-file rewriting).
+  //
+  // Authorization gate: only files reachable from a browser-bound entry
+  // (page, layout, error, loading, not-found, component) via the module
+  // graph are servable. Same posture as Next.js, where the bundler's
+  // manifest is the source of truth for what the browser may fetch.
+  // Anything not in the set (node_modules/, top-level package.json,
+  // scripts/, etc.) 404s here regardless of whether the file exists on
+  // disk. The `.server.{js,ts}` stub guardrail runs below as a
+  // defense-in-depth layer.
   if (method === 'GET' && /\.(js|mjs|ts|mts|css|svg|png|jpg|jpeg|gif|webp|json|ico|txt)$/.test(path)) {
     let abs = join(appDir, path);
+    // When the browser asks for `.js`, allow falling through to a sibling
+    // `.ts` (the TypeScript-with-"allowImportingTsExtensions: false" pattern).
     if (!(await exists(abs)) && /\.js$/.test(abs)) {
       const tsAbs = abs.replace(/\.js$/, '.ts');
       if (await exists(tsAbs)) abs = tsAbs;
@@ -748,11 +806,37 @@ async function handleCore(req, ctx) {
         if (await exists(mtsAbs)) abs = mtsAbs;
       }
     }
+    // Gate: must be in the browser-bound module graph. Server-action
+    // files (.server.{js,ts}) get a stub via the guardrail below; they
+    // ARE included in browserBoundFiles because client code imports
+    // them by path (the import rewrites to an RPC stub at request time).
+    // In test mode any app file is servable (see the `state.testMode` note
+    // above); otherwise the file must be in the browser-bound module graph.
     const inGraph = state.testMode || (state.browserBoundFiles && state.browserBoundFiles.has(abs));
+    // Containment: `abs` must be appDir itself or genuinely UNDER it. The
+    // trailing `sep` (matching the public-asset branch) stops a `..` path that
+    // resolves to a sibling sharing the appDir name-prefix (`/x/app` ->
+    // `/x/app-secrets/...`) from passing in test mode, where graph membership
+    // is not the gate.
     const underAppDir = abs === appDir || abs.startsWith(appDir + sep);
     if (underAppDir && inGraph && (await exists(abs))) {
+      // Server-file guardrail: a file matching `.server.{js,ts,mjs,mts}`
+      // MUST NEVER be served as source to the browser. The extension is
+      // the path-level boundary; we re-verify it on every request (not
+      // just rely on the action-index snapshot, which is built on the first
+      // request and refreshed on rebuild) so files created later, FS races,
+      // or developer error never punch through.
+      //
+      // What the browser gets depends on the file's `'use server'` status:
+      //   - With `'use server'` => server action: a generated RPC stub
+      //     whose exports POST to /__webjs/action/:hash/:fn.
+      //   - Without `'use server'` => server-only utility: a stub that
+      //     throws at module load with a clear error. The file's source
+      //     never reaches the browser either way.
       if (isServerFile(abs)) {
         if (await hasUseServerDirective(abs)) {
+          // Lazily ensure the index knows about this file so serveActionStub
+          // can mint a stable hash and function list.
           if (!state.actionIndex.fileToHash.has(abs)) {
             const h = await hashFile(abs);
             state.actionIndex.fileToHash.set(abs, h);
@@ -769,11 +853,16 @@ async function handleCore(req, ctx) {
           headers: { 'content-type': 'application/javascript; charset=utf-8', 'cache-control': 'no-store' },
         });
       }
+      // TypeScript source: strip types via Node 24+'s built-in, cache by mtime.
+      // Both module paths also strip side-effect imports of display-only
+      // components so the browser never downloads their JS.
       const elideOpts = {
         moduleGraph: state.moduleGraph,
         elidableComponents: state.elidableComponents,
         appDir,
       };
+      // A `?v=<hash>` app-module request is content-addressed -> immutable
+      // (#243); an un-fingerprinted request keeps the 1h fallback.
       if (/\.m?ts$/.test(abs)) {
         return tsResponse(abs, dev, elideOpts, state.tsCache, versioned, reportDevError);
       }
@@ -782,6 +871,14 @@ async function handleCore(req, ctx) {
       }
       return fileResponse(abs, { dev, immutable: versioned });
     }
+    // Dev hint (#751): the request is for a real app source module that EXISTS
+    // on disk but is NOT in the browser-bound graph, so the gate 404s it. The
+    // most common cause is a dynamic `import()` the static scanner cannot
+    // track: a string-literal `import('./x.ts')` IS tracked and servable, but a
+    // computed `import(expr)` / `import('./' + name)` cannot be resolved
+    // statically and falls through here. Surface the likely cause instead of a
+    // bare 404 so the author is not left guessing. Dev-only and diagnostic; it
+    // does not change the 404 status, only the body + a server log line.
     if (dev && abs.startsWith(appDir) && /\.m?[jt]s$/.test(abs) && (await exists(abs))) {
       const rel = relative(appDir, abs);
       const hint = `[webjs] 404: ${rel} exists but is not reachable from any browser-bound entry, so it is not servable. If you load it via a dynamic import(), use a STRING-LITERAL specifier (e.g. import('./x.ts')) so the scanner can track it; a computed import(expr) cannot be resolved statically and will 404. Otherwise this module is simply unreferenced by client code.`;
@@ -790,6 +887,7 @@ async function handleCore(req, ctx) {
     }
   }
 
+  // Metadata routes: /sitemap.xml, /robots.txt, /icon, /opengraph-image, etc.
   if (method === 'GET' && state.routeTable.metadataRoutes) {
     const meta = state.routeTable.metadataRoutes.find((r) => r.urlPath === path);
     if (meta) {
@@ -797,7 +895,9 @@ async function handleCore(req, ctx) {
         const mod = await import(pathToFileURL(meta.file).toString() + (dev ? `?t=${Date.now()}` : ''));
         if (mod.default) {
           const result = await mod.default();
+          // If the function returns a Response, use it directly.
           if (result instanceof Response) return result;
+          // If it returns a string, determine content type from the URL path.
           const ct = path.endsWith('.xml') ? 'application/xml; charset=utf-8'
             : path.endsWith('.txt') ? 'text/plain; charset=utf-8'
             : path.endsWith('.json') ? 'application/json; charset=utf-8'
@@ -814,16 +914,37 @@ async function handleCore(req, ctx) {
     }
   }
 
+  // API route (route.js handler)
   const api = matchApi(state.routeTable, path);
   if (api) {
     const handler = () => handleApi(api.route, api.params, req, dev);
     return runWithSegmentMiddleware(req, api.route.middlewares, handler, dev);
   }
 
+  // Page route. GET/HEAD render the page. A NON-GET/HEAD method (POST/PUT/…)
+  // is a form submission (#1155): the `__webjs_action` hidden field names the
+  // server action to run, it runs inside the page's segment middleware, and the
+  // result either PRG-redirects (303), re-renders the same page (422) with
+  // field errors, or honors a thrown redirect()/notFound(). A non-GET carrying
+  // no action identity is a 405 on a path that exists but only renders.
   {
     const page = matchPage(state.routeTable, path);
     if (page) {
+      // The URL this render is FOR, in the form the browser sees it (#1047), so
+      // the overlay's scope gate can compare it against `location.pathname +
+      // location.search`. Two details are load-bearing: the RAW `url.pathname`
+      // (not the decoded `path`) is used, because `location.pathname` is
+      // percent-encoded too; and the base path is put back, because the ingress
+      // strip already removed it from `url` while the browser's location still
+      // carries it, so without this the gate would suppress every overlay on a
+      // sub-path deploy.
       const devErrorUrl = withBasePath(url.pathname, basePath()) + url.search;
+      // A speculative link prefetch must never raise an overlay (#1047): the
+      // user is only hovering a link to a page that throws, and the page they
+      // are actually looking at is fine. Dropping the hook also keeps the throw
+      // out of `state.lastDevError`, so the SSE replay cannot hand it to a
+      // freshly-connected tab either. The APM `onError` sink below still fires,
+      // because the render really did throw.
       const isPrefetch = req.headers.get('x-webjs-prefetch') === '1';
       const ssrOpts = {
         dev, appDir, moduleGraph: state.moduleGraph,
@@ -832,21 +953,52 @@ async function handleCore(req, ctx) {
         inertRouteModules: state.inertRouteModules,
         importOnlyRouteModules: state.importOnlyRouteModules,
         notFoundFile: state.routeTable.notFound,
+        // Root-only boundaries (#848): the app-wide catch-all error page and the
+        // unmatched-anywhere 404, rendered by ssr.js when a nested boundary is
+        // absent.
         globalError: state.routeTable.globalError,
         globalNotFound: state.routeTable.globalNotFound,
+        // instrumentation-client.{js,ts} (#848): imported first in the client
+        // boot so it runs before app modules.
         instrumentationClient: state.routeTable.instrumentationClient,
+        // Server HTML cache (#241): a CSP-enabled page emits a fresh
+        // per-request nonce into its body, so its bytes vary per request and
+        // it must never be HTML-cached. Pass the flag so the cache guard skips
+        // it. CSP is off by default, so the common case stays cacheable.
         cspEnabled,
+        // onError sink (issue #239): a page render error that becomes a 500 is
+        // reported to the APM hook with the active request's correlation id.
         onError: reportError ? (e) => reportError(e, req, 'ssr') : undefined,
+        // Dev error overlay (#264): a render crash pushes a frame to the open
+        // tab. Dev-only (reportDevError early-returns in prod), so no source
+        // leaks. Distinct from onError (the APM sink), which always fires.
         onDevError: dev && !isPrefetch
           ? (e) => reportDevError(e, { kind: 'render', url: devErrorUrl })
           : undefined,
       };
       if (method === 'GET' || method === 'HEAD') {
+        // #1307: `__webjs_action` in the QUERY STRING means a submission
+        // carrying a bound action's identity went out as a GET, so the action
+        // never ran. Nothing else in the framework puts that reserved field in
+        // a url. Detect only, so the render below is unchanged: answering a GET
+        // differently because of a query parameter would hand any visitor a way
+        // to turn any page into an error.
         reportFormSubmittedAsGet(
           url, req,
+          // Gated on hasOnError, not on `reportError`: that is always a
+          // function here and no-ops internally, so passing it would spend a
+          // dedupe slot on a report nobody receives.
           hasOnError ? (e) => reportError(e, req, 'action') : undefined,
           logger, dev, page.route,
         );
+        // A successful render of URL U supersedes a RETAINED render error for
+        // that same URL (#1047), so a reconnecting tab is not handed a frame the
+        // page has since recovered from. Keyed on BOTH frame identity and url:
+        // identity so a frame this very render just reported is never wiped, url
+        // so a good render of an unrelated page cannot erase an error that is
+        // still current for the page the user is looking at (the #893 gap the
+        // retention exists to close). Dev-only, and skipped for a prefetch,
+        // which is not the user's view of anything.
         const handler = dev && !isPrefetch
           ? async () => {
             const before = state.lastDevError;
@@ -860,6 +1012,10 @@ async function handleCore(req, ctx) {
           : () => ssrPage(page.route, page.params, url, { ...ssrOpts, req });
         return runWithSegmentMiddleware(req, page.route.middlewares, handler, dev);
       }
+      // Every non-GET/HEAD to a page runs the page's segment middleware, and
+      // the dispatcher always answers with a Response (a 405 when there is no
+      // action to run), so a middleware that post-processes `await next()`
+      // never has to handle an absent one.
       const deps = {
         actionIndex: state.actionIndex,
         allowedOrigins,
@@ -871,12 +1027,16 @@ async function handleCore(req, ctx) {
     }
   }
 
+  // Fallback: content-negotiated 404
   if (wantsJson(req, path)) {
     return Response.json({ error: 'Not found', path }, { status: 404 });
   }
+  // Unmatched anywhere: prefer the root not-found.{js,ts}, then a
+  // global-not-found.{js,ts} (#848), else the default 404 page.
   return ssrNotFound(state.routeTable.notFound || state.routeTable.globalNotFound, { dev, appDir, req, url });
 }
 
+/** @param {Request} req @param {string} path */
 function wantsJson(req, path) {
   const accept = req.headers.get('accept') || '';
   if (accept.includes('application/json') && !accept.includes('text/html')) return true;
@@ -884,6 +1044,15 @@ function wantsJson(req, path) {
   return false;
 }
 
+/**
+ * Chain segment-level middleware.js (outermost first) around a handler.
+ * Each middleware is `(req, next) => Response`. If any throws, log and 500.
+ *
+ * @param {Request} req
+ * @param {string[]} files   absolute paths of middleware.js files, outermost → innermost
+ * @param {() => Promise<Response>} terminal
+ * @param {boolean} dev
+ */
 async function runWithSegmentMiddleware(req, files, terminal, dev) {
   if (!files || !files.length) return terminal();
   const handlers = [];
@@ -894,7 +1063,7 @@ async function runWithSegmentMiddleware(req, files, terminal, dev) {
       const mod = await import(url + bust);
       if (typeof mod.default === 'function') handlers.push(mod.default);
     } catch {
-      // Ignore bad middleware
+      // Bad middleware file: skip; top-level error handler will catch real problems.
     }
   }
   let i = 0;
@@ -906,8 +1075,27 @@ async function runWithSegmentMiddleware(req, files, terminal, dev) {
   return next();
 }
 
+/**
+ * Root-middleware filename candidates, in resolution order.
+ *
+ * Every other routing convention accepts all four extensions (the router
+ * matches on the STEM, so `app/<segment>/middleware.ts` has always worked),
+ * and both the scaffold and the dev supervisor write / watch `middleware.ts`.
+ * This lookup used to be the single literal `middleware.js`, so a root
+ * `middleware.ts` was silently never loaded: no error, no warning, the app
+ * just ran with no global middleware. TypeScript is the documented default
+ * for an app, so that was the common case, and it went unnoticed because the
+ * failure is invisible (a missing middleware looks exactly like an app that
+ * has none). `.ts` is tried first to match the dev supervisor's order.
+ */
 const ROOT_MIDDLEWARE_FILES = ['middleware.ts', 'middleware.js', 'middleware.mts', 'middleware.mjs'];
 
+/**
+ * Load the optional top-level `middleware.{ts,js,mts,mjs}`.
+ * @param {string} appDir
+ * @param {boolean} dev
+ * @param {import('./logger.js').Logger} logger
+ */
 async function loadMiddleware(appDir, dev, logger) {
   let file = null;
   for (const name of ROOT_MIDDLEWARE_FILES) {
@@ -926,9 +1114,27 @@ async function loadMiddleware(appDir, dev, logger) {
   }
 }
 
+/**
+ * Read a file and return a Response with appropriate caching.
+ * Dev: no-cache (always revalidate).
+ * Prod: ETag + ~1h max-age for user files; `immutable` bumps to 1 year.
+ *
+ * @param {string} abs
+ * @param {{ dev: boolean, immutable: boolean }} opts
+ */
 async function fileResponse(abs, opts) {
   try {
     let data = await readFile(abs);
+    // In dev an external watcher (tailwindcss --watch, esbuild, ...) rewrites a
+    // public asset with truncate-then-write, so the file is 0 bytes for a short
+    // window during a rebuild. A hot reload that lands in that window would
+    // serve empty CSS / JS and the page paints unstyled (#891). Close that
+    // 0-byte window: when an empty read comes from a file that was JUST modified
+    // (the mid-rewrite signal), re-read a few times so the truncated read does
+    // not reach the browser. A genuinely empty, untouched asset is served
+    // immediately (no delay), and a non-zero-but-partial write is a smaller
+    // residual gap this does not cover. Prod has no such watcher and is
+    // left untouched.
     if (opts.dev && data.length === 0) {
       let midRewrite = false;
       try { midRewrite = Date.now() - (await stat(abs)).mtimeMs < 500; } catch { /* gone */ }
@@ -938,6 +1144,9 @@ async function fileResponse(abs, opts) {
       }
     }
     const type = MIME[extname(abs).toLowerCase()] || 'application/octet-stream';
+    // The body is fully buffered (read into `data`), so opt it into the
+    // conditional-GET funnel, which is the single place that hashes the bytes
+    // into a weak ETag and honors If-None-Match -> 304 (dev + prod alike).
     const headers = { 'content-type': type, [BUFFERED_MARKER]: '1' };
     headers['cache-control'] = opts.dev
       ? 'no-cache'
@@ -950,6 +1159,19 @@ async function fileResponse(abs, opts) {
   }
 }
 
+/**
+ * Serve a plain `.js` / `.mjs` browser module, stripping side-effect
+ * imports of display-only components. Mirrors {@link fileResponse}'s
+ * headers but reads as text so the source can be transformed. Used only
+ * for files that exist as `.js` on disk (TS apps usually hit
+ * {@link tsResponse} via the .js to .ts sibling rewrite instead).
+ *
+ * @param {string} abs
+ * @param {boolean} dev
+ * @param {{ moduleGraph: any, elidableComponents: Set<string>|undefined, appDir: string }} elideOpts
+ * @param {boolean} [immutable]  true for a `?v=<hash>` content-addressed request (#243):
+ *   serve `immutable` (1 year) instead of the 1h fallback. Dev stays `no-cache`.
+ */
 async function jsModuleResponse(abs, dev, elideOpts, immutable) {
   let source;
   try { source = await readFile(abs, 'utf8'); }
@@ -957,7 +1179,12 @@ async function jsModuleResponse(abs, dev, elideOpts, immutable) {
   let code = elideImportsFromSource(
     source, abs, elideOpts.moduleGraph, elideOpts.elidableComponents, resolveImport, elideOpts.appDir,
   );
+  // Version same-origin relative import specifiers so the URL the browser
+  // fetches matches the `?v=`-versioned modulepreload + boot specifier (#369).
+  // A no-op in dev (fingerprinting disabled).
   code = versionModuleImports(code, abs);
+  // Buffered (string) body, so opt into the conditional-GET funnel for the
+  // weak ETag + 304 (see fileResponse).
   const headers = {
     'content-type': 'application/javascript; charset=utf-8',
     'cache-control': dev ? 'no-cache' : immutable ? 'public, max-age=31536000, immutable' : 'public, max-age=3600',
@@ -966,11 +1193,53 @@ async function jsModuleResponse(abs, dev, elideOpts, immutable) {
   return new Response(code, { status: 200, headers });
 }
 
+/**
+ * Strip TypeScript types from `source` via Node's built-in
+ * `module.stripTypeScriptTypes`. Position-preserving whitespace
+ * replacement: no sourcemap is needed because every (line, column)
+ * maps to itself in the source.
+ *
+ * Only erasable TypeScript is supported. Non-erasable syntax
+ * (`enum`, `namespace` with values, parameter properties, legacy
+ * decorators with `emitDecoratorMetadata`, `import = require`)
+ * throws `ERR_UNSUPPORTED_TYPESCRIPT_SYNTAX` from Node and the
+ * dev server returns the error to the caller. The
+ * `erasable-typescript-only` and `no-non-erasable-typescript` lint
+ * rules catch these at edit time. There is no bundler fallback;
+ * WebJs is buildless end-to-end.
+ *
+ * The backend is the runtime-appropriate stripper (#508): Node 24+'s built-in
+ * `module.stripTypeScriptTypes`, or `amaro` on Bun (byte-identical, equally
+ * position-preserving), resolved once via `./ts-strip.js`.
+ *
+ * @param {string} source
+ * @param {string} _abs  (unused; preserved for symmetry with prior signature)
+ * @returns {Promise<string>}
+ */
 async function stripTs(source, _abs) {
   return stripTypeScript(source);
 }
 
+/**
+ * Serve a `.ts` / `.mts` source file as JavaScript via {@link stripTs}.
+ * Result is cached by mtime in the handler's own `cache` so subsequent
+ * requests are instant; a file edit invalidates naturally. `elideOpts`
+ * additionally strips side-effect imports of display-only components from
+ * the served code, which is exactly why `cache` is the per-handler
+ * `state.tsCache` and not a module-global: the cached bytes bake in this
+ * handler's elision verdict.
+ *
+ * @param {string} abs
+ * @param {boolean} dev
+ * @param {{ moduleGraph: any, elidableComponents: Set<string>|undefined, appDir: string }} [elideOpts]
+ * @param {Map<string, { mtimeMs: number, code: string, map: string | null }>} cache the handler's `state.tsCache`
+ * @param {boolean} [immutable]  true for a `?v=<hash>` content-addressed request (#243):
+ *   serve `immutable` (1 year) instead of the 1h fallback. The cached BODY is
+ *   the same bytes regardless; only the cache header varies. Dev stays `no-cache`.
+ */
 async function tsResponse(abs, dev, elideOpts, cache, immutable, reportDevError) {
+  // The body bytes are identical with or without `?v`; only the cache header
+  // changes, so the per-mtime cache stays a single entry.
   const cacheControl = dev ? 'no-cache' : immutable ? 'public, max-age=31536000, immutable' : 'public, max-age=3600';
   const st = await stat(abs);
   const cached = cache.get(abs);
@@ -988,20 +1257,41 @@ async function tsResponse(abs, dev, elideOpts, cache, immutable, reportDevError)
   try {
     code = await stripTs(source, abs);
   } catch (err) {
+    // Node's stripTypeScriptTypes throws ERR_UNSUPPORTED_TYPESCRIPT_SYNTAX
+    // for enum, namespace with values, parameter properties, legacy
+    // decorators with emitDecoratorMetadata, and import = require.
+    // Return a clean 500 with the file path and a pointer at the
+    // erasable-typescript-only lint rule rather than letting the
+    // error bubble up unstyled.
     if (err && err.code === 'ERR_UNSUPPORTED_TYPESCRIPT_SYNTAX') {
+      // Log full detail server-side regardless of mode so operators
+      // see what went wrong in their logs.
+      // eslint-disable-next-line no-console
       console.error(`[webjs] non-erasable TypeScript in ${abs}: ${err.message}`);
+      // Dev error overlay (#264): a TS strip failure breaks only the CLIENT
+      // module fetch (the page still SSRs, so hydration is silently dead and
+      // the hint below is buried in a JS comment). Push a frame so the open tab
+      // shows the overlay with the offending file + the no-non-erasable hint.
       reportDevError?.(err, {
         kind: 'ts-strip',
         file: abs,
         hint: 'webjs is buildless: only erasable TypeScript is supported. Replace enum / namespace-with-values / parameter-property / legacy-decorator / import = require with their erasable equivalents. Run `webjs check` (no-non-erasable-typescript rule).',
       });
       const msg = dev
+        // Dev: include the file path and Node's error message so the
+        // developer's browser tooling can point them at the offending
+        // construct. Replace `*` + `/` with `*\\/` so a path or
+        // message containing the comment-close sequence cannot
+        // terminate the wrapper comment early.
         ? `[webjs] non-erasable TypeScript in ${abs}: ${err.message}\n\n` +
           `webjs is buildless: only erasable TS syntax is supported. ` +
           `Replace enum / namespace / parameter-property / legacy-decorator / ` +
           `import = require constructs with their erasable equivalents. ` +
           `Run \`webjs check\` for guidance (no-non-erasable-typescript rule). ` +
           `Docs: https://webjs.dev/docs/typescript`
+        // Prod: terse, no path leak, no Node-message leak (Node's
+        // message can include source snippets). Operators get the
+        // detail in server logs above.
         : `[webjs] server error transforming a .ts response. Check server logs.`;
       return new Response(`/* ${msg.replace(/\*\//g, '*\\/')} */`, {
         status: 500,
@@ -1015,7 +1305,12 @@ async function tsResponse(abs, dev, elideOpts, cache, immutable, reportDevError)
       code, abs, elideOpts.moduleGraph, elideOpts.elidableComponents, resolveImport, elideOpts.appDir,
     );
   }
+  // Version same-origin relative import specifiers so the URL the browser
+  // fetches matches the `?v=`-versioned modulepreload + boot specifier (#369).
+  // A no-op in dev (fingerprinting disabled). Cached with the elision result:
+  // PROD files are static within a deploy, so the baked `?v` stays correct.
   code = versionModuleImports(code, abs);
+  // Evict oldest entry if cache is full (simple FIFO: Map preserves insertion order).
   if (cache.size >= TS_CACHE_MAX) {
     const oldest = cache.keys().next().value;
     cache.delete(oldest);

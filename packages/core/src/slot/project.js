@@ -14,6 +14,18 @@ import { N_appendChild, N_removeChild, processBackstop, withRendererWrites } fro
 import { effectiveKeyOf, ensureSlotState, keyOfName, repartition } from './state.js';
 import { FRAMEWORK_DETACHED, LIGHT_SLOT_ATTR, PARK, PROJECTION_ACTUAL, PROJECTION_ATTR, SLOT_FALLBACK_FRAG, SLOT_STATE } from './symbols.js';
 
+/**
+ * Replace the authored content assigned to slot `name` with `nodes`, in place
+ * of the old slice's position (a new name appends). The ONE public seam the
+ * client router uses to reconcile a reused light host's projected content
+ * during a same-route morph (replacing the deleted `setSlotContent`): the
+ * router never touches `authored` / `assignedByName` / `lastSnapshot` directly,
+ * and this is the same record-then-place primitive the interception layer runs.
+ *
+ * @param {Element} host
+ * @param {string | null} name
+ * @param {Node[] | Node | null} nodes
+ */
 export function projectAuthored(host, name, nodes) {
   const state = ensureSlotState(host);
   const key = keyOfName(name);
@@ -61,13 +73,21 @@ export function projectAuthored(host, name, nodes) {
 // ---------------------------------------------------------------------------
 
 /**
- * Set on a host WHILE the renderer is committing into it. The patched host
- * methods check it and delegate to the saved native, so a renderer commit is
- * never mistaken for authored content. This is the one discriminator between
- * renderer writes and author writes: a synchronous framework-write window, set
- * structurally (an own symbol), never inferred from comment markers.
+ * Place the slot record into the host's OWN light-DOM slots (#1015). The
+ * renderer's slot parts call this after the template commits, and the
+ * interception + sensors call it after an authored mutation. Idempotent and cheap on
+ * no-change passes.
+ *
+ *   1. Collect the host's OWN slots (no other custom element between the
+ *      slot and the host; a nested component's slots belong to it).
+ *   2. Group by `name`, first-wins: the first slot of each name shows the
+ *      record content, later duplicates show fallback.
+ *   3. `data-projection` is stamped "actual" or "fallback" accordingly;
+ *      fallback content swaps through the part-owned holding fragment.
+ *   4. `slotchange` fires on slots whose assigned set actually changed.
+ *
+ * @param {Element} host
  */
-
 export function applySlotAssignments(host) {
   if (!inBrowser) return;
   const state = /** @type {SlotState | undefined} */ (
@@ -410,21 +430,3 @@ function pruneAuthored(host, state) {
   // host child stays honoured when the node is later appended (the native
   // assign-first, append-later ordering).
 }
-
-/**
- * True when this host's current markup is FRAMEWORK-RENDERED output rather
- * than author-written children: a rendered light template carries the
- * framework's own `slot[data-webjs-light]` elements, an attribute only the
- * renderer / SSR ever stamps (own-slot filtered so a nested serialized
- * component inside genuinely-authored children does not misfire; and
- * `data-wj-host` is NOT usable here, since connectedCallback stamps it on
- * every light host before this check runs). The connectedCallback branch
- * chooser uses this STRUCTURAL signal to pick adopt-not-capture for a
- * framework-rendered subtree, so a back/forward snapshot restore
- * (post-hydration HTML, no `webjs-hydrate` marker) adopts the projected
- * children instead of hoovering the rendered tree into `authored` (the #1006
- * duplication shape on the restore path).
- *
- * @param {Element} host
- * @returns {boolean}
- */

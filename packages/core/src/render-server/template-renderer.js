@@ -15,12 +15,25 @@ import { isUnsafeHTML, isLive, isKeyed, isGuard, isTemplateContent, isRef, isCac
 import { stringify } from '../serialize.js';
 import { injectDSD, kebabCase, decodeAttrEntities, isRawtextTag } from './dsd.js';
 
+/** True in a production build (no dev error surfacing). */
 export function isProd() {
   return typeof process !== 'undefined' && process.env && process.env.NODE_ENV === 'production';
 }
 
+/**
+ * If `e` is the recognisable failure of touching a browser-only API during
+ * SSR (a `ReferenceError` for a browser global, or a `TypeError` calling an
+ * HTMLElement method that does not exist on the bare server-side instance),
+ * return an actionable, member-naming hint; otherwise null.
+ * @param {unknown} e
+ * @returns {string | null}
+ */
 export function browserMemberHint(e) {
   const msg = e && typeof (/** @type any */ (e).message) === 'string' ? /** @type any */ (e).message : '';
+  // Match on a word boundary, NOT end-of-string: V8 (Node) ends the message at
+  // "is not defined" / "is not a function", but JSC (Bun) appends a detail
+  // clause (e.g. ". (In '({}).querySelector(\"p\")', '...' is undefined)"), so an
+  // anchored `$` would miss the Bun message and drop the actionable hint.
   let m = /^(\w+) is not defined\b/.exec(msg);
   if (e instanceof ReferenceError && m && SSR_BROWSER_GLOBALS.has(m[1])) {
     return `\`${m[1]}\` is a browser-only global and is undefined during SSR.`;
@@ -32,17 +45,43 @@ export function browserMemberHint(e) {
   return null;
 }
 
+// Browser-only names whose absence during SSR produces a recognisable error.
+// Mirrors the `no-browser-globals-in-render` webjs check rule, which catches
+// these at edit time; this turns the runtime SSR crash into the same guidance.
 const SSR_BROWSER_GLOBALS = new Set([
   'document', 'window', 'localStorage', 'sessionStorage', 'navigator',
   'matchMedia', 'requestAnimationFrame', 'getComputedStyle',
   'IntersectionObserver', 'MutationObserver', 'ResizeObserver',
 ]);
 
+// Attribute methods (get/set/has/remove/toggleAttribute), the event methods
+// (add/removeEventListener, dispatchEvent), and attachInternals are backed by
+// the server-side element shim and work at SSR, so they are NOT listed here.
+// What remains is the genuinely browser-only HTMLElement surface that still
+// has no server stand-in and throws at SSR.
 const SSR_HTMLELEMENT_METHODS = new Set([
   'attachShadow', 'querySelector', 'querySelectorAll',
   'getBoundingClientRect', 'focus', 'blur', 'scrollIntoView',
 ]);
 
+/**
+ * Default component-scoped error state for an async/sync render that threw
+ * during SSR, used when the component does not define renderError() (#469).
+ * Dev surfaces the tag + message loudly so the failure is obvious; prod
+ * renders an empty (silent, isolated) element so no internal detail leaks.
+ *
+ * The prod-silence signal is the SERVER's `dev` flag, threaded through the SSR
+ * render context (#483). WebJs keys prod on the CLI `dev` flag, not `NODE_ENV`,
+ * and `webjs start` does not export `NODE_ENV=production`, so a bare prod launch
+ * would otherwise leak the message. When `dev` is undefined (a context-free
+ * `renderToString` with no server signal, e.g. a bare unit test) it falls back
+ * to `isProd()` / `NODE_ENV`, preserving the prior behaviour for that path.
+ *
+ * @param {string} tag
+ * @param {Error} err
+ * @param {boolean} [dev]  server dev flag; undefined falls back to NODE_ENV
+ * @returns {unknown} a TemplateResult (dev) or '' (prod)
+ */
 export function defaultSSRErrorTemplate(tag, err, dev) {
   const surface = dev === undefined ? !isProd() : !!dev;
   if (!surface) return '';
@@ -53,37 +92,56 @@ export function defaultSSRErrorTemplate(tag, err, dev) {
   </div>`;
 }
 
+/**
+ * @param {unknown} value
+ * @param {SuspenseCtx} [ctx]
+ * @returns {Promise<string>}
+ */
 export async function render(value, ctx) {
   if (value == null || value === false || value === true) return '';
   if (value && typeof /** @type any */ (value).then === 'function') {
     value = await value;
     return render(value, ctx);
   }
+  // unsafeHTML: inject raw HTML string without escaping.
   if (isUnsafeHTML(value)) {
     return String(/** @type any */ (value).value ?? '');
   }
+  // live() on the server just unwraps and renders the inner value.
   if (isLive(value)) {
     return render(/** @type any */ (value).value, ctx);
   }
+  // watch() on the server reads the signal once and inlines the
+  // result. Subscription is a client-only concern; the SSR HTML
+  // freezes a snapshot of the current value.
   if (isWatch(value)) {
     return render(/** @type any */ (value).signal.get(), ctx);
   }
+  // keyed() on the server: render the wrapped template; key is client-only.
   if (isKeyed(value)) {
     return render(/** @type any */ (value).value, ctx);
   }
+  // guard() on the server: always invoke the value function (no cache on SSR).
   if (isGuard(value)) {
     return render(/** @type any */ (value).fn(), ctx);
   }
+  // templateContent() on the server: emit the template's innerHTML verbatim.
   if (isTemplateContent(value)) {
     const tpl = /** @type any */ (value).template;
     return String(tpl?.innerHTML ?? '');
   }
+  // ref() on the server: no-op (no DOM yet). Returns empty string.
   if (isRef(value)) {
     return '';
   }
+  // cache() on the server: pass-through to the inner value.
   if (isCache(value)) {
     return render(/** @type any */ (value).value, ctx);
   }
+  // until() on the server: render the first synchronous candidate, or
+  // await the first Promise to settle when all candidates are Promises.
+  // Rejections are swallowed (treated as "no value"); if every candidate
+  // rejects, render empty rather than crash the SSR pipeline.
   if (isUntil(value)) {
     const args = /** @type any */ (value).args;
     for (const a of args) {
@@ -101,6 +159,8 @@ export async function render(value, ctx) {
     }
     return '';
   }
+  // asyncAppend / asyncReplace on the server: render empty. Full
+  // streaming is a follow-up; pages should use Suspense for streaming.
   if (isAsyncAppend(value) || isAsyncReplace(value)) {
     return '';
   }
@@ -365,6 +425,14 @@ export async function renderTemplate(tr, ctx) {
   return out;
 }
 
+/**
+ * Recursively render a value, enqueuing HTML chunks into the stream
+ * controller as they become available.
+ *
+ * @param {unknown} value
+ * @param {SuspenseCtx} [ctx]
+ * @param {ReadableStreamDefaultController<string>} controller
+ */
 export async function streamRender(value, ctx, controller) {
   if (value == null || value === false || value === true) return;
   if (value && typeof /** @type any */ (value).then === 'function') {

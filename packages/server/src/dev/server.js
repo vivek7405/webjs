@@ -21,14 +21,64 @@ function debounce(fn, ms) {
   };
 }
 
+/**
+ * Start a WebJs HTTP server. Thin wrapper around `createRequestHandler`.
+ *
+ * Speaks plain HTTP/1.1. TLS termination + HTTP/2 to the browser is
+ * expected to be handled by a reverse proxy (PaaS edge, nginx, Caddy,
+ * etc.) sitting in front of this process. See the deployment docs for
+ * the recommended topology.
+ *
+/**
+ * Paths under the app root whose changes must NOT trigger a dev rebuild.
+ * `node_modules` / `.git` are noise. `.webjs/` is the framework's generated
+ * artefact dir (the #258 routes.d.ts and the vendor pin) that the dev server
+ * itself writes on startup and on every rebuild, so without this skip the
+ * write fires a watch event, triggers a rebuild, re-writes the file, and loops
+ * forever. `db/dev.db*` (the SQLite file + sidecars) and `db/migrations`
+ * (drizzle-kit output) churn during db:migrate. The `db/dev.db` branch is
+ * prefix-only (no trailing separator) so the `-journal` / `-wal` sidecars match
+ * too, while staying anchored to `db/dev.db` so a SOURCE file like
+ * `db/schema.server.ts` still triggers a reload. The others stay
+ * separator-anchored so an unrelated name like `node_modules.bak/foo` does not.
+ *
+ * @param {string} filename relative path from an fs.watch `event.filename`
+ * @returns {boolean} true when the change should be ignored
+ */
 export function shouldIgnoreWatchPath(filename) {
   return /(?:^|[\\/])(?:node_modules|\.git|\.webjs)(?:[\\/]|$)|(?:^|[\\/])db[\\/](?:dev\.db|migrations)/.test(filename || '');
 }
 
+/**
+ * Install signal handlers that stop accepting new connections, close SSE
+ * clients, and exit once in-flight requests drain.
+ * @param {import('node:http').Server} server
+ * @param {Set<import('node:http').ServerResponse>} sseClients
+ * @param {import('./logger.js').Logger} logger
+ */
+/**
+ * Create a plain HTTP/1.1 server. WebJs deploys are expected to sit
+ * behind a reverse proxy (PaaS edge, nginx, Caddy, etc.) that handles
+ * TLS termination and speaks HTTP/2 to clients: Node's http2 module
+ * doesn't need to be involved on the framework side.
+ *
+ * @param {(req: any, res: any) => void} handler
+ */
 function makeHttpServer(handler) {
   return createHttp1Server(handler);
 }
 
+/* ------------ helpers ------------ */
+
+/**
+ * The node:http listener shell: the original `startServer` socket path, now
+ * reading the shared `ListenerContext`. Bridges node `IncomingMessage` ->
+ * `Request` (`toWebRequest`) and `Response` -> `ServerResponse`
+ * (`sendWebResponse`), emits 103 Early Hints, and drives SSE + WS over node
+ * primitives, sharing the SSE registry + lifecycle wiring with the Bun shell.
+ * @param {import('./listener-types.js').ListenerContext} ctx
+ * @returns {{ server: import('node:http').Server, close: () => Promise<void> }}
+ */
 function startNodeListener(ctx) {
   const { app, dev, compress, logger, hub, port, basePathStr, timeouts, watcherAbort } = ctx;
 
@@ -36,6 +86,10 @@ function startNodeListener(ctx) {
     try {
       const url = urlFromRequest(req);
 
+      // SSE: handled specially; doesn't fit the req→Response model. Match the
+      // base-path-stripped pathname so the reload stream answers at
+      // `<basePath>/__webjs/events` under a sub-path deploy (#256). With no
+      // basePath this is a pure pass-through (the bare path still matches).
       if (stripBasePath(url.pathname, basePathStr) === '/__webjs/events') {
         if (!dev) { res.writeHead(404); res.end(); return; }
         res.writeHead(200, {
@@ -43,12 +97,22 @@ function startNodeListener(ctx) {
           'cache-control': 'no-cache',
           connection: 'keep-alive',
         });
+        // `retry: 300` shrinks the browser's EventSource reconnect backoff from
+        // its ~3s default so a reconnect after a `node --watch` restart happens
+        // promptly. The `hello` data is a per-process boot id (#893): the client
+        // reloads on a reconnect ONLY when it changes (a real restart), so a
+        // transient reconnect never triggers a spurious reload.
         res.write(`retry: 300\nevent: hello\ndata: ${DEV_BOOT_ID}\n\n`);
+        // Register a node client wrapper in the shared hub: the fanout + keepalive
+        // live in SseHub; only the transport write (res.write / res.end) is local.
         const client = {
           send: (s) => { try { res.write(s); } catch {} },
           close: () => { try { res.end(); } catch {} },
         };
         hub.add(client);
+        // Replay an unresolved dev error (#264) so a tab that connects AFTER the
+        // breaking edit (e.g. opened via a fresh navigation) still shows the
+        // overlay, not only the tab that was open when the error fired.
         const pending = app.getLastDevError?.();
         if (pending) {
           try { res.write(`event: webjs-error\ndata: ${JSON.stringify(pending)}\n\n`); } catch {}
@@ -57,6 +121,10 @@ function startNodeListener(ctx) {
         return;
       }
 
+      // 103 Early Hints: before running SSR, send preload hints for the
+      // page's module URLs so the browser can begin fetching them while
+      // the server is still computing the body. Skipped in dev (file churn
+      // would send stale URLs after rebuilds) and for non-GET/HEAD.
       if (
         !dev &&
         (req.method === 'GET' || req.method === 'HEAD') &&
@@ -84,14 +152,24 @@ function startNodeListener(ctx) {
     }
   });
 
+  // node:http built-in timeouts: `requestTimeout` bounds the time to receive the
+  // WHOLE request, `headersTimeout` just the headers (kept strictly under
+  // requestTimeout so it actually fires), `keepAliveTimeout` the idle window
+  // before a kept-alive socket is closed.
   server.requestTimeout = timeouts.requestTimeout;
   server.headersTimeout = timeouts.headersTimeout;
   server.keepAliveTimeout = timeouts.keepAliveTimeout;
 
+  // WebSocket upgrade handling: any route.js that exports `WS` becomes a
+  // WebSocket endpoint at its URL.
   attachWebSocket(server, () => app.getRouteTable(), { dev, logger });
 
   server.listen(port, () => {
     logger.info(`webjs ${dev ? 'dev' : 'prod'} server ready on http://localhost:${port}`);
+    // The server is now accepting connections; warm the first-request analysis
+    // in the background so a real first request finds it memoized. Fire-and-
+    // forget: listening (and thus readiness probes / load-balancer health) does
+    // not wait on it, and a failure here does not bring the process down.
     app.warmup();
   });
 
@@ -102,12 +180,17 @@ function startNodeListener(ctx) {
   process.once('SIGINT', () => shutdown('SIGINT'));
   process.once('SIGTERM', () => shutdown('SIGTERM'));
 
+  // Catch-all process handlers: log, but don't tear the process down on a
+  // single mishandled promise. Uncaught exceptions are different: state may be
+  // corrupted, so log + start an orderly shutdown rather than continuing.
   installProcessHandlers(logger, () => shutdown('uncaughtException', { fatal: true }));
 
   return {
     server,
     close: () => new Promise((r) => {
       if (watcherAbort) watcherAbort.abort();
+      // Clear the shared SSE keepalive timer so repeated startServer/close cycles
+      // (e.g. across a test run) don't accumulate live intervals.
       hub.closeAll();
       server.close(() => r());
     }),

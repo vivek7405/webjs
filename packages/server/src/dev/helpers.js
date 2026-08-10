@@ -6,15 +6,27 @@ import { withBasePath } from '../base-path.js';
 import { reachableFromEntries } from '../module-graph.js';
 import { isCompressible, negotiateEncoding, createCompressor, varyWithAcceptEncoding } from '../listener-core.js';
 
+/** @param {import('node:http').IncomingMessage} req @param {URL} url */
 export function toWebRequest(req, url) {
   const method = (req.method || 'GET').toUpperCase();
   /** @type {Record<string,string>} */
   const headers = {};
   for (const [k, v] of Object.entries(req.headers)) {
+    // Drop HTTP/2 pseudo-headers (`:method`, `:path`, `:scheme`, `:authority`).
+    // They're parsed separately into req.method / req.url and are rejected
+    // by the standard Headers class if we pass them through verbatim.
     if (k.startsWith(':')) continue;
+    // Strip any inbound `x-webjs-remote-ip` header so clients cannot
+    // spoof the framework-stamped client IP that rate-limit's
+    // `clientIp(req, { trustProxy: false })` reads. We rewrite it
+    // below from the actual TCP socket. Node's IncomingMessage
+    // always lowercases header keys, so a literal compare is enough.
     if (k === 'x-webjs-remote-ip') continue;
     headers[k] = Array.isArray(v) ? v.join(',') : String(v ?? '');
   }
+  // Stamp the framework-trusted remote IP from the socket. Read by
+  // `clientIp(req)` (rate-limit.js) as the bucket key when
+  // `trustProxy: false` (the safe default).
   const remoteIp = req.socket?.remoteAddress;
   if (remoteIp) headers['x-webjs-remote-ip'] = remoteIp;
   let body;
@@ -30,9 +42,16 @@ export function toWebRequest(req, url) {
   return new Request(url, /** @type any */ ({ method, headers, body, duplex: 'half' }));
 }
 
+/**
+ * @param {import('node:http').ServerResponse} res
+ * @param {Response} webRes
+ * @param {import('node:http').IncomingMessage} [req]
+ * @param {{ compress?: boolean }} [opts]
+ */
 export async function sendWebResponse(res, webRes, req, opts) {
   /** @type {Record<string,string | string[]>} */
   const headers = {};
+  // Preserve multi-value headers (Set-Cookie) via getSetCookie when available.
   if (typeof /** @type any */ (webRes.headers).getSetCookie === 'function') {
     const cookies = /** @type any */ (webRes.headers).getSetCookie();
     if (cookies.length) headers['set-cookie'] = cookies;
@@ -42,6 +61,11 @@ export async function sendWebResponse(res, webRes, req, opts) {
     headers[k] = v;
   });
 
+  // Negotiate compression via the SHARED seam (listener-core.js), so the node and
+  // Bun shells negotiate + compress identically (brotli > gzip > deflate, node:zlib
+  // both sides). Skip a body that is already content-encoded (a route.ts returning
+  // pre-compressed bytes), and merge into any pre-existing `Vary` rather than
+  // clobbering it (`isCompressible` already excludes `text/event-stream`).
   let compressor = null;
   if (opts?.compress && req && webRes.body && !headers['content-encoding'] && isCompressible(headers['content-type'])) {
     const encoding = negotiateEncoding(req.headers['accept-encoding']);
@@ -98,12 +122,48 @@ export const MIME = {
   '.txt': 'text/plain; charset=utf-8',
 };
 
+/**
+ * Cache of stripped `.ts` / `.mts` source.
+ * Keyed by absolute file path. Entries expire when mtime changes.
+ * Capped at 500 entries to prevent unbounded memory growth in
+ * long-running production servers.
+ *
+ * Stripper: `module.stripTypeScriptTypes` (Node 24+ built-in).
+ * Position-preserving whitespace replacement. No sourcemap is
+ * emitted because every (line, column) maps to itself in the source.
+ *
+ * Only erasable TypeScript is supported. Non-erasable syntax (`enum`,
+ * `namespace` with values, parameter properties, legacy decorators
+ * with `emitDecoratorMetadata`, `import = require`) throws at strip
+ * time. The `erasable-typescript-only` and `no-non-erasable-typescript`
+ * lint rules catch these at edit time. WebJs is buildless end-to-end:
+ * there is no bundler fallback.
+ *
+ * The transformed bytes are cached per request handler in `state.tsCache`
+ * (a `Map<string, { mtimeMs, code, map }>`), bounded to `TS_CACHE_MAX`
+ * entries. The cache is per-handler rather than module-global because the
+ * cached code bakes in that handler's elision verdict, so two handlers for
+ * the same app with different elision settings must not share it.
+ */
 export const TS_CACHE_MAX = 500;
 
+/** PascalCase → kebab-case for a helpful diagnostic example tag name. */
 export function kebab(name) {
   return name.replace(/([a-z0-9])([A-Z])/g, '$1-$2').toLowerCase();
 }
 
+/**
+ * Per-request correlation id (issue #239). Honor an inbound `X-Request-Id`
+ * from a trusted upstream proxy so a trace id propagates across services; mint
+ * a fresh `crypto.randomUUID()` otherwise. The inbound value is length-capped
+ * and validated against a conservative token charset so a hostile client
+ * cannot inject control chars / a header-splitting payload (the value is
+ * echoed back in the `X-Request-Id` response header). On any mismatch we fall
+ * back to a minted id rather than trust the junk.
+ *
+ * @param {Request} req
+ * @returns {string}
+ */
 export function resolveRequestId(req) {
   const inbound = req.headers.get('x-request-id');
   if (inbound && inbound.length <= 200 && /^[A-Za-z0-9._-]+$/.test(inbound)) return inbound;
@@ -114,16 +174,87 @@ export function shouldAccessLog(pathname) {
   return !pathname.startsWith('/__webjs/');
 }
 
+/**
+ * Auto-load `<appDir>/.env` into `process.env` once at boot. Mirrors
+ * what Rails / Next / Astro do out of the box: a scaffolded app with
+ * a committed `.env.example` and a developer-copied `.env` should
+ * "just work" without the user having to add a dotenv import or set
+ * the file path on the CLI.
+ *
+ * Uses Node 24+'s built-in `process.loadEnvFile`, which is dotenv-
+ * compatible and DOES NOT override pre-existing `process.env` values.
+ * Calls that hit a missing file or parse error are silenced; the
+ * server should still come up cleanly when there's no `.env`.
+ *
+ * Idempotent: re-running is a no-op for any env var the user already
+ * exported (e.g. via the host shell or a process manager). That
+ * keeps the "shell-set wins over file" precedence Rails users
+ * expect.
+ *
+ * Must run before any server-only module is loaded by
+ * buildActionIndex, since module-init code in `lib/*.server.ts`
+ * (e.g. `createAuth({ secret: process.env.AUTH_SECRET })`) reads
+ * process.env at import time. createRequestHandler is the
+ * single entry point where this is guaranteed.
+ *
+ * @param {string} appDir
+ */
 export function loadAppEnv(appDir) {
   try {
     if (typeof process.loadEnvFile === 'function') {
       process.loadEnvFile(join(appDir, '.env'));
     }
   } catch {
-    // Silently fall through
+    // No .env file, malformed file, or Node version without
+    // loadEnvFile. Either way, fall through silently: the user
+    // may not need any env vars, or they may set them via shell.
   }
 }
 
+/**
+ * Walk the route table + component scanner to collect every file the
+ * browser may legitimately fetch as an ES module, then expand via the
+ * module graph into the full transitive closure.
+ *
+ * This is webjs's equivalent of Next.js's bundler-produced page
+ * manifest, derived lazily on the first request (and re-derived on every
+ * rebuild) instead of at compile time. The dev server's source-file branch uses the returned
+ * Set as an authorization gate: in-set → served (subject to the
+ * .server.{js,ts} stub guardrail); out-of-set → 404.
+ *
+ * Browser-bound entries:
+ *   - page.{js,ts,mjs,mts}        (re-runs on client for hydration)
+ *   - layout.{js,ts,mjs,mts}      (same)
+ *   - error.{js,ts,mjs,mts}       (same)
+ *   - loading.{js,ts,mjs,mts}     (same)
+ *   - not-found.{js,ts,mjs,mts}   (same)
+ *   - component files discovered by the scanner (eager + lazy)
+ *
+ * Server-only entries (NOT in the set):
+ *   - route.{js,ts}   (API handlers, never fetched as JS module)
+ *   - middleware.{js,ts}
+ *   - metadata routes (sitemap.js, robots.js, manifest.js, …)
+ *   - .server.{js,ts} files (browser gets a stub, not the source)
+ *
+ * Components are passed in (rather than rescanned) so the caller can
+ * share one scan with `primeComponentRegistry`. Saves a full
+ * appDir walk on each analysis (the first request and every rebuild).
+ *
+ * @param {Awaited<ReturnType<typeof buildRouteTable>>} routeTable
+ * @param {Awaited<ReturnType<typeof buildModuleGraph>>} moduleGraph
+ * @param {Awaited<ReturnType<typeof scanComponents>>} components
+ * @param {string} appDir
+ * @returns {Set<string>}
+ */
+/**
+ * Collect every page + layout file across the route table. These are the
+ * modules the client boot script imports, and thus the candidates for
+ * inert-route elision (dropping a module that does no client work).
+ * `route.{js,ts}` / middleware / metadata are excluded: they never ship.
+ *
+ * @param {Awaited<ReturnType<typeof buildRouteTable>>} routeTable
+ * @returns {string[]}
+ */
 export function collectRouteModules(routeTable) {
   /** @type {Set<string>} */
   const mods = new Set();
@@ -151,11 +282,26 @@ export function computeBrowserBoundFiles(routeTable, moduleGraph, components, ap
   }
   if (routeTable.globalError) entries.add(routeTable.globalError);
   if (routeTable.globalNotFound) entries.add(routeTable.globalNotFound);
+  // instrumentation-client is browser-bound (imported first in the boot), so it
+  // must be servable through the gate.
   if (routeTable.instrumentationClient) entries.add(routeTable.instrumentationClient);
+  // Lazy components live in the registry but no page imports their
+  // class directly; the lazy-loader fetches their module URLs on
+  // viewport entry. Add every discovered component file as an entry so
+  // the graph walk covers both eager and lazy paths.
   for (const c of components) entries.add(c.file);
   return reachableFromEntries(moduleGraph, [...entries], appDir);
 }
 
+/**
+ * List the app's top-level source directory names, for expanding a `#*`
+ * catch-all import alias into one browser importmap prefix scope per dir (#555).
+ * Excludes infra dirs that are never imported via `#` (node_modules, dotfiles,
+ * the build/vendor caches). A new top-level folder is picked up on the next boot
+ * (dev restarts on changes), so the alias stays zero-maintenance.
+ * @param {string} appDir
+ * @returns {string[]}
+ */
 export function appTopLevelDirs(appDir) {
   const SKIP = new Set(['node_modules', 'dist', 'public']);
   try {
@@ -183,7 +329,16 @@ export function locateCoreDir(appDir) {
   return resolve(here, '..', '..', '..', '..', 'core');
 }
 
+/**
+ * Find an npm package's installed root folder in the app's node_modules graph.
+ * @param {string} appDir
+ * @param {string} pkgName
+ * @returns {string | null}
+ */
 export function locatePackageDir(appDir, pkgName) {
+  // Many packages lock down `./package.json` in their exports field, so we
+  // resolve the bare specifier (always exported) and trim back to the
+  // folder named pkgName.
   const match = '/node_modules/' + pkgName + '/';
   const tryFrom = (from) => {
     const require = createRequire(from);
@@ -204,6 +359,23 @@ const RELOAD_WORKER_SRC = readFileSync(new URL('../dev-reload-worker.js', import
   .replace(/^export /gm, '');
 
 export function reloadClientJs(bp) {
+  // The overlay renderer uses textContent throughout (never innerHTML), so the
+  // error message / code frame can never inject markup (#264). Served only in
+  // dev (the /__webjs/reload.js branch 404s in prod), so it never reaches a
+  // production page.
+  //
+  // Every tab shares ONE live-reload connection through a SharedWorker (#887).
+  // The old client opened an `EventSource` per tab, and because the dev server
+  // is HTTP/1.1 and browsers cap concurrent connections per host at ~6, a
+  // handful of open tabs would hold every connection slot with idle SSE streams
+  // and later tabs could not even fetch their HTML. The SharedWorker holds the
+  // single `EventSource` (see reloadWorkerJs) and relays each `reload` /
+  // `webjs-error` to every tab. The overlay still renders on the main thread
+  // (a worker has no DOM), so the worker forwards only the raw frame data.
+  //
+  // Fallback: where `SharedWorker` is missing (some mobile browsers) or its
+  // construction throws (a strict dev CSP without `worker-src`), each tab opens
+  // its own `EventSource`, the original behaviour. Correct, just not shared.
   const eventsUrl = JSON.stringify(withBasePath('/__webjs/events', bp));
   const workerUrl = JSON.stringify(withBasePath('/__webjs/reload-worker.js', bp));
   const versionUrl = JSON.stringify(withBasePath('/__webjs/version', bp));
@@ -213,7 +385,19 @@ function __webjsApplyError(data) {
   let f; try { f = JSON.parse(data); } catch (_) { return; }
   renderDevOverlay(f);
 }
+// Keep the overlay tracking the page actually on screen (#1047): a render frame
+// is scoped to the URL that produced it, so navigating away takes it down, and a
+// frame that arrived before the URL advanced goes up once it does. The gate
+// itself lives inside renderDevOverlay, so __webjsApplyError needs no change.
 installDevOverlayNavSync();
+// Never reload INTO a server that is still restarting (Node's node --watch
+// briefly kills the process on an edit), which would paint a style-less,
+// half-rendered page (#893). Probe the lightweight /__webjs/version endpoint
+// until it answers, THEN reload. Under an in-process reload the server is up,
+// so the first probe passes and the reload is instant; under a restart the
+// probes fail until the fresh server is listening, so the old page stays put
+// until the new one is ready. Bounded, so a genuinely-dead server still
+// reloads (and shows the browser's own error) rather than hanging forever.
 function __webjsReloadWhenReady() {
   var tries = 0;
   function attempt() {
@@ -225,6 +409,10 @@ function __webjsReloadWhenReady() {
   attempt();
 }
 function __webjsDirectEvents() {
+  // Same restart-reload as the SharedWorker relay (#893), for the per-tab
+  // fallback: the hello frame carries the server's per-process boot id, so a
+  // CHANGED id on reconnect means a real restart (reload), while a transient
+  // reconnect to the same process keeps the id (no spurious reload).
   var lastBoot = null;
   const es = new EventSource(${eventsUrl});
   es.addEventListener('hello', (e) => {
@@ -252,6 +440,15 @@ try {
 `;
 }
 
+/**
+ * The dev live-reload SharedWorker. One instance is shared across every tab of
+ * the same origin (a SharedWorker is keyed by its script URL), so it holds the
+ * ONE `EventSource` to `/__webjs/events` and fans each event out to all tabs
+ * over their `MessagePort`s (#887). The `EventSource` URL carries the base path
+ * the same way the client's does (#256). Served only in dev.
+ * @param {string} bp the normalized base path (`''` = no-op)
+ * @returns {string}
+ */
 export function reloadWorkerJs(bp) {
   return `// webjs dev reload worker (one shared connection for all tabs)
 ${RELOAD_WORKER_SRC}

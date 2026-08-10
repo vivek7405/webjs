@@ -14,6 +14,12 @@ import { applySlotAssignments } from './project.js';
 import { reconnectSweep } from './sensors.js';
 import { FRAMEWORK_DETACHED, LIGHT_SLOT_ATTR, PARK, PROJECTION_ACTUAL, PROJECTION_ATTR, SLOT_STATE } from './symbols.js';
 
+/**
+ * Lazily create and return the slot state for a host element.
+ *
+ * @param {Element} host
+ * @returns {SlotState}
+ */
 export function ensureSlotState(host) {
   /** @type {any} */
   const h = host;
@@ -239,16 +245,3 @@ function appendToMap(map, key, value) {
 // ---------------------------------------------------------------------------
 // Router coordination seam
 // ---------------------------------------------------------------------------
-
-/**
- * Replace the authored content assigned to slot `name` with `nodes`, in place
- * of the old slice's position (a new name appends). The ONE public seam the
- * client router uses to reconcile a reused light host's projected content
- * during a same-route morph (replacing the deleted `setSlotContent`): the
- * router never touches `authored` / `assignedByName` / `lastSnapshot` directly,
- * and this is the same record-then-place primitive the interception layer runs.
- *
- * @param {Element} host
- * @param {string | null} name
- * @param {Node[] | Node | null} nodes
- */

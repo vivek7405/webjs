@@ -10,6 +10,10 @@
 import { isOwnSlot } from './assignment.js';
 import { installSlotPolyfills } from './polyfills.js';
 
+/**
+ * Symbol-keyed slot state stored on each light-DOM WebComponent host.
+ * Lazily initialised by ensureSlotState(host).
+ */
 export const SLOT_STATE = Symbol('webjs.slot.state');
 
 /** Marker attribute that opts a <slot> element into framework projection. */
@@ -59,6 +63,13 @@ export const FLATTEN_MAX_DEPTH = 64;
 // on the first successful install.
 // ---------------------------------------------------------------------------
 
+/**
+ * Set on a host WHILE the renderer is committing into it. The patched host
+ * methods check it and delegate to the saved native, so a renderer commit is
+ * never mistaken for authored content. This is the one discriminator between
+ * renderer writes and author writes: a synchronous framework-write window, set
+ * structurally (an own symbol), never inferred from comment markers.
+ */
 export const RENDERING = Symbol('webjs.slot.rendering');
 
 /** Marks a host whose mutating methods have been patched (install once). */
@@ -74,5 +85,3 @@ export const PARK = Symbol('webjs.slot.park');
  * parentless waiting to be (re)placed. Cleared once a node is placed.
  */
 export const FRAMEWORK_DETACHED = new WeakSet();
-
-// Saved native references, captured once in the browser (Node has no `Node`).

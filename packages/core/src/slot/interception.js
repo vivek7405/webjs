@@ -14,6 +14,11 @@ import { INNER_HTML_DESC, N_append, N_appendChild, N_insertBefore, N_prepend, N_
 import { ensureSlotState, repartition } from './state.js';
 import { FRAMEWORK_DETACHED, INTERCEPTED, LIGHT_SLOT_ATTR, PARK, RENDERING, SLOT_STATE } from './symbols.js';
 
+/**
+ * True when `node` is renderer-owned: it is one of the instance's bookend
+ * markers (`wjm-s` / `wjm-e`) or sits between them. Object-identity check
+ * against the marker refs the instance holds, never comment-text sniffing.
+ */
 export function instanceOwns(inst, node) {
   if (!inst || !inst.startNode || !inst.endNode) return false;
   if (node === inst.startNode || node === inst.endNode) return true;
@@ -551,20 +556,3 @@ export function installSlotInterception(host) {
 // ---------------------------------------------------------------------------
 // Render-owned slot application
 // ---------------------------------------------------------------------------
-
-/**
- * Place the slot record into the host's OWN light-DOM slots (#1015). The
- * renderer's slot parts call this after the template commits, and the
- * interception + sensors call it after an authored mutation. Idempotent and cheap on
- * no-change passes.
- *
- *   1. Collect the host's OWN slots (no other custom element between the
- *      slot and the host; a nested component's slots belong to it).
- *   2. Group by `name`, first-wins: the first slot of each name shows the
- *      record content, later duplicates show fallback.
- *   3. `data-projection` is stamped "actual" or "fallback" accordingly;
- *      fallback content swaps through the part-owned holding fragment.
- *   4. `slotchange` fires on slots whose assigned set actually changed.
- *
- * @param {Element} host
- */

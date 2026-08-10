@@ -1,5 +1,17 @@
 /**
- * Inert `ElementInternals`-shaped object returned by the server shim's `attachInternals()`.
+ * Inert `ElementInternals`-shaped object returned by the server shim's
+ * `attachInternals()`. Modeled on `@lit-labs/ssr-dom-shim`'s
+ * `ElementInternalsShim` (lit repo, `packages/labs/ssr-dom-shim/src/lib/
+ * element-internals.ts`): form-association, validity, and custom-state
+ * calls are no-ops at SSR (no form, no constraint validation, no `:state()`
+ * matching server-side), so a component that calls `this.attachInternals()`
+ * in its constructor renders instead of crashing. The browser runs the real
+ * `attachInternals()` on hydration.
+ *
+ * Deliberate deviation from lit: lit's `checkValidity` / `reportValidity`
+ * THROW on the server. WebJs returns `true` instead, to keep SSR
+ * progressive-enhancement-safe (a stray validity call in a constructor must
+ * not 500 the page); the browser does the real validation.
  * @returns {any}
  */
 export function makeServerInternals() {
@@ -20,16 +32,40 @@ export function makeServerInternals() {
 }
 
 /**
- * Server-side stand-in for `HTMLElement`.
+ * Server-side stand-in for `HTMLElement`. The SSR pipeline constructs
+ * component instances in Node, where `HTMLElement` does not exist, so the
+ * base class is this shim. It is modeled on `@lit-labs/ssr-dom-shim`'s
+ * `ElementShim` (lit repo, `packages/labs/ssr-dom-shim/src/index.ts`): the
+ * attribute methods (`getAttribute` / `setAttribute` / `hasAttribute` /
+ * `removeAttribute` / `toggleAttribute`, the `attributes` getter) are backed
+ * by a Map, so lit muscle-memory patterns that read attributes in `render()`
+ * or set them while deriving state work server-side; the SSR walker seeds
+ * the Map from the element's source attributes and reads it back to surface
+ * reflected/added attributes in the output. Event methods are no-ops (no
+ * server event loop), and `attachInternals()` returns the inert object
+ * above. The genuinely browser-only surface (`querySelector`, layout reads,
+ * `attachShadow`, `focus`) is deliberately absent and still throws at SSR,
+ * which the `no-browser-globals-in-render` rule and the SSR crash hint flag.
+ *
+ * Deliberate deviation from lit: this shim lowercases attribute names so
+ * `getAttribute('Foo')` after `setAttribute('foo', x)` resolves, matching how
+ * a real browser treats HTML attribute names as case-insensitive. lit's shim
+ * keys the Map by the raw name (a known fidelity gap in lit-labs).
  */
 export class ServerElement {
   constructor() {
-    /** @type {Map<string, string>} */
+    /**
+     * Backing store for the attribute methods. Keys are lowercased
+     * attribute names (HTML attributes are case-insensitive). Seeded by the
+     * SSR walker from the element's source attributes.
+     * @type {Map<string, string>}
+     */
     this.__ssrAttrs = new Map();
     /** @type {any} */
     this.__internals = null;
   }
 
+  /** Mirrors `Element.attributes`: an array of `{ name, value }`. */
   get attributes() {
     return [...this.__ssrAttrs].map(([name, value]) => ({ name, value }));
   }
@@ -42,6 +78,7 @@ export class ServerElement {
 
   /** @param {string} name @param {unknown} value */
   setAttribute(name, value) {
+    // Emulate the browser casting all values to string (lit does the same).
     this.__ssrAttrs.set(String(name).toLowerCase(), String(value));
   }
 
@@ -57,6 +94,7 @@ export class ServerElement {
 
   /** @param {string} name @param {boolean} [force] */
   toggleAttribute(name, force) {
+    // Steps mirror https://dom.spec.whatwg.org/#dom-element-toggleattribute
     const key = String(name).toLowerCase();
     const present = this.__ssrAttrs.has(key);
     const next = force === undefined ? !present : force;
@@ -73,9 +111,22 @@ export class ServerElement {
     return [...this.__ssrAttrs.keys()];
   }
 
-  /** @param {string} selector */
+  /**
+   * Minimal `Element.closest()` for SSR. The SSR walker threads the chain
+   * of enclosing custom-element instances into each instance
+   * (`__ssrAncestors`); this walks self-then-ancestors and returns the
+   * nearest whose tag matches. Only bare tag-name selectors are supported
+   * server-side (`closest('ui-tabs')`), which is what compound components
+   * need to read parent state for a correct first paint; anything more
+   * specific (class, attribute, or descendant selectors) returns null,
+   * matching the pre-shim behaviour. The browser runs the real `closest()`
+   * on hydration.
+   * @param {string} selector
+   * @returns {any}
+   */
   closest(selector) {
     const sel = String(selector).trim().toLowerCase();
+    // Tag-name selectors only at SSR; bail (null) on anything else.
     if (!/^[a-z][a-z0-9-]*$/.test(sel)) return null;
     if (this.__ssrTag === sel) return this;
     const chain = this.__ssrAncestors;
@@ -86,6 +137,15 @@ export class ServerElement {
     return null;
   }
 
+  /**
+   * `HTMLElement.dataset`: a live view over the element's `data-*`
+   * attributes, backed by the SSR attribute Map. Reading / writing
+   * `el.dataset.fooBar` maps to the `data-foo-bar` attribute (camelCase
+   * to kebab-case), so a `render()` that sets `this.dataset.state = 'on'`
+   * surfaces `data-state="on"` in the SSR'd host tag instead of crashing
+   * on an undefined `dataset`.
+   * @returns {Record<string, string>}
+   */
   get dataset() {
     if (this.__dataset) return this.__dataset;
     const el = this;
@@ -122,6 +182,10 @@ export class ServerElement {
     return this.__dataset;
   }
 
+  // IDL properties that reflect to a content attribute. A render() that
+  // mutates these on the host (a light-DOM compound-component pattern, e.g.
+  // `this.className = ...`, `this.hidden = !active`) then surfaces the
+  // matching attribute in the SSR'd host tag, matching the browser.
   get className() { return this.getAttribute('class') ?? ''; }
   set className(v) { this.setAttribute('class', v); }
   get hidden() { return this.hasAttribute('hidden'); }
@@ -137,12 +201,17 @@ export class ServerElement {
   get tabIndex() { const v = this.getAttribute('tabindex'); return v === null ? -1 : (Number.parseInt(v, 10) || 0); }
   set tabIndex(v) { this.setAttribute('tabindex', String(v)); }
 
+  // No server event loop: listeners never fire at SSR. The no-op keeps a
+  // constructor that wires delegated listeners (a common lit pattern) from
+  // crashing; the browser re-runs the constructor on hydration where the
+  // real HTMLElement methods apply.
   addEventListener() {}
   removeEventListener() {}
   dispatchEvent() { return true; }
 
   /** @returns {any} */
   attachInternals() {
+    // Match the browser (and lit's shim): a second attach is an error.
     if (this.__internals !== null) {
       throw new Error(
         "Failed to execute 'attachInternals' on 'HTMLElement': " +
@@ -154,6 +223,11 @@ export class ServerElement {
   }
 }
 
+// ARIAMixin IDL reflections (`el.ariaPressed = 'true'` writes aria-pressed).
+// A render() that sets ARIA state via the IDL properties then surfaces the
+// matching aria-* attribute in the SSR'd host tag, matching the browser. The
+// IDL name maps to the content attribute by lowercasing the part after
+// `aria` and prefixing `aria-` (ariaPressed -> aria-pressed).
 const ARIA_IDL_PROPS = [
   'ariaAtomic', 'ariaAutoComplete', 'ariaBusy', 'ariaChecked', 'ariaColCount',
   'ariaColIndex', 'ariaColSpan', 'ariaCurrent', 'ariaDescription', 'ariaDisabled',

@@ -30,12 +30,41 @@ export function jsonLdScript(obj) {
 export const _escapeJsonLd = escapeJsonLd;
 export const _jsonLdScript = jsonLdScript;
 
+/**
+ * Decide whether a `<link rel="modulepreload">` href needs a
+ * `crossorigin="anonymous"` attribute. True for absolute URLs with
+ * an http(s) scheme (vendor packages from jspm.io etc.); false for
+ * same-origin paths like `/__webjs/core/index.js`. Browsers require
+ * crossorigin on cross-origin module preload, else the preload is
+ * wasted or double-fetched. Same-origin URLs must NOT have it for
+ * the same reason in reverse.
+ *
+ * Exported for tests; production callers use it via documentParts.
+ *
+ * @param {string} url
+ * @returns {string}  either ` crossorigin="anonymous"` or empty
+ */
 export function preloadCrossOriginAttr(url) {
   return /^https?:\/\//i.test(url) ? ' crossorigin="anonymous"' : '';
 }
 
+/**
+ * Look up the SRI integrity hash for a vendor URL and format it as a
+ * `integrity="sha384-..."` attribute. Empty string for URLs without a
+ * known hash (framework files, user code, vendor URLs in live-API
+ * mode without a pin file).
+ *
+ * @param {string} url
+ * @returns {string}
+ */
 export function integrityAttr(url) {
   const hash = vendorIntegrityFor(url);
+  // Belt and suspenders: readPinFile already validates the integrity
+  // value end-to-end against /^sha(256|384|512)-[A-Za-z0-9+/=]+$/, so
+  // a valid hash has no HTML-special chars and escapeAttr is a no-op.
+  // But emission goes through the same attribute-injection-safe path
+  // as everything else in the SSR pipeline so a future regression in
+  // the validator doesn't bypass it.
   return hash ? ` integrity="${escapeAttr(hash)}"` : '';
 }
 
@@ -54,11 +83,42 @@ function escapeHtml(s) {
     .replace(/>/g, '&gt;');
 }
 
+/**
+ * Strip leading head-bound tags (<script>, <style>, <link>) from a body
+ * string. Returns the collected tags + the remaining body. Mirrors what
+ * `hoistHeadTags` does but takes/returns plain strings (no head input)
+ * so it can be used with a user-provided <head>.
+ *
+ * @param {string} bodyHtml
+ * @returns {{ tags: string[], body: string }}
+ */
 export function collectHoistedHeadTags(bodyHtml) {
   const tags = [];
+  // <script>…</script> and <style>…</style> are paired; <link …> and <meta …>
+  // are void. A plain HTML comment (<!-- … -->) is consumed but NOT hoisted, so
+  // a comment interleaved with head-bound tags (e.g. "<!-- Self-hosted fonts -->"
+  // between a favicon <link> and the stylesheet <link>) does not terminate
+  // the leading run and strand the stylesheet in <body>, which caused FOUC
+  // because a <link rel="stylesheet"> in <body> is not reliably
+  // render-blocking (#406). A <meta …> is treated the same way for the same
+  // reason: a <meta name="color-scheme"> between the theme <script> and the
+  // stylesheet <link> would otherwise terminate the run and strand the
+  // stylesheet AND a <link rel="icon"> in <body> (a favicon in <body> is
+  // ignored by browsers, so the icon silently never renders). The `(?!/?wj:)`
+  // guard exempts client-router markers (<!--wj:children:…-->,
+  // <!--/wj:children-->) so a layout that renders children directly after its
+  // head tags still terminates the run there rather than swallowing the marker.
+  // The void-tag matchers are QUOTE-AWARE ((?:[^>"']|"[^"]*"|'[^']*')*): a `>`
+  // inside a quoted attribute value (a description meta like
+  // content="Guides > API") must not terminate the tag early, which would hoist
+  // a truncated tag, leak the remainder as visible body text, and strand the
+  // stylesheet (the #406 FOUC this hoist exists to prevent).
   const re =
     /^\s*(<!--(?!\/?wj:)[\s\S]*?-->|<script[\s>][\s\S]*?<\/script>|<style[\s>][\s\S]*?<\/style>|<link\b(?:[^>"']|"[^"]*"|'[^']*')*>|<meta\b(?:[^>"']|"[^"]*"|'[^']*')*>)/i;
   let remaining = bodyHtml;
+  // `body` only advances to just-past the LAST hoisted head tag. Comments
+  // are scanned through (so they don't terminate the run) but a comment that
+  // trails the final head tag stays in the body rather than being dropped.
   let body = bodyHtml;
   let m;
   while ((m = re.exec(remaining)) !== null) {
@@ -81,8 +141,20 @@ export function hoistHeadTags(headHtml, bodyHtml) {
 
 export const _hoistHeadTags = hoistHeadTags;
 
+/**
+ * Serialize a Next.js-shaped viewport object into the comma-separated
+ * `content` string the meta tag expects. Recognised fields:
+ *   width, height, initialScale, minimumScale, maximumScale,
+ *   userScalable, viewportFit, interactiveWidget.
+ * Other fields (themeColor, colorScheme) live on their own meta tags
+ * and are handled by the caller: skipped here.
+ *
+ * @param {Record<string, unknown>} v
+ * @returns {string}
+ */
 export function serializeViewport(v) {
   const parts = [];
+  /** @param {string} key @param {string} prop */
   const push = (key, prop) => {
     if (v[prop] !== undefined && v[prop] !== null && v[prop] !== '') {
       parts.push(`${key}=${v[prop]}`);

@@ -18,11 +18,6 @@ function detectBrowser() {
 
 export let inBrowser = detectBrowser();
 
-/**
- * Symbol-keyed slot state stored on each light-DOM WebComponent host.
- * Lazily initialised by ensureSlotState(host).
- */
-
 let NATIVE_assignedNodes = null;
 let NATIVE_assignedElements = null;
 let NATIVE_assignedSlot_desc = null;
@@ -367,11 +362,4 @@ function findLightAssignedSlot(el) {
  *   element and duplicates route correctly); nodes held via WeakRef (native
  *   holds manually assigned slottables weakly). A node here goes to its
  *   assigned slot regardless of its `slot=` attribute.
- */
-
-/**
- * Lazily create and return the slot state for a host element.
- *
- * @param {Element} host
- * @returns {SlotState}
  */

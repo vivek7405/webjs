@@ -1,12 +1,4 @@
 /**
- * Client router: form-encoder.
- *
- * Moved verbatim out of the pre-split `router-client.js`; that barrel holds
- * the router's full contract and the public entry points.
- *
- * @module
- */
-/**
  * Method resolution: submitter's `formmethod` wins over form's `method`.
  * Returns lowercase.
  *

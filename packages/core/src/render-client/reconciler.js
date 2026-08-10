@@ -61,11 +61,35 @@ export function render(value, container) {
   }
 }
 
+/**
+ * Converge every candidate bound form and submitter in this template, after all
+ * of its parts have committed. A no-op for the overwhelming majority of
+ * templates, which carry no `<form action=${...}>` at all and therefore no
+ * record.
+ *
+ * FORMS FIRST, submitters second, regardless of the order the records were
+ * collected in. A submitter asks whether its enclosing form is bound, and the
+ * cheapest true answer is the identity field the form's own reconcile just
+ * inserted. Document order gets this right for a form and a button in the SAME
+ * template, but not for a `<form>` whose submitter arrives through a nested
+ * template, so the ordering is made explicit rather than relied upon.
+ *
+ * @param {FormActionRecord[] | null} formActions
+ * @param {BoundPart[]} bound
+ * @param {unknown[]} values
+ */
 function reconcileFormActions(formActions, bound, values) {
   if (!formActions) return;
+  // Forms first, then submitters. The original motivation was a boundness read
+  // that is gone with #1307, but the ordering still makes a form's RELEASE run
+  // before its submitters reconcile, so it is kept rather than churned.
   for (const pass of [true, false]) {
     for (const rec of formActions) {
       if (rec.isForm !== pass) continue;
+      // With more than one action hole, the BOUND one decides, whichever
+      // position it is written in. Picking `actionIdxs[0]` blindly would send
+      // `<form action=${'/url'} action=${boundFn}>` down the release path and
+      // ship the broken form SSR refuses outright.
       let idx = rec.actionIdxs[0];
       const targetAttr = rec.isForm ? 'action' : 'formaction';
       for (const i of rec.actionIdxs) {
@@ -83,6 +107,10 @@ function reconcileFormActions(formActions, bound, values) {
           rec,
         );
       } else {
+        // What SSR would have emitted for this pass. An attribute hole always
+        // emits (even `name=${null}`, as `name=""`); a boolean hole emits only
+        // when truthy. Both identity channels ask the same question, through
+        // one predicate, so they cannot drift apart again.
         const emits = (parts) => parts.some((np) => (np.kind === 'bool'
           ? !!resolveHoleValue(values[np.i])
           : true));
@@ -97,6 +125,17 @@ function reconcileFormActions(formActions, bound, values) {
   }
 }
 
+/**
+ * Remove the identity channel previously injected into a submitter.
+ *
+ * Only ours is removed. `submitterActionBindings` remembers the elements this
+ * renderer stamped, and the `name` check covers an SSR'd button meeting its
+ * template for the first time on hydration. A button that never carried a
+ * binding is left alone, so an author's own `name` / `value` survives a
+ * re-render that happens to pass a non-action value.
+ *
+ * @param {Element} el
+ */
 function releaseSubmitterAction(el) {
   const injected = submitterActionBindings.has(el) || el.getAttribute('name') === FORM_ACTION_FIELD;
   if (!injected) return;
@@ -105,39 +144,100 @@ function releaseSubmitterAction(el) {
   submitterActionBindings.delete(el);
 }
 
+/**
+ * Converge a live submitter on what SSR emitted for `<button formaction=${fn}>`
+ * (#1207, #1307): the `formaction` attribute gone, the identity in the button's
+ * own `name` / `value` pair, and the submission the framework supplies in its
+ * own `formmethod` / `formenctype`.
+ *
+ * There is no enclosing-form question here any more. It used to be the hard
+ * part of this function, asked once per element and BEST EFFORT because a
+ * fragment reconciling detached (a submitter inside a `repeat()` or an array
+ * item, whose form lives in the parent template) has no answer to give. With
+ * the submission attributes now on the button itself (#1307) the button needs
+ * nothing from the form, so the question stopped mattering and the whole
+ * asymmetry with SSR went with it.
+ *
+ * @param {Element} el
+ * @param {unknown} value
+ * @param {FormActionRecord} rec
+ * @param {boolean} emitsName whether SSR would emit a `name` attribute this pass
+ * @param {boolean} emitsValue whether SSR would emit a `value` attribute this pass
+ * @param {string | typeof ABSENT} authoredFormMethod what the template supplies for `formmethod`
+ * @param {string | typeof ABSENT} authoredFormEnctype what the template supplies for `formenctype`
+ */
 function reconcileSubmitterAction(
   el, value, rec, emitsName, emitsValue, authoredFormMethod, authoredFormEnctype,
 ) {
   const id = typeof value === 'function' ? formActionId(value) : null;
   if (!id) {
+    // A function that was MEANT as an action still refuses, so a button never
+    // silently submits the form's action instead of its own.
     if (typeof value === 'function') assertIdentifiableAction(null, el.localName);
     releaseSubmitterAction(el);
+    // The submission attributes the framework supplied go with the identity, or
+    // a released button keeps a `formmethod` / `formenctype` SSR does not emit
+    // for the same template (#1307).
     releaseSubmitterAttrs(el, authoredFormMethod, authoredFormEnctype, rec.propAttrs);
     return;
   }
+  // Template-shaped refusals first, from the compiled record, because the live
+  // element may already carry this renderer's own `name` / `value`.
   assertSingleSubmitterAction(rec.duplicateAction, el.localName);
   assertConvergentSubmitter(rec.propAttrs, el.localName);
   if (rec.staticAction) assertSubmitterHasNoStaticFormAction(el.localName);
   if (rec.authoredValue || emitsValue) assertSubmitterHasNoValue(el.localName);
   if (rec.authoredName || emitsName) {
+    // Judged on the PART, not on what it resolved to this pass. `name=${null}`
+    // leaves no attribute here while SSR emits `name=""` beside the identity,
+    // so reading the live value back returned '' and waved through a template
+    // SSR refuses. The template supplying a `name` channel at all is the
+    // conflict, whatever today's value happens to be.
     assertSubmitterHasNoName(el.getAttribute('name') || FORM_ACTION_FIELD, el.localName, false);
   }
   if (rec.authoredForm || el.hasAttribute('form')) assertSubmitterHasNoFormAttribute(el.localName);
   assertSubmitterType(el.localName, el.getAttribute('type'));
 
+  // The submission decision, made from the TEMPLATE rather than by reading the
+  // DOM back, exactly as `reconcileFormAction` makes it for a bound form. The
+  // distinction the DOM cannot preserve is the same one: `?formmethod=${false}`
+  // and `formmethod=${null}` both leave no attribute, and SSR resolves them to
+  // opposite answers.
   const resolved = resolveBoundSubmitterAttrs(
     el.localName, authoredFormMethod, authoredFormEnctype,
   );
   el.removeAttribute('formaction');
   el.setAttribute('name', FORM_ACTION_FIELD);
   el.setAttribute('value', id);
+  // AFTER the identity, matching SSR's byte order: the identity replaces the
+  // `formaction=` hole in place and the submission pair is appended at the `>`.
+  // The differential parity suite compares these two renderers byte for byte,
+  // so the order is part of the contract, not a detail.
   applyResolvedAttr(el, 'formmethod', authoredFormMethod, resolved.formMethod);
   applyResolvedAttr(el, 'formenctype', authoredFormEnctype, resolved.formEnctype);
   submitterActionBindings.set(el, id);
 }
 
+/* ================================================================
+ * Instance lifecycle
+ * ================================================================ */
 
 
+
+/**
+ * Resolve what SSR would have emitted for one attribute of a candidate form.
+ *
+ * The per-kind rules mirror `render-server.js` exactly, which is the whole
+ * point: a boolean hole emits nothing when falsy (`if (val) out += name+'=""'`)
+ * while an attribute hole emits an EMPTY value for null (`String(val ?? '')`).
+ * Those two produce the same DOM and opposite verdicts, so only the template
+ * can tell them apart.
+ *
+ * @param {FormAttrPart[]} attrParts
+ * @param {string | null} staticValue
+ * @param {unknown[]} values
+ * @returns {string | typeof ABSENT}
+ */
 function effectiveFormAttr(attrParts, staticValue, values) {
   for (const p of attrParts) {
     if (p.kind === 'bool') return resolveHoleValue(values[p.i]) ? '' : ABSENT;
@@ -145,6 +245,8 @@ function effectiveFormAttr(attrParts, staticValue, values) {
       const v = resolveHoleValue(values[p.i]);
       return v == null ? '' : String(v);
     }
+    // A mixed attribute is the concatenation of its static pieces and EVERY one
+    // of its holes, so the anchor's own value is only part of the answer.
     const statics = p.statics || [];
     const group = p.group || [];
     let out = statics[0] || '';
@@ -157,6 +259,14 @@ function effectiveFormAttr(attrParts, staticValue, values) {
   return staticValue == null ? ABSENT : staticValue;
 }
 
+/**
+ * Unwrap a hole's value the same way `applyPart` does, so the reconcile judges
+ * what was actually committed. `live()` in particular wraps its value, and
+ * reading the wrapper would make a bound action look like a plain object.
+ *
+ * @param {unknown} v
+ * @returns {unknown}
+ */
 function resolveHoleValue(v) {
   return isLive(v) ? /** @type any */ (v).value : v;
 }

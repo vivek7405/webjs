@@ -14,6 +14,7 @@ import { applySlotAssignments } from './project.js';
 import { adoptSSRAssignments, ensureSlotState } from './state.js';
 import { FRAMEWORK_DETACHED, LIGHT_SLOT_ATTR, PARK, RENDERING, SLOT_STATE } from './symbols.js';
 
+// Saved native references, captured once in the browser (Node has no `Node`).
 export let N_appendChild = null;
 export let N_insertBefore = null;
 export let N_removeChild = null;
@@ -300,9 +301,3 @@ export function reconnectSweep(host) {
   }
   if (changed) applySlotAssignments(host);
 }
-
-/**
- * True when `node` is renderer-owned: it is one of the instance's bookend
- * markers (`wjm-s` / `wjm-e`) or sits between them. Object-identity check
- * against the marker refs the instance holds, never comment-text sniffing.
- */

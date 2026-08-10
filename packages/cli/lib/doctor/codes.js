@@ -60,3 +60,7 @@ export const DOCTOR_CODES = {
 export function codeForName(name) {
   return DOCTOR_CODES[name] || name.toUpperCase().replace(/[^A-Z0-9]+/g, '_').replace(/^_+|_+$/g, '');
 }
+
+/**
+ * @typedef {{ gate: Record<string, DoctorSeverity>, unknownCodes: string[], badSeverities: Array<{ code: string, value: unknown }>, malformed: Array<{ path: string, value: unknown }>, unknownKeys: string[] }} DoctorPolicy
+ */

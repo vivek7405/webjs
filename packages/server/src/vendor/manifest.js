@@ -37,7 +37,9 @@ function resolvePackageDir(pkgName, appDir) {
 }
 
 /**
- * Read the installed version of a package from `node_modules/<pkg>/package.json`.
+ * Read the installed version of a package from `node_modules/<pkg>/
+ * package.json`. Handles workspace hoisting and packages that lock
+ * down `./package.json` in their exports field.
  *
  * @param {string} pkgName
  * @param {string} appDir
@@ -55,7 +57,15 @@ export function getPackageVersion(pkgName, appDir) {
 }
 
 /**
- * Read the installed package's declared `dependencies` + `peerDependencies`.
+ * Read the installed package's declared `dependencies` + `peerDependencies`
+ * from its `package.json`, hoist-aware (same resolution as `getPackageVersion`,
+ * so a monorepo-hoisted dep resolves from the workspace root). Returns null
+ * when the package is not installed / unreadable, which the importmap-coherence
+ * check (#450) treats as "could not verify" rather than a conflict.
+ *
+ * This is the "already-resolved metadata, no network" source the coherence
+ * check prefers: the package is on disk because the importmap pinned it, so its
+ * manifest is a local read.
  *
  * @param {string} pkgName
  * @param {string} appDir
@@ -74,3 +84,7 @@ export function getPackageManifest(pkgName, appDir) {
     return null;
   }
 }
+
+// ---------------------------------------------------------------------------
+// JSPM Generator API client
+// ---------------------------------------------------------------------------

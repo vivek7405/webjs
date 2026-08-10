@@ -13,6 +13,23 @@ import { applySlotAssignments } from './project.js';
 import { adoptSSRAssignments, ensureSlotState, hasSlotState, keyOfName } from './state.js';
 import { FRAMEWORK_DETACHED, LIGHT_SLOT_ATTR, PROJECTION_ACTUAL, PROJECTION_ATTR, PROJECTION_FALLBACK, SLOT_FALLBACK_FRAG, SLOT_OWNER, SLOT_OWNER_ATTR, SLOT_STATE } from './symbols.js';
 
+/**
+ * True when this host's current markup is FRAMEWORK-RENDERED output rather
+ * than author-written children: a rendered light template carries the
+ * framework's own `slot[data-webjs-light]` elements, an attribute only the
+ * renderer / SSR ever stamps (own-slot filtered so a nested serialized
+ * component inside genuinely-authored children does not misfire; and
+ * `data-wj-host` is NOT usable here, since connectedCallback stamps it on
+ * every light host before this check runs). The connectedCallback branch
+ * chooser uses this STRUCTURAL signal to pick adopt-not-capture for a
+ * framework-rendered subtree, so a back/forward snapshot restore
+ * (post-hydration HTML, no `webjs-hydrate` marker) adopts the projected
+ * children instead of hoovering the rendered tree into `authored` (the #1006
+ * duplication shape on the restore path).
+ *
+ * @param {Element} host
+ * @returns {boolean}
+ */
 export function hasFrameworkRenderedSubtree(host) {
   if (!inBrowser) return false;
   // BOTH attributes are required. data-webjs-light alone is stamped at
