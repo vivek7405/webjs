@@ -12,10 +12,12 @@ import { PARSEABLE_ENCTYPES } from '../../../core/src/form-action.js';
 import { readFile } from 'node:fs/promises';
 
 /**
- * Unit tests for the lexical half of `submitter-needs-bound-form` (#1307):
- * the whole-app rule in `check.js` is only as good as the scan under it, and
- * the shapes it must NOT read as markup (a plain string, a `css` template, an
- * HTML comment) are what keep the rule from firing on a docs page.
+ * Unit tests for the lexical form-scope scan in `js-scan.js`, plus the shared
+ * template primitives around it (`classifyActionHole`, `matchClosingBrace`,
+ * `extractWebComponentClassBodies`) and the enctype constant the renderer and
+ * the client guard both answer to. The shapes the scan must NOT read as markup
+ * (a plain string, a `css` template, an HTML comment) are what keep any
+ * consumer of it off a docs page.
  */
 
 test('a submitter reports the scope of its enclosing form', () => {
@@ -230,33 +232,27 @@ test('the unparseable-enctype constant tracks the renderer\'s own set', async ()
     'and does not reach for the renderer allowlist again');
 });
 
-test('the start-tag-hole rule matches what the RENDERER actually does', async () => {
+test('a start-tag hole is handed off or inherited, and SSR agrees', async () => {
   // A differential rather than an assertion about the scanner alone, because the
   // whole 'handed' state is a claim about the renderer's behaviour. Most
   // start-tag holes are values the receiving element places, but
   // `<webjs-suspense .fallback=${…}>` is rendered INLINE with the enclosing form
   // scope (#471: a custom-element property applies at hydration, too late for a
-  // placeholder that must be in the first flushed bytes). Treating that one as
-  // handed off would blind the same-scan half to a real render-time throw.
+  // placeholder that must be in the first flushed bytes), so the scanner reads
+  // it against that form rather than treating it as handed off.
   const { html } = await import('../../../core/src/html.js');
   const { renderToString } = await import('../../../core/src/render-server.js');
   const { setFormActionResolver } = await import('../../../core/src/form-action.js');
   setFormActionResolver(async () => 'abc1234567/publish');
   const publish = async () => ({ success: true });
 
-  // Rendered inline, so the renderer judges it against the unbound form and
-  // throws. The scanner must see the same thing.
+  // Read against the enclosing form, not handed off. Nothing is asserted about
+  // a render-time refusal here: a bound submitter is SELF-SUFFICIENT (#1307), so
+  // the renderer stamps it with its own `formmethod="post"` and refuses only a
+  // same-element contradiction, never a cross-element one.
   const fallbackSrc = 'html`<form><webjs-suspense .fallback=${html`<button formaction=${p}>x</button>`}></webjs-suspense></form>`';
   assert.deepEqual(scanHtmlFormScopes(fallbackSrc).submitters,
     [{ tag: 'button', scope: 'unbound', delivers: false, expr: 'p' }]);
-  await assert.rejects(
-    () => renderToString(
-      html`<form><webjs-suspense .fallback=${html`<button formaction=${publish}>x</button>`}></webjs-suspense></form>`,
-      { ssr: true },
-    ),
-    /requires the enclosing <form> to also be bound/,
-    'the renderer really does refuse it, so the scanner must not be silent',
-  );
 
   // The negative half, and it has to assert the MECHANISM rather than "it did
   // not throw". A template carrying a function cannot serialize, so SSR drops
