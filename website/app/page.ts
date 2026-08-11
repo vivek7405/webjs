@@ -75,6 +75,23 @@ export const metadata = {
   ],
 };
 
+// The page is written as ONE argument, not as a list of features, and the
+// section ledes are what carry it. Each one opens by picking up the idea the
+// previous section closed on:
+//
+//   hero            what this is
+//   real HTML       the trade every framework made, and the other side of it
+//   nothing         a first paint is only honest if what you wrote is what
+//   compiled away   shipped, so here are two files served as they sit on disk
+//   the bento       everything here falls out of that one decision
+//   light for AI    a framework that compiles nothing is one you can read
+//   start where     so all of it arrives in one command
+//
+// Rewriting a lede in isolation is what breaks this: the hand-off is in the
+// FIRST sentence of each, so a lede that opens on its own section's topic
+// leaves the page reading as a spec sheet again. Move a section and the two
+// ledes on either side of the seam have to move with it.
+
 // Framework-weight stats. Measured: gzipped production browser bundle,
 // npm package metadata, and framework source line counts. Kept honest
 // and comparative against a Next.js app's first-load JS (react + react-dom
@@ -192,8 +209,9 @@ export default function LandingPage() {
           The web framework for AI agents
         </h1>
         <p class="text-lede leading-[1.55] text-fg-muted max-w-[62ch] mx-auto mb-9 text-pretty">
-          WebJs is a full-stack framework built on <span class="text-fg font-medium">web components</span>, SSR, and
-          progressive enhancement with <span class="text-fg font-medium">zero build step</span>.
+          WebJs is a full-stack framework that leans on <span class="text-fg font-medium">web standards</span>:
+          native web components, SSR, and progressive enhancement, with
+          <span class="text-fg font-medium">zero build step</span>.
           Lean enough for an agent to read end to end. Runs on Node 24+ or Bun.
         </p>
         <div class="flex gap-3 justify-center flex-wrap items-center">
@@ -219,10 +237,13 @@ export default function LandingPage() {
         <div class="max-w-3xl mx-auto mb-12 text-center">
           <h2 class="font-display font-bold text-h2 leading-[1.12] tracking-[-0.03em] my-3 text-balance">Real HTML first. JavaScript only when it earns it.</h2>
           <p class="text-fg-muted text-base leading-[1.6] m-0">
-            Pages and components render to real HTML on the server, so the page
-            reads, links navigate, and forms submit before a single script loads.
-            There is no hydration runtime to pay for, and dead JavaScript is
-            statically elided, never shipped.
+            Frameworks got good at hiding the platform, and for years that paid
+            for itself. What changed is when the bill arrives. The runtime has to
+            load, parse, and hydrate before the page can be read at all. WebJs
+            takes the other side of that trade. Pages and components render to
+            real HTML on the server, so the page reads, links navigate, and forms
+            submit before a single script loads. No hydration runtime to pay for,
+            and dead JavaScript is statically elided rather than shipped.
           </p>
         </div>
 
@@ -261,8 +282,8 @@ export default function LandingPage() {
     <section class="py-16">
       <div class="max-w-5xl mx-auto px-6">
         <div class="max-w-3xl mx-auto mb-12 text-center">
-          <h2 class="font-display font-bold text-h2 leading-[1.12] tracking-[-0.03em] my-3 text-balance">Server action & SSR page</h2>
-          <p class="text-fg-muted text-base leading-[1.6] m-0">A server action and a page. No build, no boilerplate, all web standards.</p>
+          <h2 class="font-display font-bold text-h2 leading-[1.12] tracking-[-0.03em] my-3 text-balance">Nothing is compiled away</h2>
+          <p class="text-fg-muted text-base leading-[1.6] m-0">That first paint is only honest if what you wrote is what shipped. Here is a server action and the page that calls it, both served to the browser exactly as they sit on disk. The types cross with the import, so the page reads the action's real return type, the action reads the row type off your database schema, and nothing is generated in between.</p>
         </div>
         <div class="grid gap-6 grid-cols-1 md:grid-cols-2">
           <div class="flex flex-col min-w-0">
@@ -281,14 +302,14 @@ export default function LandingPage() {
       <div class="max-w-6xl mx-auto px-6">
         <div class="max-w-3xl mx-auto mb-12 text-center">
           <h2 class="font-display font-bold text-h2 leading-[1.12] tracking-[-0.03em] my-3 text-balance">Modern full-stack, on web standards</h2>
-          <p class="text-fg-muted text-base leading-[1.6] m-0">Everything you need to ship, none of the build toolchain you don't.</p>
+          <p class="text-fg-muted text-base leading-[1.6] m-0">Everything below falls out of that one decision. Staying close to the platform is usually where a framework starts asking you to give things up, so each card is a place WebJs takes the standard and keeps the ergonomics anyway. Everything you need to ship, none of the build toolchain you don't.</p>
         </div>
         <div class="grid gap-px overflow-hidden rounded-2xl border border-border bg-border grid-cols-1 xs:grid-cols-2 wide:grid-cols-3 shadow-[var(--shadow-sm)]">
 
           <div class="${CARD}">
             <div class="mb-6">
               <h3 class="font-display font-bold text-base leading-[1.3] tracking-[-0.02em] mt-0 mb-2">Zero build step</h3>
-              <p class="m-0 text-sm leading-[1.6] text-fg-muted">Source files run as-is, so what you write is exactly what the browser serves. An AI agent debugs against the real served code, never a bundled or minified artifact.</p>
+              <p class="m-0 text-sm leading-[1.6] text-fg-muted">Source files run as-is, so what you write is exactly what the browser serves. An AI agent debugs against the real served code, never a bundled or minified artifact. Not an untested bet either. Rails has shipped its default frontend without a bundler since Rails 7 in 2021.</p>
             </div>
             <div class="bg-[var(--editor-sidebar-bg)] border border-[var(--editor-border)] rounded-xl p-3.5 font-mono text-xs leading-[1.6] text-[var(--editor-fg)]">
               <div class="flex items-center gap-1.5 text-fg-subtle mb-2 border-b border-[var(--editor-border)] pb-1.5 select-none">
@@ -320,8 +341,8 @@ export default function LandingPage() {
 
           <div class="${CARD}">
             <div class="mb-6">
-              <h3 class="font-display font-bold text-base leading-[1.3] tracking-[-0.02em] mt-0 mb-2">Server actions (RPC)</h3>
-              <p class="m-0 text-sm leading-[1.6] text-fg-muted">Mark a file <code class="font-mono text-[0.9em]">'use server'</code> and import it. Date, Map, Set, BigInt, and Blob all round-trip across the wire with real http verbs (GET, POST, PUT, PATCH, DELETE).</p>
+              <h3 class="font-display font-bold text-base leading-[1.3] tracking-[-0.02em] mt-0 mb-2">Server actions, fully typed</h3>
+              <p class="m-0 text-sm leading-[1.6] text-fg-muted">Mark a file <code class="font-mono text-[0.9em]">'use server'</code> and import it. The call site keeps the function's real argument and return types, with no code generation in between, and Date, Map, Set, BigInt, and Blob all round-trip across the wire with real http verbs (GET, POST, PUT, PATCH, DELETE).</p>
             </div>
             <div class="bg-[var(--editor-sidebar-bg)] border border-[var(--editor-border)] rounded-xl p-3.5 flex items-center justify-between text-xs font-mono select-none text-[var(--editor-fg)]">
               <div class="text-fg-subtle px-2 py-1 bg-[var(--editor-bg)] rounded border border-[var(--editor-border)]">Client</div>
@@ -373,7 +394,7 @@ export default function LandingPage() {
       <div class="max-w-6xl mx-auto px-6">
         <div class="max-w-3xl mx-auto mb-12 text-center">
           <h2 class="font-display font-bold text-h2 leading-[1.12] tracking-[-0.03em] my-3 text-balance">Light enough for AI</h2>
-          <p class="text-fg-muted text-base leading-[1.6] m-0">A zero build step means the source you read is what runs. Because the framework ships without compilation layers, an AI agent can read and reason about the entire WebJs source end to end, straight from node_modules.</p>
+          <p class="text-fg-muted text-base leading-[1.6] m-0">A framework that compiles nothing away is a framework you can read, and that turns out to matter most to the newest reader on your team. An AI agent reads and reasons about the entire WebJs source end to end, straight from node_modules, because there is no bundle standing between it and the code.</p>
         </div>
         <div class="grid gap-px bg-border grid-cols-1 xs:grid-cols-2 wide:grid-cols-4 rounded-2xl border border-border overflow-hidden shadow-[var(--shadow-sm)]">
           ${STATS.map(s => html`
@@ -393,6 +414,7 @@ export default function LandingPage() {
       <div class="max-w-6xl mx-auto px-6">
         <div class="max-w-3xl mx-auto mb-12 text-center">
           <h2 class="font-display font-bold text-h2 leading-[1.12] tracking-[-0.03em] my-3 text-balance">Start where you are</h2>
+          <p class="text-fg-muted text-base leading-[1.6] m-0">All of it arrives in one command. Every decision above is already made in the scaffold, so the first thing you run is a working app rather than an empty directory.</p>
         </div>
         <div class="grid gap-4 grid-cols-1 max-w-2xl mx-auto wide:grid-cols-2 wide:max-w-3xl">
           <div class="flex flex-col gap-3 p-6 min-w-0 rounded-2xl border border-border bg-bg-elev">
@@ -412,7 +434,8 @@ middleware.ts</pre>
             <div class="cmd-foot pt-2 mt-auto font-mono text-xs leading-[1.6] text-fg-muted max-w-full min-w-0"><copy-cmd>npm create webjs@latest my-api -- --template api</copy-cmd></div>
           </div>
         </div>
-        <p class="mt-8 mx-auto max-w-3xl text-center text-fg-subtle text-sm leading-[1.55]">Prefer Bun? Add <code class="font-mono">--runtime bun</code> to either template, or run <code class="font-mono">bun create webjs my-app</code> to flavor the scaffold for Bun automatically.</p>
+        <p class="mt-8 mx-auto max-w-3xl text-center text-base leading-[1.6] text-fg-muted">Both scaffolds arrive with the calls already made. Light DOM components, Tailwind, Drizzle, a modules layout, and design tokens are wired before you write a line, and an agent skill ships alongside them so a coding agent reads how this app is meant to be built rather than guessing from what it saw elsewhere. Every one of those is a default, not a lock-in. Swap what does not suit you.</p>
+        <p class="mt-6 mx-auto max-w-3xl text-center text-fg-subtle text-sm leading-[1.55]">Prefer Bun? Add <code class="font-mono">--runtime bun</code> to either template, or run <code class="font-mono">bun create webjs my-app</code> to flavor the scaffold for Bun automatically.</p>
       </div>
     </section>
 

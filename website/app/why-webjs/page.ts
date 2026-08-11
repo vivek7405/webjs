@@ -72,10 +72,12 @@ const REASONS = [
   },
 ];
 
-// What comes back from the one-sentence prompt. These are the four things the
+// What comes back from the one-sentence prompt. These are the things the
 // prompt would otherwise have had to specify, so each must stay a genuine
 // DEFAULT of the framework or of what `webjs create` scaffolds. If one ever
 // becomes something the prompt has to request, the section's claim is gone.
+// Keep the count EVEN: the grid is two columns at xs and up, so an odd entry
+// leaves an empty cell painted in the grid's border colour.
 const ARRIVES = [
   {
     title: 'Architecture',
@@ -83,7 +85,11 @@ const ARRIVES = [
   },
   {
     title: 'Code',
-    body: 'Server-rendered pages that work before any script loads, and no build step in between. Types run the whole way through, so a server function keeps its argument and return types at the call site and an agent has no reason to reach for any. Running webjs check catches what is outright wrong before it ships.',
+    body: 'Server-rendered pages that work before any script loads, and no build step in between. Running webjs check catches what is outright wrong before it ships, so a mistake surfaces as a failing command rather than as a bug a reader has to find.',
+  },
+  {
+    title: 'Type safety, end to end',
+    body: 'Types run the whole way through. A component importing a server function keeps that function\'s argument and return types at the call site, and a database row carries its schema type into the markup that renders it, with no code generation anywhere in between. An agent has no reason to reach for any.',
   },
   {
     title: 'Database',
@@ -92,6 +98,10 @@ const ARRIVES = [
   {
     title: 'Design system',
     body: 'A palette and a type scale ship as design tokens rather than values scattered through components, so every screen the app grows shares them and restyling the whole thing means editing the tokens, not hunting through the markup.',
+  },
+  {
+    title: 'Agent skills',
+    body: 'A scaffolded app ships a skill its coding agent reads on demand, covering the design system, the modules architecture, and the rest of the conventions. One source, understood by Claude Code, Cursor, Copilot, and opencode alike, so the agent looks up how this app is meant to be built instead of importing habits from another framework.',
   },
 ];
 
@@ -240,6 +250,17 @@ Counter.register('counter');
               <p class="m-0 text-sm leading-[1.65] text-fg-muted">${a.body}</p>
             </div>
           `)}
+        </div>
+        <div class="max-w-3xl mx-auto mt-8 text-center">
+          <p class="text-fg-muted text-base leading-[1.6] m-0">
+            Opinionated is the point, and none of it is a cage. Light DOM
+            components, Tailwind, and Drizzle on SQLite are what a scaffolded app
+            starts with, because something has to be chosen and leaving it open
+            is what pushed the decision into your prompt. Reach for a different
+            ORM, a different database, or a different way of styling and the
+            framework does not object. What you are opting out of is a default,
+            never a dependency the rest of it is built on.
+          </p>
         </div>
       </div>
     </section>
