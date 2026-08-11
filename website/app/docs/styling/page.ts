@@ -166,7 +166,7 @@ export class Card extends WebComponent {
 }
 Card.register('my-card');</code-block>
 
-    <p>Shadow-DOM components are SSR'd via Declarative Shadow DOM. Styles paint before JS loads, no hydration runtime, and the browser enforces the boundary. Light-DOM components are SSR'd as direct HTML with a <code>&lt;!--webjs-hydrate--&gt;</code> marker, and client-side rendering replaces the marker without flash.</p>
+    <p>Shadow-DOM components are SSR'd via Declarative Shadow DOM. Styles paint before JS loads, with no boot script in between, and the browser enforces the boundary. Light-DOM components are SSR'd as direct HTML with a <code>&lt;!--webjs-hydrate--&gt;</code> marker, and client-side rendering replaces the marker without flash.</p>
 
     <h2>Design tokens via CSS custom properties</h2>
     <p>CSS custom properties <strong>inherit through shadow DOM boundaries</strong>. Define them once on <code>:root</code> (as the blog example does in its layout) and both light-DOM and shadow-DOM components can consume them via Tailwind classes (<code>text-foreground</code>, <code>bg-card</code>) or bare CSS (<code>var(--foreground)</code>).</p>

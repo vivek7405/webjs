@@ -92,16 +92,25 @@ export const metadata = {
 // leaves the page reading as a spec sheet again. Move a section and the two
 // ledes on either side of the seam have to move with it.
 
-// Framework-weight stats. Measured: gzipped production browser bundle,
-// npm package metadata, and framework source line counts. Kept honest
-// and comparative against a Next.js app's first-load JS (react + react-dom
-// alone is ~44 KB. The ~99 KB is the full Next baseline, react + react-dom
-// plus the Next runtime plus the app-router client).
+// Framework-weight stats. Every number here is MEASURED, and anyone reading
+// the page can re-measure it in seconds, so a stale one is a public error
+// rather than a rounding quibble. Two of them were, which is why the exact
+// command sits beside each. Re-run these before editing a figure:
+//
+//   wire size   curl -H 'Accept-Encoding: gzip' -o /dev/null -w '%{size_download}' \
+//                 https://webjs.dev/__webjs/core/dist/webjs-core-browser.js
+//               (the importmap points @webjsdev/core at that exact file, so it
+//                is what a visitor actually pays. It INCLUDES the client
+//                router, which index-browser.js side-effect-imports.)
+//   source      find packages/core/src -name '*.js' | xargs wc -l
+//
+// The ~99 KB Next baseline is the full one (react + react-dom + the Next
+// runtime + the app-router client); react + react-dom alone is ~44 KB.
 const STATS = [
-  { big: '~29 KB', label: 'Client runtime, gzipped', sub: 'A minimal Next.js client bundle is ~99 KB gzipped including React. WebJs is self-sufficient at ~29 KB, 3.4x lighter on the wire.' },
+  { big: '~43 KB', label: 'Client runtime, gzipped', sub: 'A minimal Next.js client bundle is ~99 KB gzipped including React. WebJs is self-sufficient at ~43 KB, 2.3x lighter on the wire, and that already includes the client router.' },
   { big: '0 build', label: 'Instant agent loops', sub: 'No compilation, no bundler. Agents edit, run tests, and verify in the browser in milliseconds.' },
   { big: '100%', label: 'Web standards', sub: 'Standard-aligned Web Component lifecycles, so models write components reliably.' },
-  { big: '~16k', label: 'LLM-context friendly', sub: 'Under 6.5k lines of client runtime, ~16k for the whole stack, small enough to fit an LLM context window.' },
+  { big: '~23k', label: 'Lines an agent can open', sub: 'The whole of @webjsdev/core is plain JavaScript with JSDoc in node_modules. An agent greps the renderer or the router it is calling and reads the real implementation.' },
 ];
 
 // The interactive component / server action / page samples live in
@@ -109,7 +118,16 @@ const STATS = [
 
 // Chips for the progressive-enhancement section: the concrete things that
 // keep working with JavaScript disabled, because the server sends real HTML.
-const PE_CHIPS = ['No hydration runtime', 'Content reads', 'Links navigate', 'Forms submit', 'Display components ship 0 KB'];
+// 'No whole-page hydration' is the precise form and the ONLY one to use here.
+// WebJs does hydrate: a shipping component loads @webjsdev/core, and
+// createInstance() in render-client.js does container.replaceChildren(...),
+// which discards the server's DOM and rebuilds from the compiled template.
+// What is absent is the whole-tree walk. Hydration is scheduled per element by
+// the browser's own custom-element upgrade, pages and layouts never hydrate at
+// all, and elided components never ship. Anything shorter ("no hydration
+// runtime", "no hydration overhead") reads as zero cost and is refuted by one
+// look at the network tab.
+const PE_CHIPS = ['No whole-page hydration', 'Content reads', 'Links navigate', 'Forms submit', 'Display components ship 0 KB'];
 
 // The hero stage shows this source beside the very component it declares,
 // running. Keep the two in step: the panel to its right is a real
@@ -242,8 +260,10 @@ export default function LandingPage() {
             load, parse, and hydrate before the page can be read at all. WebJs
             takes the other side of that trade. Pages and components render to
             real HTML on the server, so the page reads, links navigate, and forms
-            submit before a single script loads. No hydration runtime to pay for,
-            and dead JavaScript is statically elided rather than shipped.
+            submit before a single script loads. Nothing hydrates that does not
+            have to. Pages and layouts never hydrate at all, an interactive
+            component hydrates on its own when the browser upgrades its tag, and
+            a display-only one is statically elided rather than shipped.
           </p>
         </div>
 
@@ -367,10 +387,10 @@ export default function LandingPage() {
           <div class="${CARD}">
             <div class="mb-6">
               <h3 class="font-display font-bold text-base leading-[1.3] tracking-[-0.02em] mt-0 mb-2">Progressive enhancement</h3>
-              <p class="m-0 text-sm leading-[1.6] text-fg-muted">Real HTML first. Links navigate, forms submit, and pages read before JavaScript loads. No hydration overhead.</p>
+              <p class="m-0 text-sm leading-[1.6] text-fg-muted">Real HTML first. Links navigate, forms submit, and pages read before JavaScript loads, so the page is usable well before anything hydrates.</p>
             </div>
             <div class="bg-[var(--editor-sidebar-bg)] border border-[var(--editor-border)] rounded-xl p-3.5 flex flex-wrap gap-1.5 justify-center select-none text-[var(--editor-fg)]">
-              <span class="px-2 py-1 bg-bg-subtle border border-border text-fg-muted text-xs font-mono rounded">No hydration lock</span>
+              <span class="px-2 py-1 bg-bg-subtle border border-border text-fg-muted text-xs font-mono rounded">Usable before hydration</span>
               <span class="px-2 py-1 bg-[var(--editor-bg)] border border-[var(--editor-border)] text-fg-subtle text-xs font-mono rounded">Static elision</span>
             </div>
           </div>
@@ -406,7 +426,7 @@ export default function LandingPage() {
           `)}
         </div>
         <p class="mt-8 mx-auto max-w-3xl text-center text-base leading-[1.6] text-fg-muted">Familiar from day one. WebJs uses Next.js-style file-based routing and lit-style web components, conventions both people and agents already know.</p>
-        <p class="mt-6 mx-auto max-w-3xl text-center text-fg-subtle text-xs leading-[1.5]">Gzipped production sizes. A Next.js app ships a client bundle around ~99 KB gzipped (react, react-dom, and the Next runtime); <code class="font-mono">@webjsdev/core</code> is self-sufficient at ~29 KB gzipped with zero runtime dependencies and no build step.</p>
+        <p class="mt-6 mx-auto max-w-3xl text-center text-fg-subtle text-xs leading-[1.5]">Gzipped production sizes, measured over the wire. A Next.js app ships a client bundle around ~99 KB gzipped (react, react-dom, and the Next runtime); <code class="font-mono">@webjsdev/core</code> is self-sufficient at ~43 KB gzipped, client router included, with zero runtime dependencies and no build step.</p>
       </div>
     </section>
 
