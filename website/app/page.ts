@@ -79,18 +79,26 @@ export const metadata = {
 // section ledes are what carry it. Each one opens by picking up the idea the
 // previous section closed on:
 //
-//   hero            what this is
-//   real HTML       the trade every framework made, and the other side of it
-//   nothing         a first paint is only honest if what you wrote is what
-//   compiled away   shipped, so here are two files served as they sit on disk
-//   the bento       everything here falls out of that one decision
-//   light for AI    a framework that compiles nothing is one you can read
-//   start where     so all of it arrives in one command
+//   hero              what this is
+//   arrives finished  the trade every framework made, and the other side of it
+//   nothing           a first paint is only honest if what you wrote is what
+//   compiled away     shipped, so here are two files served as they sit on disk
+//   give up nothing   everything here falls out of that one decision
+//   light for AI      a framework that compiles nothing is one you can read
+//   start where       so all of it arrives in one command
 //
 // Rewriting a lede in isolation is what breaks this: the hand-off is in the
 // FIRST sentence of each, so a lede that opens on its own section's topic
 // leaves the page reading as a spec sheet again. Move a section and the two
 // ledes on either side of the seam have to move with it.
+//
+// The HEADERS carry their own rule, learned by getting it wrong twice. Each is
+// a self-contained CLAIM, never a label for the contents and never a pointer at
+// something the reader has not read yet. "Modern full-stack, on web standards"
+// was the label version, and "It all falls out of one decision" was the pointer
+// version, which fails because a reader cannot resolve WHICH decision from the
+// header alone. The consequence link belongs in the lede's first sentence,
+// where there is room to name what it refers back to.
 
 // Framework-weight stats. Every number here is MEASURED, and anyone reading
 // the page can re-measure it in seconds, so a stale one is a public error
@@ -253,7 +261,7 @@ export default function LandingPage() {
     <section class="py-16">
       <div class="max-w-6xl mx-auto px-6">
         <div class="max-w-3xl mx-auto mb-12 text-center">
-          <h2 class="font-display font-bold text-h2 leading-[1.12] tracking-[-0.03em] my-3 text-balance">Real HTML first. JavaScript only when it earns it.</h2>
+          <h2 class="font-display font-bold text-h2 leading-[1.12] tracking-[-0.03em] my-3 text-balance">The page arrives finished</h2>
           <p class="text-fg-muted text-base leading-[1.6] m-0">
             Frameworks got good at hiding the platform, and for years that paid
             for itself. What changed is when the bill arrives. The runtime has to
@@ -321,7 +329,7 @@ export default function LandingPage() {
     <section class="py-16">
       <div class="max-w-6xl mx-auto px-6">
         <div class="max-w-3xl mx-auto mb-12 text-center">
-          <h2 class="font-display font-bold text-h2 leading-[1.12] tracking-[-0.03em] my-3 text-balance">Modern full-stack, on web standards</h2>
+          <h2 class="font-display font-bold text-h2 leading-[1.12] tracking-[-0.03em] my-3 text-balance">You give up nothing to stay on the platform</h2>
           <p class="text-fg-muted text-base leading-[1.6] m-0">Everything below falls out of that one decision. Staying close to the platform is usually where a framework starts asking you to give things up, so each card is a place WebJs takes the standard and keeps the ergonomics anyway. Everything you need to ship, none of the build toolchain you don't.</p>
         </div>
         <div class="grid gap-px overflow-hidden rounded-2xl border border-border bg-border grid-cols-1 xs:grid-cols-2 wide:grid-cols-3 shadow-[var(--shadow-sm)]">
