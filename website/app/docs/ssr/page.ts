@@ -42,7 +42,7 @@ export default async function Home() {
     </ol>
 
     <h2>Declarative Shadow DOM (DSD)</h2>
-    <p>Declarative Shadow DOM is the key technology that makes web component SSR work without a hydration runtime. When the server renders a custom element like <code>&lt;my-counter count="5"&gt;</code>, the output looks like this:</p>
+    <p>Declarative Shadow DOM is the key technology that lets a web component paint fully before any JavaScript runs, with no framework boot script standing between the HTML and the pixels. When the server renders a custom element like <code>&lt;my-counter count="5"&gt;</code>, the output looks like this:</p>
 
     <code-block>&lt;my-counter count="5"&gt;
   &lt;template shadowrootmode="open"&gt;
