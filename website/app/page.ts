@@ -75,6 +75,23 @@ export const metadata = {
   ],
 };
 
+// The page is written as ONE argument, not as a list of features, and the
+// section ledes are what carry it. Each one opens by picking up the idea the
+// previous section closed on:
+//
+//   hero            what this is
+//   real HTML       the trade every framework made, and the other side of it
+//   nothing         a first paint is only honest if what you wrote is what
+//   compiled away   shipped, so here are two files served as they sit on disk
+//   the bento       everything here falls out of that one decision
+//   light for AI    a framework that compiles nothing is one you can read
+//   start where     so all of it arrives in one command
+//
+// Rewriting a lede in isolation is what breaks this: the hand-off is in the
+// FIRST sentence of each, so a lede that opens on its own section's topic
+// leaves the page reading as a spec sheet again. Move a section and the two
+// ledes on either side of the seam have to move with it.
+
 // Framework-weight stats. Measured: gzipped production browser bundle,
 // npm package metadata, and framework source line counts. Kept honest
 // and comparative against a Next.js app's first-load JS (react + react-dom
@@ -220,10 +237,13 @@ export default function LandingPage() {
         <div class="max-w-3xl mx-auto mb-12 text-center">
           <h2 class="font-display font-bold text-h2 leading-[1.12] tracking-[-0.03em] my-3 text-balance">Real HTML first. JavaScript only when it earns it.</h2>
           <p class="text-fg-muted text-base leading-[1.6] m-0">
-            Pages and components render to real HTML on the server, so the page
-            reads, links navigate, and forms submit before a single script loads.
-            There is no hydration runtime to pay for, and dead JavaScript is
-            statically elided, never shipped.
+            Frameworks got good at hiding the platform, and for years that paid
+            for itself. What changed is when the bill arrives. The runtime has to
+            load, parse, and hydrate before the page can be read at all. WebJs
+            takes the other side of that trade. Pages and components render to
+            real HTML on the server, so the page reads, links navigate, and forms
+            submit before a single script loads. No hydration runtime to pay for,
+            and dead JavaScript is statically elided rather than shipped.
           </p>
         </div>
 
@@ -262,8 +282,8 @@ export default function LandingPage() {
     <section class="py-16">
       <div class="max-w-5xl mx-auto px-6">
         <div class="max-w-3xl mx-auto mb-12 text-center">
-          <h2 class="font-display font-bold text-h2 leading-[1.12] tracking-[-0.03em] my-3 text-balance">Server action & SSR page</h2>
-          <p class="text-fg-muted text-base leading-[1.6] m-0">A server action and a page. No build, no boilerplate, all web standards. The types cross with the import, so the page reads the action's real return type, the action reads the row type off your database schema, and nothing is generated in between.</p>
+          <h2 class="font-display font-bold text-h2 leading-[1.12] tracking-[-0.03em] my-3 text-balance">Nothing is compiled away</h2>
+          <p class="text-fg-muted text-base leading-[1.6] m-0">That first paint is only honest if what you wrote is what shipped. Here is a server action and the page that calls it, both served to the browser exactly as they sit on disk. The types cross with the import, so the page reads the action's real return type, the action reads the row type off your database schema, and nothing is generated in between.</p>
         </div>
         <div class="grid gap-6 grid-cols-1 md:grid-cols-2">
           <div class="flex flex-col min-w-0">
@@ -282,7 +302,7 @@ export default function LandingPage() {
       <div class="max-w-6xl mx-auto px-6">
         <div class="max-w-3xl mx-auto mb-12 text-center">
           <h2 class="font-display font-bold text-h2 leading-[1.12] tracking-[-0.03em] my-3 text-balance">Modern full-stack, on web standards</h2>
-          <p class="text-fg-muted text-base leading-[1.6] m-0">Everything you need to ship, none of the build toolchain you don't. Staying close to the platform is usually where a framework starts asking you to give things up. Every card below is a place WebJs takes the standard and keeps the ergonomics anyway.</p>
+          <p class="text-fg-muted text-base leading-[1.6] m-0">Everything below falls out of that one decision. Staying close to the platform is usually where a framework starts asking you to give things up, so each card is a place WebJs takes the standard and keeps the ergonomics anyway. Everything you need to ship, none of the build toolchain you don't.</p>
         </div>
         <div class="grid gap-px overflow-hidden rounded-2xl border border-border bg-border grid-cols-1 xs:grid-cols-2 wide:grid-cols-3 shadow-[var(--shadow-sm)]">
 
@@ -374,7 +394,7 @@ export default function LandingPage() {
       <div class="max-w-6xl mx-auto px-6">
         <div class="max-w-3xl mx-auto mb-12 text-center">
           <h2 class="font-display font-bold text-h2 leading-[1.12] tracking-[-0.03em] my-3 text-balance">Light enough for AI</h2>
-          <p class="text-fg-muted text-base leading-[1.6] m-0">A zero build step means the source you read is what runs. Because the framework ships without compilation layers, an AI agent can read and reason about the entire WebJs source end to end, straight from node_modules.</p>
+          <p class="text-fg-muted text-base leading-[1.6] m-0">A framework that compiles nothing away is a framework you can read, and that turns out to matter most to the newest reader on your team. An AI agent reads and reasons about the entire WebJs source end to end, straight from node_modules, because there is no bundle standing between it and the code.</p>
         </div>
         <div class="grid gap-px bg-border grid-cols-1 xs:grid-cols-2 wide:grid-cols-4 rounded-2xl border border-border overflow-hidden shadow-[var(--shadow-sm)]">
           ${STATS.map(s => html`
@@ -394,6 +414,7 @@ export default function LandingPage() {
       <div class="max-w-6xl mx-auto px-6">
         <div class="max-w-3xl mx-auto mb-12 text-center">
           <h2 class="font-display font-bold text-h2 leading-[1.12] tracking-[-0.03em] my-3 text-balance">Start where you are</h2>
+          <p class="text-fg-muted text-base leading-[1.6] m-0">All of it arrives in one command. Every decision above is already made in the scaffold, so the first thing you run is a working app rather than an empty directory.</p>
         </div>
         <div class="grid gap-4 grid-cols-1 max-w-2xl mx-auto wide:grid-cols-2 wide:max-w-3xl">
           <div class="flex flex-col gap-3 p-6 min-w-0 rounded-2xl border border-border bg-bg-elev">
