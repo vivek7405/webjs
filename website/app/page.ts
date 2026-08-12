@@ -333,13 +333,24 @@ export default function LandingPage() {
              so every phone rendered the identical 46.4px and the size stopped
              responding exactly where it mattered: 58 characters at 46.4px in a
              342px box is 5 ragged lines and a 237px-tall headline. The floor is
-             now 1.75rem, reached only below 264px, so the size is genuinely fluid
-             across every real device. The slope was steepened to match, and the
-             cap trimmed to 4.125rem (66px), which still lands at ~1044px so the
-             desktop crossover point has not moved.
+             now 1.75rem, reached only below 314px, so the size is genuinely fluid
+             across every real device.
+
+             The slope was then steepened a second time, to land on 32px at
+             390px rather than 34px. That is a 2px change with a whole line in
+             it: at 34px the headline takes FOUR lines on a phone, ending on a
+             75px orphan ("own."), and at 32px it takes three (333/289/180).
+             The curve is solved backwards from that wrap point and the 66px
+             cap, so it still reaches the cap at ~1044px and desktop is
+             untouched.
+
+             Below about 360px it goes back to four lines, which is correct: a
+             320px phone cannot hold this headline in three without type too
+             small to lead a page.
+
              Re-measure line counts at 390 / 768 / 1440 before touching any of the
              three numbers; they are chosen against the wrap points, not picked. -->
-        <h1 class="font-display font-extrabold text-[clamp(1.75rem,0.93rem+4.9vw,4.125rem)] leading-[0.98] tracking-[-0.038em] mx-auto mt-2 mb-6 max-w-[64rem]">
+        <h1 class="font-display font-extrabold text-[clamp(1.75rem,0.73rem+5.2vw,4.125rem)] leading-[0.98] tracking-[-0.038em] mx-auto mt-2 mb-6 max-w-[64rem]">
           Conventions your agent follows. Architecture you still own.
         </h1>
         <!-- Two sentences. The second one is the PAGE'S THESIS, and it took a
