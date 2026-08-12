@@ -81,8 +81,8 @@ export const metadata = {
 //
 //   hero              what this is, and what your agent does with it
 //   first paint       the trade every framework made, and the other side of it
-//   nothing           a first paint is only honest if what you wrote is what
-//   compiled away     shipped, so here are two files served as they sit on disk
+//   nothing           the editor file and the network-tab file are one file,
+//   compiled away     so here are two of them served as they sit on disk
 //   browser is the    everything here falls out of that one decision
 //   framework
 //   the app has a     the demos teach, the clear removes them, the shape
@@ -118,15 +118,26 @@ export const metadata = {
 // when missing it costs them the wrong idea.
 //
 // A sequential reader loses nothing, because a self-contained opening still
-// echoes the section above it. "A first paint is only honest..." reads as a
-// hand-off if you came from "The first paint is the whole page" and as a plain
-// claim if you did not. Get both, do not trade one for the other.
+// echoes the section above it. "The file in your editor and the file in the
+// network tab are the same file" reads as the next step if you came from "The
+// first paint is the whole page" and as a plain claim if you did not. Get both,
+// do not trade one for the other.
+//
+// But a hand-off must not be BOUGHT with a false claim, which is how that lede
+// read for a long time: "A first paint is only honest if what you wrote is what
+// shipped." It chains beautifully off the section above and it is not true.
+// Whether the first paint is complete and whether the shipped bytes match your
+// source are unrelated properties, and a Rails or PHP app with a bundled
+// frontend has a perfectly honest first paint. A reader who thinks about the
+// sentence for one second catches it, which is the worst possible place to lose
+// them: the section directly below is the one asking to be trusted. State the
+// section's own claim plainly and let the sequence be a bonus.
 //
 // A lede may hand BACK to the section above, but it must NAME what it is
 // handing back to. A bare pronoun cannot survive the trip, because a large
 // heading sits between the pronoun and its referent and steals the antecedent.
-// "That first paint is only honest..." works, since it names the thing. Three
-// ledes once did not and all three read as broken:
+// "That first paint arrives..." works, since it names the thing. Three ledes
+// once did not and all three read as broken:
 //
 //   "Everything below falls out of that one decision"  which decision?
 //   "All of that only helps if the agent finds it"     all of what?
@@ -410,7 +421,7 @@ export default function LandingPage() {
       <div class="max-w-6xl mx-auto px-6">
         <div class="max-w-3xl mx-auto mb-12 text-center">
           <h2 class="font-display font-bold text-h2 leading-[1.12] tracking-[-0.03em] my-3 text-balance">Nothing is compiled away</h2>
-          <p class="text-fg-muted text-base leading-[1.6] m-0">A first paint is only honest if what you wrote is what shipped. Here is a server action and the page that calls it, both served to the browser exactly as they sit on disk. Rails has shipped its default frontend without a bundler since Rails 7 in 2021, so the approach has production miles behind it. The types cross with the import, so the page reads the action's real return type, the action reads the row type off your database schema, and nothing is generated in between.</p>
+          <p class="text-fg-muted text-base leading-[1.6] m-0">The file in your editor and the file in the network tab are the same file. Here is a server action and the page that calls it, both served to the browser exactly as they sit on disk. Rails has shipped its default frontend without a bundler since Rails 7 in 2021, so the approach has production miles behind it. The types cross with the import, so the page reads the action's real return type, the action reads the row type off your database schema, and nothing is generated in between.</p>
         </div>
         <div class="grid gap-6 grid-cols-1 md:grid-cols-2 max-w-5xl mx-auto">
           <div class="flex flex-col min-w-0">
