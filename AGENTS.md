@@ -185,7 +185,7 @@ app/                        ROUTING ONLY (thin adapters importing from modules/;
   <path>/route.js           HTTP handler at /<path>
   <segment>/middleware.js   per-segment middleware
   <segment>/loading.js      auto Suspense boundary
-middleware.js               root middleware (every request; .ts/.mts/.mjs too)
+middleware.js               root middleware (every app request; .ts/.mts/.mjs too)
 readiness.js                optional /__webjs/ready check (return false/throw = 503)
 env.js                      optional boot-time env validation (schema or validator fn; fails fast)
 instrumentation.js          optional boot-time hook (register(); wire APM via setOnError, #848)

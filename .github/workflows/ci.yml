@@ -198,11 +198,17 @@ jobs:
       # replays the retained dev error frame with its own code (node writes into
       # a node:http res, Bun enqueues into a ReadableStream controller), so the
       # frame's new url field has to be proven on both (#1047).
-      - name: webjs dev extra-watch + reload-retry + overlay-scope on Bun
+      # dev-public-before-warm rides here too: the #1397 hoist serves /public/*
+      # ahead of ensureReady() in dev, and the two listener shells reach
+      # handle() differently (the Bun shell may rebuild the Request and
+      # classifies the body through readBufferedOrStream), so the ordering has
+      # to be proven on both.
+      - name: webjs dev extra-watch + reload-retry + overlay-scope + public-before-warm on Bun
         run: |
           bun test/bun/dev-extra-watch.mjs
           bun test/bun/dev-reload-retry.mjs
           bun test/bun/dev-overlay-scope.mjs
+          bun test/bun/dev-public-before-warm.mjs
       # The app-source deploy signal (#899) is derived from an fs source walk +
       # a node:crypto digest, so it must be byte-identical on the Bun.serve path.
       - name: App-source deploy signal on Bun

@@ -206,6 +206,9 @@ test('the dev reload client EventSource URL is base-path-prefixed (#256)', async
   // Regression: reload.js opens an EventSource to /__webjs/events, a
   // framework-emitted client URL. A bare path breaks dev live-reload under a
   // sub-path proxy (the script src was prefixed but the URL inside it was not).
+  // Since #1397 the per-tab fallback hands that URL to the shared relay rather
+  // than calling `new EventSource` itself, so the URL is asserted at the call
+  // that carries it. The invariant is unchanged: no bare path in the script.
   const appDir = makeApp({ basePath: '/myapp' });
   const app = await createRequestHandler({ appDir, dev: true });
   await app.warmup();
@@ -215,12 +218,12 @@ test('the dev reload client EventSource URL is base-path-prefixed (#256)', async
   const src = await res.text();
   assert.match(
     src,
-    /new EventSource\("\/myapp\/__webjs\/events"\)/,
+    /startReloadWorker\(scope, EventSource, "\/myapp\/__webjs\/events"\)/,
     'the EventSource URL must be prefixed with the base path',
   );
   assert.ok(
-    !/new EventSource\("\/__webjs\/events"\)/.test(src),
-    'the EventSource URL must not be a bare /__webjs/events',
+    !/"\/__webjs\/events"/.test(src),
+    'no bare /__webjs/events URL survives anywhere in the script',
   );
 });
 
@@ -234,7 +237,7 @@ test('the dev reload client EventSource URL is bare with no basePath (no-op)', a
   const src = await res.text();
   assert.match(
     src,
-    /new EventSource\("\/__webjs\/events"\)/,
+    /startReloadWorker\(scope, EventSource, "\/__webjs\/events"\)/,
     'the EventSource URL is the bare path when no basePath is set (byte-identical)',
   );
 });
