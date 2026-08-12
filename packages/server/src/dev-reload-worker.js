@@ -28,9 +28,11 @@
  *
  * 2000ms is above the measured 1071ms inter-save gap so a realistic burst
  * collapses to one reload, and deliberately not NEAR it, since a window close
- * to that gap fires just as the next restart begins. It is also under the
- * 1900ms analysis warm measured on the website app, so on a real app the wait
- * overlaps work the reload request would have blocked on anyway.
+ * to that gap fires just as the next restart begins. It also lands just past
+ * the 1900ms analysis warm measured on the website app, which is the useful
+ * place for it: the restarted process kicks off `warmup()` as soon as it
+ * listens, so the wait overlaps work the reload request would have blocked on
+ * anyway and the reload arrives at a server that has finished warming.
  */
 export const RELOAD_QUIET_MS = 2000;
 

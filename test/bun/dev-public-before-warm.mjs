@@ -33,7 +33,12 @@ const __dirname = dirname(fileURLToPath(import.meta.url));
 const ROOT = resolve(__dirname, '../..');
 const CLI = join(ROOT, 'packages/cli/bin/webjs.js');
 const runtime = process.versions.bun ? `bun ${process.versions.bun}` : `node ${process.versions.node}`;
-const PORT = 9500 + (process.pid % 240);
+// Own base, disjoint from every other dev-server bun script (dev-reload-retry
+// 9500, dev-hot-reload 9700, dev-extra-watch 9750, dev-overlay-scope 9800).
+// The modulus separates concurrent RUNS of this file; the distinct base is what
+// separates this file from the others, since the node runner can schedule the
+// `*.test.mjs` wrappers concurrently in separate child processes.
+const PORT = 9850 + (process.pid % 140);
 const BASE = `http://localhost:${PORT}`;
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
