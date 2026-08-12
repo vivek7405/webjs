@@ -447,8 +447,28 @@ export default function LandingPage() {
                column for column rather than byte for byte. Saying so is also the
                better story, since the boundary is more interesting than the
                sameness. Check both windows against this sentence before editing
-               either: the sample files decide what the sentence may claim. -->
-          <p class="text-fg-muted text-base leading-[1.6] m-0">The file in your editor and the file in the network tab are the same file. Here is a server action and the page that calls it. The page ships as you see it. The action never ships at all, and its import becomes a typed RPC call. Rails has shipped its default frontend without a bundler since Rails 7 in 2021, so the approach has production miles behind it. The types cross with the import, so the page reads the action's real return type, the action reads the row type off your database schema, and nothing is generated in between.</p>
+               either: the sample files decide what the sentence may claim.
+
+               The lede does NOT make the type-safety point, on purpose. The
+               "Call the server like a function" card two sections down already
+               says the call site keeps the function's real argument and return
+               types, and it has a client-to-server diagram beside it. A lede
+               sentence here would be the same argument made twice, weaker, and
+               without the picture. The sentence that used to sit here ("the
+               types cross with the import...") was also carrying a claim that
+               does not survive checking: codegen-free typing across the
+               client / server boundary is what Next server actions and tRPC
+               both already do, so "nothing is generated in between" describes
+               the field rather than distinguishing this framework from it.
+
+               "Typed RPC call" was likewise cut from the sentence above. Every
+               clause around it is about what reaches the BROWSER, where the
+               types are already whitespace, so "typed" there reads as if type
+               information rides the wire. AGENTS.md says "typed RPC stub" and
+               means typed at author time, which is right for a reference doc
+               and misleading in a sentence whose subject is what ships. -->
+
+          <p class="text-fg-muted text-base leading-[1.6] m-0">The file in your editor and the file in the browser network tab are the same file. Here is a server action and the page that calls it. The page ships as you see it. The action never ships at all, and its import becomes an RPC call. Rails has shipped its default frontend without a bundler since Rails 7 in 2021, so the approach has production miles behind it.</p>
         </div>
         <div class="grid gap-6 grid-cols-1 md:grid-cols-2 max-w-5xl mx-auto">
           <div class="flex flex-col min-w-0">
