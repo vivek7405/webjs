@@ -1,7 +1,7 @@
 import { html } from '@webjsdev/core';
 import '#components/copy-cmd.ts';
 import '#components/like-button.ts';
-import { COMPONENT_SAMPLE, TOGGLE_SAMPLE, ACTION_SAMPLE, PAGE_SAMPLE, USAGE_SAMPLE } from '#lib/samples.ts';
+import { COMPONENT_SAMPLE, TOGGLE_SAMPLE, ACTION_SAMPLE, PAGE_SAMPLE, USAGE_SAMPLE, CORE_SOURCE_SAMPLE, SERVER_SOURCE_SAMPLE } from '#lib/samples.ts';
 import { DOCS_START_PATH, GALLERY_URL, GH_URL, NEW_TAB, SAME_AS } from '#lib/links.ts';
 // highlight() runs only at SSR (codeWindow renders its output into the served
 // HTML), but it does ship to the client as a small dead module: the page loads
@@ -88,6 +88,8 @@ export const metadata = {
 //   framework
 //   the app has a     the demos teach, the clear removes them, the shape
 //   shape             stays. pays off the hero's first half
+//   framework         and when the demos and the skill run out, the framework
+//   source            itself is readable, in this app's own node_modules
 //   works without     the backend template is the option nobody expects, and
 //   a UI too          it is what converts a reader who thinks this is UI-only.
 //                     NOT "Start where you are": that collided with the CTA
@@ -225,6 +227,21 @@ function codeWindow(title: string, sample: string) {
     <figure class=${WIN}>
       <figcaption class=${WINBAR}>${DOTS}<span class=${WINNAME}>${title}</span></figcaption>
       <pre class="scroll-thin m-0 p-4 overflow-x-auto font-mono text-sm leading-[1.7] [tab-size:2] flex-1" role="region" tabindex="0" aria-label=${title + ' code sample'}><code>${highlight(sample)}</code></pre>
+    </figure>
+  `;
+}
+
+/**
+ * codeWindow's smaller sibling, for the two framework-source windows.
+ * Identical chrome, 12px instead of 14px: see the note at the call site for
+ * why verbatim source needs the smaller type where a hand-written sample
+ * does not.
+ */
+function sourceWindow(title: string, sample: string) {
+  return html`
+    <figure class=${WIN}>
+      <figcaption class=${WINBAR}>${DOTS}<span class=${WINNAME}>${title}</span></figcaption>
+      <pre class="scroll-thin m-0 p-4 overflow-x-auto font-mono text-xs leading-[1.75] [tab-size:2] flex-1" role="region" tabindex="0" aria-label=${title + ' source'}><code>${highlight(sample)}</code></pre>
     </figure>
   `;
 }
@@ -679,8 +696,7 @@ export default function LandingPage() {
             ships, so your agent reads working code instead of guessing at an
             API. One command clears the demos and leaves the wiring, and the
             architecture stays decided either way, carried in a skill your agent
-            reads on demand. When even that runs out, the framework's own source
-            sits uncompiled in node_modules.
+            reads on demand.
           </p>
         </div>
         <!-- THREE artifacts telling one arc: what arrives, what clearing leaves,
@@ -786,6 +802,95 @@ db/schema.server.ts
             </figure>
           </div>
                 </div>
+      </div>
+    </section>
+
+    <!-- Sits HERE, after the scaffold section, because its first sentence picks
+         up that section's demos and skill. It was drafted for the slot after
+         "Nothing is compiled away", where it chains off the no-build decision
+         instead, and that reads well until you notice the lede would be naming
+         a ladder (demos, then skill, then source) the reader has not climbed
+         yet. The trigger decides the slot.
+
+         This is the readable half of the deleted "Light enough for AI" section,
+         which sold two things: that the framework is small and that it is
+         readable. The size half was the STATS grid whose numbers turned out to
+         be wrong (a 29 KB bundle that measured 43, a 16k line count that
+         measured 23,465 in core alone), so it stayed deleted. The readability
+         half survived as one trailing clause in the scaffold lede, which is
+         where it sat until now.
+
+         The claim is about LOCATION, not availability. Every framework's source
+         is on GitHub; this one's is in the working directory your agent is
+         already in, at the version actually installed. Do not write "no other
+         framework ships its source", which is false, or "no bundle stands
+         between the agent and the code", which is false here too: core ships
+         dist/webjs-core-browser.js and the export map resolves there by
+         default. The section stays silent about that rather than asserting
+         its opposite, which is the difference between an omission and a false
+         claim. If a future edit does mention it, note that CORE is the only
+         package with a dist: server, mcp and ui publish src alone, and cli
+         publishes bin plus lib. Verified from each package.json files
+         array. -->
+    <section class="py-16">
+      <div class="max-w-6xl mx-auto px-6">
+        <div class="max-w-3xl mx-auto mb-12 text-center">
+          <h2 class="font-display font-bold text-h2 leading-[1.12] tracking-[-0.03em] my-3 text-balance">The framework source is in your own project</h2>
+          <p class="text-fg-muted text-base leading-[1.6] m-0">
+            A scaffolded app answers most questions with its demos and its agent
+            skill. When those run out, your agent opens the framework itself. It
+            reads the router or the renderer it is actually calling straight from
+            node_modules, not a version recalled from training data. The files
+            you write ship as written, and so do the framework's, so what it
+            reads is what is running.
+          </p>
+        </div>
+        <!-- TWO windows, one per package, because the claim is about the
+             framework rather than about core. They also fix a real gap: one
+             window at 1024px held 596px of code and 400px of air.
+
+             12px, not the 14px every other window on this page uses, and the
+             grid is the full max-w-6xl rather than the 1024px the other code
+             grids share. Both are forced by the content. These excerpts are
+             VERBATIM framework source, so they cannot be rewrapped the way a
+             hand-written sample can, and this codebase runs to 78 columns at
+             p90. A 1024px two-up holds 56 columns at 14px and 66 at 12px;
+             1152px holds 74 at 12px. That is the first combination that fits
+             real source with slack, and the excerpts were then picked at 69
+             columns or under. Change any one of the three (grid width, font
+             size, excerpt) and re-measure the other two. -->
+        <div class="grid gap-4 grid-cols-1 wide:grid-cols-2 items-stretch">
+          <div class="flex flex-col min-w-0">
+            <p class="text-sm font-medium leading-[1.4] text-fg-subtle mb-2.5 ml-1">The renderer, client side</p>
+            ${sourceWindow('node_modules/@webjsdev/core/src/component.js', CORE_SOURCE_SAMPLE)}
+          </div>
+          <div class="flex flex-col min-w-0">
+            <p class="text-sm font-medium leading-[1.4] text-fg-subtle mb-2.5 ml-1">The server that renders it</p>
+            ${sourceWindow('node_modules/@webjsdev/server/src/dev.js', SERVER_SOURCE_SAMPLE)}
+          </div>
+        </div>
+        <!-- One line, replacing a caption plus a closer. The caption read "Core
+             keeps a dist, for the browser. The source sits next to it", and
+             the whole of its second half existed to handle that one exception.
+             Dropping it is an omission, not a false claim: nothing in this
+             section says a build output does not exist, and the windows show
+             src paths rather than asserting anything about dist.
+
+             It points at @webjsdev rather than @webjsdev/core/src because the
+             two windows above are core AND server, and because the readable
+             folder is src in most packages but lib in the CLI, so the scope
+             above them is the one address that is right everywhere.
+
+             What went with the merge is the second half of the dare, "then open
+             the same folder for whatever you shipped last". That was doing real
+             work, in the register the JavaScript-off P.S. established: a claim
+             the reader confirms beats one they accept. If it comes back, it
+             needs to name the folder and the action ("then try to read the
+             framework in your last project's node_modules"), because "the same
+             folder" pointed at a path that exists in no other app. -->
+        <p class="text-sm leading-[1.6] text-fg-subtle max-w-[68ch] mx-auto mt-6 mb-0 text-center text-pretty">
+          Open <code class="font-mono text-sm bg-fg/8 px-1.5 py-0.5 rounded">node_modules/@webjsdev</code> in your app and read any of it.
+        </p>
       </div>
     </section>
 
