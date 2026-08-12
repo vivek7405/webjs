@@ -103,9 +103,10 @@ import { listPosts } from '#modules/posts/queries/list-posts.server.ts';</code-b
     <h2>Request Lifecycle</h2>
     <ol>
       <li><strong>HTTP request arrives</strong> at the Node HTTP server (or HTTP/2 if TLS configured).</li>
-      <li><strong>Root middleware</strong> (<code>middleware.ts</code>) runs first if present.</li>
+      <li><strong>Framework-internal assets and probes</strong> (<code>/__webjs/*</code>: the core runtime, the dev reload client, downloaded vendor bundles, <code>/__webjs/health</code> and <code>/__webjs/ready</code>) are served here, ahead of everything below. They depend on neither the app analysis nor the vendor importmap, so a cold instance must not gate them. In <strong>development only</strong>, <code>/public/*</code> plus the <code>/sw.js</code> and <code>/offline.html</code> root remaps and <code>/favicon.ico</code> are served here too, so a stylesheet is never queued behind the startup analysis.</li>
+      <li><strong>Root middleware</strong> (<code>middleware.ts</code>) runs next if present, for every request that was not already answered above.</li>
       <li><strong>103 Early Hints</strong> sent (prod only) with modulepreload URLs for the matched page.</li>
-      <li><strong>Route matching</strong>: the router tries (in order) internal endpoints, static files, user source modules, API routes (<code>route.ts</code>), then page routes.</li>
+      <li><strong>Route matching</strong>: the router tries (in order) static files, user source modules, API routes (<code>route.ts</code>), then page routes. In production this is where <code>/public/*</code> is served, so a middleware that guards an asset still guards it.</li>
       <li><strong>Segment middleware</strong> chain runs (outermost → innermost) for the matched route.</li>
       <li>For <strong>pages</strong>: SSR pipeline runs (load page + layouts, render to HTML, inject DSD, collect metadata, stream response with Suspense).</li>
       <li>For <strong>API routes</strong>: the matched handler function runs, returns a Response.</li>

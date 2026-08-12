@@ -58,16 +58,27 @@ test('dev serves the reload SharedWorker, and the client uses it with a direct E
   // Sliced to the fallback function's own body first. A regex over the whole
   // client matches the SharedWorker bootstrap's `try { ... } catch` further
   // down and passes with the guard removed, which is a test that observes
-  // nothing (found by running exactly that counterfactual).
+  // nothing.
+  //
+  // The slice must end at the function's OWN closing brace, not at the
+  // bootstrap that follows it: ending at `indexOf('if (typeof SharedWorker')`
+  // still trails `}\ntry {`, which leaves the bootstrap's `try` inside the
+  // slice and the first assertion below vacuous again. Verified by running the
+  // counterfactual against a reconstructed client: each of the three
+  // assertions below fails with the guard removed.
   const fallbackStart = clientSrc.indexOf('function __webjsDirectEvents()');
   assert.notEqual(fallbackStart, -1, 'the fallback function is in the client');
-  const fallbackBody = clientSrc.slice(fallbackStart, clientSrc.indexOf('if (typeof SharedWorker', fallbackStart));
+  const fallbackEnd = clientSrc.indexOf('\n}\n', fallbackStart);
+  assert.notEqual(fallbackEnd, -1, 'the fallback function closes');
+  const fallbackBody = clientSrc.slice(fallbackStart, fallbackEnd + 2);
+  assert.ok(!/if \(typeof SharedWorker/.test(fallbackBody), 'the slice stops before the bootstrap');
   assert.match(
     fallbackBody,
     /postMessage\(m\)\s*\{[^]*?try\s*\{/,
     'the shim port opens a try before running any application code',
   );
-  assert.match(fallbackBody, /\}\s*catch\s*\(_\)/, 'and swallows the throw so the relay cannot drop the tab');
+  assert.match(fallbackBody, /\}\s*catch\s*\(_\)/, 'and catches the throw so the relay cannot drop the tab');
+  assert.match(fallbackBody, /console\.error\(/, 'and reports it rather than discarding it');
   assert.ok(
     fallbackBody.indexOf('try {') < fallbackBody.indexOf('__webjsReloadWhenReady()'),
     'the guard opens BEFORE the reload call, not around something else',

@@ -3038,7 +3038,14 @@ function __webjsDirectEvents() {
     try {
       if (m.type === 'reload') __webjsReloadWhenReady();
       else if (m.type === 'webjs-error') __webjsApplyError(m.data);
-    } catch (_) { /* a bad frame must not cost this tab its live reload */ }
+    } catch (_) {
+      // Reported, never swallowed. Detachment is the only thing being
+      // prevented: a throw out of an EventSource listener (the old shape) and
+      // out of the SharedWorker path's onmessage below both surface to the
+      // console, so discarding it here would hide dev-overlay bugs on this one
+      // path, which would be a new behaviour rather than a restored one.
+      console.error('[webjs] dev reload handler threw', _);
+    }
   } }] });
 }
 try {
