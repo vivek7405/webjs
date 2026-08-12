@@ -198,7 +198,7 @@ const HERO_SAMPLE = `class LikeButton extends WebComponent({ count: Number }) {
 LikeButton.register('like-button');
 
 // No build step. No bundler. No virtual DOM.
-// The panel to the right is this file, server-rendered
+// The live button is this file, server-rendered
 // and upgraded in place. Click it.`;
 
 const WIN = 'flex flex-col flex-1 m-0 min-w-0 max-w-full rounded-2xl overflow-hidden border border-border bg-bg-subtle shadow-[var(--shadow)]';
@@ -407,12 +407,12 @@ export default function LandingPage() {
     </section>
 
     <section class="py-16">
-      <div class="max-w-5xl mx-auto px-6">
+      <div class="max-w-6xl mx-auto px-6">
         <div class="max-w-3xl mx-auto mb-12 text-center">
           <h2 class="font-display font-bold text-h2 leading-[1.12] tracking-[-0.03em] my-3 text-balance">Nothing is compiled away</h2>
-          <p class="text-fg-muted text-base leading-[1.6] m-0">A first paint is only honest if what you wrote is what shipped. Here is a server action and the page that calls it, both served to the browser exactly as they sit on disk. <a class="text-fg font-medium underline underline-offset-4 decoration-border-strong hover:decoration-accent hover:text-accent transition-colors" href="https://rubyonrails.org" target="_blank" rel="noopener noreferrer">Rails${NEW_TAB}</a> has shipped its default frontend without a bundler since Rails 7 in 2021, so the approach has production miles behind it. The types cross with the import, so the page reads the action's real return type, the action reads the row type off your database schema, and nothing is generated in between.</p>
+          <p class="text-fg-muted text-base leading-[1.6] m-0">A first paint is only honest if what you wrote is what shipped. Here is a server action and the page that calls it, both served to the browser exactly as they sit on disk. Rails has shipped its default frontend without a bundler since Rails 7 in 2021, so the approach has production miles behind it. The types cross with the import, so the page reads the action's real return type, the action reads the row type off your database schema, and nothing is generated in between.</p>
         </div>
-        <div class="grid gap-6 grid-cols-1 md:grid-cols-2">
+        <div class="grid gap-6 grid-cols-1 md:grid-cols-2 max-w-5xl mx-auto">
           <div class="flex flex-col min-w-0">
             <p class="text-sm font-medium leading-[1.4] text-fg-subtle mb-2.5 ml-1">Server action (RPC)</p>
             ${codeWindow('actions/get-post.server.ts', ACTION_SAMPLE)}
@@ -602,9 +602,8 @@ caching        client-router
 <span class="text-fg-subtle">... 26 in all</span>
 
 <span class="text-accent">$</span> npm run gallery:clear
-Gallery cleared (44 paths
-removed). The skill and your
-database wiring are kept.</code></pre>
+Gallery cleared (44 paths removed).
+The skill and db wiring are kept.</code></pre>
             </figure>
           </div>
                     <div class="flex flex-col min-w-0">
@@ -614,14 +613,13 @@ database wiring are kept.</code></pre>
               <pre class="scroll-thin m-0 p-4 overflow-x-auto font-mono text-sm leading-[1.7] [tab-size:2] flex-1" role="region" tabindex="0" aria-label="The modules architecture a scaffolded app ships with"><code>modules/auth/
   actions/signup.server.ts
   queries/current-user.server.ts
-  auth.server.ts
   types.ts
 modules/forms/
   actions/send-message.server.ts
 db/schema.server.ts
-<span class="text-fg-subtle"># one feature, one folder.</span>
-<span class="text-fg-subtle"># writes in actions, reads in</span>
-<span class="text-fg-subtle"># queries, one per file.</span></code></pre>
+<span class="text-fg-subtle"># one feature, one folder. reads in</span>
+<span class="text-fg-subtle"># queries, writes in actions, one</span>
+<span class="text-fg-subtle"># function per file.</span></code></pre>
             </figure>
           </div>
           <div class="flex flex-col min-w-0">
@@ -635,10 +633,9 @@ db/schema.server.ts
 --foreground   --border
 --card         --muted
 <span class="text-accent">class="bg-background ..."</span>
-<span class="text-fg-subtle"># the component is a file</span>
-<span class="text-fg-subtle"># you own. the palette is</span>
-<span class="text-fg-subtle"># tokens, so restyling is</span>
-<span class="text-fg-subtle"># editing them.</span></code></pre>
+<span class="text-fg-subtle"># the component is a file you own.</span>
+<span class="text-fg-subtle"># the palette is tokens, so</span>
+<span class="text-fg-subtle"># restyling is editing them.</span></code></pre>
             </figure>
           </div>
                 </div>
@@ -701,7 +698,14 @@ middleware.ts</pre>
       // the first draft, and the only noun near that "it" is "one command",
       // so it briefly reads as instructing the command. The lede can use "it"
       // safely because it names the agent in the same sentence.
-      title: 'One command, then a prompt',
+      // The two spaces inside "then a prompt" are NBSPs (U+00A0), which is the
+      // whole mobile line-break fix. The title is a plain string in a text
+      // hole, so there is no markup to hang a <br> or a responsive class off,
+      // and at 390px the greedy fill broke it "One command, then a" / "prompt".
+      // Gluing the second clause makes it one unwrappable unit, so the break
+      // lands at the comma where the sense already breaks. Width-adaptive by
+      // construction: nothing wraps at all above ~430px.
+      title: 'One command, then a prompt',
       lede: 'Run the command below in your terminal, launch your AI coding agent from the app folder, and tell it what you would like to build.',
       primary: { href: DOCS_START_PATH, label: 'Get started' },
       // NOT a second docs link. This slot used to point at DOCS_PATH while the
