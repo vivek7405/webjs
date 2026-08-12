@@ -979,7 +979,22 @@ middleware.ts</pre>
       // lands at the comma where the sense already breaks. Width-adaptive by
       // construction: nothing wraps at all above ~430px.
       title: 'One command, then a prompt',
-      lede: 'Run the command below in your terminal, launch your AI coding agent from the app folder, and tell it what you would like to build.',
+      // The lede used to be the header in longhand: "Run the command below in
+      // your terminal, launch your AI coding agent from the app folder, and
+      // tell it what you would like to build" is command-then-prompt said
+      // twice, once in the H2 and once at three times the length.
+      //
+      // The one phrase carrying weight was "from the app folder", buried as an
+      // aside. It is what the two sections above just earned: the conventions
+      // live in a skill inside the app, and the framework source lives in its
+      // node_modules, so launching the agent THERE is what puts either in
+      // reach. That is now the second sentence rather than a detail about
+      // which directory you happen to be in.
+      //
+      // A hand-back to the page is allowed here and nowhere else. The
+      // stand-alone rule protects readers arriving mid-page from a search
+      // result, and nobody arrives at a closing CTA cold.
+      lede: 'Run the command below, then start your coding agent inside the new app folder. The conventions, the demos, and the framework source are already in there.',
       primary: { href: DOCS_START_PATH, label: 'Get started' },
       // NOT a second docs link. This slot used to point at DOCS_PATH while the
       // primary pointed at DOCS_START_PATH, and /docs is a 308 to
