@@ -675,7 +675,17 @@ middleware.ts</pre>
     </section>
 
     ${ctaPanel({
-      title: 'Start building with AI',
+      // "One command, then a prompt", not "Start building with AI". The old
+      // title was the seventh agent mention on the page and the only one
+      // carrying no information, and it landed right after the page's most
+      // concrete section. This one describes the two steps the lede then
+      // explains, so the install bar below reads as step one.
+      //
+      // It also avoids a dangling pronoun. "then tell it what to build" was
+      // the first draft, and the only noun near that "it" is "one command",
+      // so it briefly reads as instructing the command. The lede can use "it"
+      // safely because it names the agent in the same sentence.
+      title: 'One command, then a prompt',
       lede: 'Run the command below in your terminal, launch your AI coding agent from the app folder, and tell it what you would like to build.',
       primary: { href: DOCS_START_PATH, label: 'Get started' },
       // NOT a second docs link. This slot used to point at DOCS_PATH while the
