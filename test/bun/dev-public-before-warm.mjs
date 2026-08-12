@@ -33,12 +33,19 @@ const __dirname = dirname(fileURLToPath(import.meta.url));
 const ROOT = resolve(__dirname, '../..');
 const CLI = join(ROOT, 'packages/cli/bin/webjs.js');
 const runtime = process.versions.bun ? `bun ${process.versions.bun}` : `node ${process.versions.node}`;
-// Own base, disjoint from every other dev-server bun script (dev-reload-retry
-// 9500, dev-hot-reload 9700, dev-extra-watch 9750, dev-overlay-scope 9800).
-// The modulus separates concurrent RUNS of this file; the distinct base is what
-// separates this file from the others, since the node runner can schedule the
-// `*.test.mjs` wrappers concurrently in separate child processes.
-const PORT = 9850 + (process.pid % 140);
+// A distinct base is NOT enough on its own, which is the trap here: a base
+// only separates two files if the earlier one's modulus window stops before
+// the later one's base, and among the existing dev-server scripts it does not.
+// Their reachable RANGES are dev-reload-retry 9500-9739, dev-hot-reload
+// 9700-9949, dev-extra-watch 9750-9989 and dev-overlay-scope 9800-9979, which
+// overlap each other freely. That is pre-existing and not this file's to fix;
+// what this file can do is sit entirely ABOVE all of them. 9989 is the highest
+// port any of them reaches, so 10000-10255 cannot collide with any of the four
+// for any pair of pids. The modulus then separates concurrent RUNS of this
+// file, which is the only collision left. Both halves matter, because the node
+// runner schedules the `*.test.mjs` wrappers concurrently in separate child
+// processes with near-consecutive pids.
+const PORT = 10000 + (process.pid % 256);
 const BASE = `http://localhost:${PORT}`;
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
