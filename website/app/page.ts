@@ -999,16 +999,24 @@ middleware.ts</pre>
       // three with "are already in there" alone on the last one.
       //
       // What went: "coding" from "coding agent" (the page says "your agent"
-      // everywhere else, so this is the house term rather than a loss), the
-      // articles before demos and framework source, and "already". What stayed
-      // is "framework source": shortening it to "source" also fits, and makes
-      // it read as the app's own source, which is the opposite of the point.
+      // everywhere else, so this is the house term rather than a loss) and the
+      // articles before demos and framework source. What stayed is "framework
+      // source": shortening it to "source" also fits, and makes it read as the
+      // app's own source, which is the opposite of the point.
       //
-      // Measures 521 and 442 with 87px of total slack. Variants existed at 26px
-      // and 56px and were rejected: on a two-line fill, one substituted glyph
-      // pushes a word down, and the second line has to absorb it or the
-      // paragraph goes back to three.
-      lede: 'Run the command below, then start your agent in the new app folder. The conventions, demos, and framework source are there.',
+      // Measures 521 and 503, which is only 26px of total slack, the tightest
+      // two-line fit on the page. It is deliberate: "already" is load-bearing
+      // (nothing has to be fetched) and worth the margin. Two ways to buy room
+      // if this ever re-wraps, measured live in the element rather than a
+      // clone: dropping "The" before conventions gives 57px, dropping
+      // "already" as well gives 87px.
+      //
+      // On a two-line fill, one substituted glyph pushes a word down and the
+      // second line has to absorb it, which is how this paragraph reached three
+      // lines in the first place. So measure the ELEMENT, not a copy of it: an
+      // earlier pass measured a clone whose class list had been rewritten and
+      // read 57px here, 31px off.
+      lede: 'Run the command below, then start your agent in the new app folder. The conventions, demos, and framework source are already there.',
       primary: { href: DOCS_START_PATH, label: 'Get started' },
       // NOT a second docs link. This slot used to point at DOCS_PATH while the
       // primary pointed at DOCS_START_PATH, and /docs is a 308 to
