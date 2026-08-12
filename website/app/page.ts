@@ -299,7 +299,18 @@ export default function LandingPage() {
              breaking mid-word ("Conventions your agent f") even though the first
              sentence fits its line with 13px to spare. The max-width IS the line
              break, so greedy filling is what we want. -->
-        <h1 class="font-display font-extrabold text-[clamp(2.9rem,1.55rem+4.5vw,4.5rem)] leading-[1.02] tracking-[-0.038em] mx-auto mt-2 mb-6 max-w-[64rem]">
+        <!-- The clamp FLOOR is the thing to be careful with, not the max. It was
+             2.9rem (46.4px), which the preferred term reaches at a 476px viewport,
+             so every phone rendered the identical 46.4px and the size stopped
+             responding exactly where it mattered: 58 characters at 46.4px in a
+             342px box is 5 ragged lines and a 237px-tall headline. The floor is
+             now 1.75rem, reached only below 264px, so the size is genuinely fluid
+             across every real device. The slope was steepened to match, and the
+             cap trimmed to 4.125rem (66px), which still lands at ~1044px so the
+             desktop crossover point has not moved.
+             Re-measure line counts at 390 / 768 / 1440 before touching any of the
+             three numbers; they are chosen against the wrap points, not picked. -->
+        <h1 class="font-display font-extrabold text-[clamp(1.75rem,0.93rem+4.9vw,4.125rem)] leading-[1.02] tracking-[-0.038em] mx-auto mt-2 mb-6 max-w-[64rem]">
           Conventions your agent follows. Architecture you still own.
         </h1>
         <p class="text-lede leading-[1.55] text-fg-muted max-w-[62ch] mx-auto mb-9 text-pretty">
