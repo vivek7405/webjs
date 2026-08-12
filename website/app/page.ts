@@ -342,30 +342,53 @@ export default function LandingPage() {
         <h1 class="font-display font-extrabold text-[clamp(1.75rem,0.93rem+4.9vw,4.125rem)] leading-[1.02] tracking-[-0.038em] mx-auto mt-2 mb-6 max-w-[64rem]">
           Conventions your agent follows. Architecture you still own.
         </h1>
-        <!-- Two sentences, 18 words, cut from 45. What went and why, because
-             each cut looks like a loss until you see what pays for it below.
+        <!-- Two sentences. The second one is the PAGE'S THESIS, and it took a
+             long time to find because it is not any single section's claim.
+
+             Read the six sections as one argument and five of them are the
+             same claim about a different layer: the browser is not kept
+             waiting (first paint), a build does not stand between your file
+             and the wire (nothing compiled away), the scaffold is readable
+             rather than magic (the app has a shape), the framework itself is
+             openable (source in your project), and the same holds with no
+             frontend at all (works without a UI). The through line is that
+             nothing is concealed, at any layer. That is what the subtitle now
+             says, so every section below is evidence for it rather than a new
+             topic.
+
+             It ends on "you" deliberately. The H1's second half is about
+             ownership, and the comma before "or from you" echoes it without
+             restating it.
+
+             What came out, and why each looked like a loss until it was not:
 
              "What your agent writes reaches the browser line for line, so it
-             debugs real code and you read exactly what runs" is the claim
-             "Nothing is compiled away" makes two sections down, with two code
-             windows and a server-action boundary as evidence. A demonstrated
-             claim beats a stated one, and stating it here spends the reveal.
+             debugs real code and you read exactly what runs" is what "Nothing
+             is compiled away" proves two sections down with two code windows.
+             A demonstrated claim beats a stated one; stating it here spends
+             the reveal.
 
              "Conventions guide the first prompt to production-ready code, so
-             fewer tokens go to plumbing" said the mechanism rather than the
-             outcome, and token economy is the page's only mention of tokens.
+             fewer tokens go to plumbing" gave the mechanism rather than the
+             outcome, and token economy was the page's only mention of tokens.
              Rails leads with token efficiency and can afford to, because its
-             subtitle never has to say what Rails is. Half of this one does.
+             subtitle never has to say what Rails is. Half of this one does,
+             which is the tax an unrecognised name pays.
 
              An ownership clause was drafted twice ("everything it writes stays
-             yours to read and change") and cut twice: the H1's second half
-             already says it, and sections 4 and 5 both pay it off.
+             yours to read and change") and cut twice: the H1 says it already.
 
-             What is left is the definition, which an unknown framework cannot
-             skip, and one checkable outcome. "Starts WORKING on your feature"
-             rather than "starts on": the idiom can read as "begin at", and this
-             is the sentence a stranger reads before deciding to scroll. Both
-             wrap to two lines at 1440, so the extra word is free.
+             "Built for agents from the ground up while providing excellent DX
+             for humans" was proposed and declined: it restates the H1, "DX"
+             cannot be checked, and it sets at 923px in an 848px box.
+
+             "Your agent starts working on your feature, not the scaffolding"
+             was the last version before this one. Accurate, checkable, and
+             narrower than the page: it described the scaffold section only.
+
+             Do not elaborate this. A third sentence has been tried four times
+             and every one turned out to be some section's claim said weaker.
+             The six sections ARE the elaboration.
 
              The break after the bold sentence, the 53rem box and the 1.6rem
              cap are ONE decision solved against three constraints that pull
@@ -399,7 +422,7 @@ export default function LandingPage() {
 -->
         <p class="text-lede leading-[1.55] text-fg-muted max-w-[53rem] mx-auto mb-9 text-pretty">
           <span class="text-fg font-medium">WebJs is a full-stack web components framework with no build step.</span><br>
-          Your agent starts working on your feature, not the scaffolding.
+          Nothing is hidden from your agent, or from you.
         </p>
         <div class="flex gap-3 justify-center flex-wrap items-center">
           <a class=${BTN_PRIMARY} href=${DOCS_START_PATH}>
