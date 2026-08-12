@@ -63,9 +63,14 @@ test('dev serves the reload SharedWorker, and the client uses it with a direct E
   // The slice must end at the function's OWN closing brace, not at the
   // bootstrap that follows it: ending at `indexOf('if (typeof SharedWorker')`
   // still trails `}\ntry {`, which leaves the bootstrap's `try` inside the
-  // slice and the first assertion below vacuous again. Verified by running the
-  // counterfactual against a reconstructed client: each of the three
-  // assertions below fails with the guard removed.
+  // slice and the guard assertion vacuous again.
+  //
+  // Each assertion below was checked INDIVIDUALLY against the counterfactual,
+  // not just the file as a whole. Checking the file is what let two vacuous
+  // assertions through earlier here: the run went red on a later assertion and
+  // the earlier one was recorded as discriminating without being looked at.
+  // Removing the guard fails the `try`-present and ordering assertions;
+  // removing only the `console.error` fails the reporting one.
   const fallbackStart = clientSrc.indexOf('function __webjsDirectEvents()');
   assert.notEqual(fallbackStart, -1, 'the fallback function is in the client');
   const fallbackEnd = clientSrc.indexOf('\n}\n', fallbackStart);
@@ -79,10 +84,15 @@ test('dev serves the reload SharedWorker, and the client uses it with a direct E
   );
   assert.match(fallbackBody, /\}\s*catch\s*\(_\)/, 'and catches the throw so the relay cannot drop the tab');
   assert.match(fallbackBody, /console\.error\(/, 'and reports it rather than discarding it');
-  assert.ok(
-    fallbackBody.indexOf('try {') < fallbackBody.indexOf('__webjsReloadWhenReady()'),
-    'the guard opens BEFORE the reload call, not around something else',
-  );
+  // Both indices are asserted present FIRST. `indexOf` returns -1 for a
+  // missing needle, and -1 is less than any real index, so a bare `<`
+  // comparison passes when the guard is gone entirely, which is the one case
+  // this assertion exists for.
+  const tryAt = fallbackBody.indexOf('try {');
+  const reloadAt = fallbackBody.indexOf('__webjsReloadWhenReady()');
+  assert.notEqual(tryAt, -1, 'the guard is present at all');
+  assert.notEqual(reloadAt, -1, 'the reload call is present at all');
+  assert.ok(tryAt < reloadAt, 'the guard opens BEFORE the reload call, not around something else');
   assert.match(clientSrc, /catch\s*\(_\)\s*\{\s*__webjsDirectEvents/, 'a worker failure falls back');
   // The debounce (#1397) is part of the relay, so it ships in BOTH scripts.
   assert.match(clientSrc, /const RELOAD_QUIET_MS/, 'the reload debounce ships in the client fallback');

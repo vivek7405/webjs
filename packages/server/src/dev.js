@@ -3026,24 +3026,26 @@ function __webjsDirectEvents() {
   const scope = {};
   startReloadWorker(scope, EventSource, ${eventsUrl});
   scope.onconnect({ ports: [{ start() {}, postMessage(m) {
-    // Nothing may throw out of here. The relay's fanout deletes a port whose
-    // postMessage throws, which is the right read for a REAL MessagePort (a
-    // throw there means the tab is gone) and the wrong one for this shim,
-    // whose postMessage runs application code synchronously: an overlay
-    // render that threw would permanently unsubscribe this tab and silently
-    // kill live reload for the rest of the page's life. The old fallback
+    // Nothing may throw out of here, and nothing may be silently dropped.
+    //
+    // The relay's fanout deletes a port whose postMessage throws, which is the
+    // right read for a REAL MessagePort (a throw there means the tab is gone)
+    // and the wrong one for this shim, whose postMessage runs application code
+    // synchronously: an overlay render that threw would permanently
+    // unsubscribe this tab and silently kill live reload for the rest of the
+    // page's life. So the throw is contained here.
+    //
+    // Contained, NOT swallowed, and the difference matters. The old fallback
     // attached to the EventSource directly, where a handler throw detached
-    // nothing, so swallowing here restores that behaviour rather than adding
-    // a new one.
+    // nothing but still reached the console, and so does a throw out of the
+    // SharedWorker path's onmessage below. Only the DETACHMENT is being
+    // prevented; discarding the error would make this the one path where a
+    // dev-overlay bug leaves no trace, which would be a new behaviour rather
+    // than a restored one.
     try {
       if (m.type === 'reload') __webjsReloadWhenReady();
       else if (m.type === 'webjs-error') __webjsApplyError(m.data);
     } catch (_) {
-      // Reported, never swallowed. Detachment is the only thing being
-      // prevented: a throw out of an EventSource listener (the old shape) and
-      // out of the SharedWorker path's onmessage below both surface to the
-      // console, so discarding it here would hide dev-overlay bugs on this one
-      // path, which would be a new behaviour rather than a restored one.
       console.error('[webjs] dev reload handler threw', _);
     }
   } }] });
