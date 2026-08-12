@@ -367,13 +367,37 @@ export default function LandingPage() {
              is the sentence a stranger reads before deciding to scroll. Both
              wrap to two lines at 1440, so the extra word is free.
 
-             The break after the bold sentence is deliberate and costs nothing:
-             two lines either way at the same 64px, but 674 and 600 rather than
-             784 and 489, and the break lands on the sentence boundary instead
-             of mid-clause. The definition owns one line, the promise owns the
-             other. On a phone it is two lines each, breaking where the sentence
-             breaks rather than four lines running together. -->
-        <p class="text-lede leading-[1.55] text-fg-muted max-w-[62ch] mx-auto mb-9 text-pretty">
+             The break after the bold sentence, the 53rem box and the 1.6rem
+             cap are ONE decision solved against three constraints that pull
+             against each other. Change any of them and re-solve all three.
+
+               1. Each sentence gets its own line on a laptop. So the box must
+                  be at least as wide as the definition sets solid, or that
+                  sentence wraps and orphans its last word.
+               2. The subtitle must read narrower than the title. The title's
+                  longest line is 925px at 1280, so the definition has to come
+                  in under that with room to spare, not at 916px like it did.
+               3. On a phone the definition needs two lines, not three, which
+                  it only does at 18.4px or smaller.
+
+             1 and 2 together fix the type size, because the definition's width
+             scales with it: at 27.8px it sets at 916px (99% of the title, the
+             complaint), at 25.6px it sets at 842px (91%, which is as large as
+             it goes while still reading narrower). So 1.6rem is a ceiling
+             derived from the headline, not a taste call, and it is AT that
+             ceiling: the next step up starts reading level with the title
+             again. The box is then 53rem, the first round number above 842.
+
+             3 fixes the curve's low end. The clamp MIN is not the operative
+             term on a phone: at 390px the preferred term runs, so an earlier
+             attempt to fix this by raising the min alone changed nothing at
+             all. The slope carries it instead.
+
+             Measured 18.5 / 21.5 / 25.6 / 25.6px at 390 / 768 / 1280 / 1440, with
+             the definition on 2 / 1 / 1 / 1 lines and the install bar above
+             the fold on a 390x844 phone at 547 of 844.
+-->
+        <p class="text-lede leading-[1.55] text-fg-muted max-w-[53rem] mx-auto mb-9 text-pretty">
           <span class="text-fg font-medium">WebJs is a full-stack web components framework with no build step.</span><br>
           Your agent starts working on your feature, not the scaffolding.
         </p>

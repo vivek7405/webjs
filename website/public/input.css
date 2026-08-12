@@ -98,7 +98,7 @@
      Shared with /what-is-webjs, /why-webjs and /brand, whose ledes are longer
      and therefore feel a raise more: /why-webjs runs to 7 lines at 768px.
      Check those three, not just the landing page, after any change here. */
-  --text-lede:    clamp(1.3rem, 1.1rem + 0.8vw, 1.8rem);
+  --text-lede:    clamp(1.1rem, 0.96rem + 0.8vw, 1.6rem);
 
   /* Documentation-page type scale. The docs run a tighter heading rhythm than
      the marketing pages (a reference page wants a calm h1, not a hero), so
