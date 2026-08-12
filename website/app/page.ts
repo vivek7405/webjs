@@ -635,7 +635,7 @@ export default function LandingPage() {
           <div class="${CARD}">
             <div class="mb-6">
               <h3 class="font-display font-bold text-base leading-[1.3] tracking-[-0.02em] mt-0 mb-2">Auth is not a side quest</h3>
-              <p class="m-0 text-sm leading-[1.6] text-fg-muted">Login, a signed session, and a protected route ship in the scaffold, on a real database with a schema and migrations from the first command. Caching, page caching, and rate limits share one store. It runs in memory by default, and one line moves all three to Redis.</p>
+              <p class="m-0 text-sm leading-[1.6] text-fg-muted">Login, a signed session, and a protected route ship in the scaffold, on a real database with a schema and migrations from the first command.</p>
             </div>
             <div class="bg-[var(--editor-sidebar-bg)] border border-[var(--editor-border)] rounded-xl p-2.5 flex flex-col gap-1.5 font-mono text-xs text-[var(--editor-fg)] select-none">
               <div class="flex justify-between items-center px-2 py-1 bg-[var(--editor-bg)] border border-[var(--editor-border)] rounded"><span>Login &amp; sessions</span> <span class="text-[var(--accent-text)]">&check;</span></div>
@@ -646,7 +646,7 @@ export default function LandingPage() {
           <div class="${CARD}">
             <div class="mb-6">
               <h3 class="font-display font-bold text-base leading-[1.3] tracking-[-0.02em] mt-0 mb-2">The unglamorous half, included</h3>
-              <p class="m-0 text-sm leading-[1.6] text-fg-muted">Caching, rate limiting, file storage, and WebSockets, sharing one pluggable store. The parts nobody demos and every production app needs.</p>
+              <p class="m-0 text-sm leading-[1.6] text-fg-muted">Caching, rate limiting, file storage, and WebSockets, sharing one pluggable store. Memory by default, Redis in one line. The parts nobody demos and every production app needs.</p>
             </div>
             <div class="bg-[var(--editor-sidebar-bg)] border border-[var(--editor-border)] rounded-xl p-3.5 flex flex-wrap gap-1.5 justify-center select-none text-[var(--editor-fg)]">
               <span class="px-2 py-1 bg-[var(--editor-bg)] border border-[var(--editor-border)] text-fg-subtle text-xs font-mono rounded">Caching</span>
