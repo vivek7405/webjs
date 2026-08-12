@@ -41,10 +41,12 @@ const runtime = process.versions.bun ? `bun ${process.versions.bun}` : `node ${p
 // overlap each other freely. That is pre-existing and not this file's to fix;
 // what this file can do is sit entirely ABOVE all of them. 9989 is the highest
 // port any of them reaches, so 10000-10255 cannot collide with any of the four
-// for any pair of pids. The modulus then separates concurrent RUNS of this
-// file, which is the only collision left. Both halves matter, because the node
-// runner schedules the `*.test.mjs` wrappers concurrently in separate child
-// processes with near-consecutive pids.
+// for any pair of pids. The per-pid offset is NOT doing that work and should
+// not be credited with it: the node and bun runs are sequential steps and each
+// runner runs a given file once, so nothing here races for a port. It is only
+// defensive against a leftover socket from a prior run lingering in TIME_WAIT,
+// which is the same account `dev-hot-reload.mjs` gives of the identical
+// `base + pid % n` construct.
 const PORT = 10000 + (process.pid % 256);
 const BASE = `http://localhost:${PORT}`;
 
