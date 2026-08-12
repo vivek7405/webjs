@@ -739,9 +739,7 @@ export async function createRequestHandler(opts) {
   // eagerly: it is a cheap directory scan (no code reads), and routing, Early
   // Hints, and WebSocket lookups need it available before the first request.
   const routeTable = await buildRouteTable(appDir);
-  // instrumentation-client.{js,ts} (#848) is an app-ROOT file (sibling of app/,
-  // like env.js / readiness.js), not a router stem. `buildRouteTable` resolves it
-  // onto the table so ssrOpts + the browser-servable gate reach it uniformly.
+
   // Auto-linked favicons: tell the head builder which icon metadata routes
   // exist, so `app/icon.*` is linked when the app declares no metadata.icons.
   // Bound here rather than threaded through ssrOpts, matching
