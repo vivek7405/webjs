@@ -83,7 +83,7 @@ export const metadata = {
 //   first paint       the server sends a finished page, and only the
 //                     interactive parts load after it
 //   nothing           the editor file and the network-tab file are one file,
-//   compiled away     so here are two of them served as they sit on disk
+//   compiled away     and the action beside it never ships at all
 //   browser is the    everything here falls out of that one decision
 //   framework
 //   the app has a     the demos teach, the clear removes them, the shape
@@ -438,7 +438,17 @@ export default function LandingPage() {
       <div class="max-w-6xl mx-auto px-6">
         <div class="max-w-3xl mx-auto mb-12 text-center">
           <h2 class="font-display font-bold text-h2 leading-[1.12] tracking-[-0.03em] my-3 text-balance">Nothing is compiled away</h2>
-          <p class="text-fg-muted text-base leading-[1.6] m-0">The file in your editor and the file in the network tab are the same file. Here is a server action and the page that calls it, both served to the browser exactly as they sit on disk. Rails has shipped its default frontend without a bundler since Rails 7 in 2021, so the approach has production miles behind it. The types cross with the import, so the page reads the action's real return type, the action reads the row type off your database schema, and nothing is generated in between.</p>
+          <!-- The two windows below are NOT the same kind of file, and the lede
+               must not say they are. It read "both served to the browser exactly
+               as they sit on disk", which denies invariant 1: the action is a
+               'use server' .server.ts, so it NEVER reaches the browser, and its
+               import is rewritten to an RPC stub. The page does ship, with its
+               types blanked to whitespace, so it is identical line for line and
+               column for column rather than byte for byte. Saying so is also the
+               better story, since the boundary is more interesting than the
+               sameness. Check both windows against this sentence before editing
+               either: the sample files decide what the sentence may claim. -->
+          <p class="text-fg-muted text-base leading-[1.6] m-0">The file in your editor and the file in the network tab are the same file. Here is a server action and the page that calls it. The page ships as you see it. The action never ships at all, and its import becomes a typed RPC call. Rails has shipped its default frontend without a bundler since Rails 7 in 2021, so the approach has production miles behind it. The types cross with the import, so the page reads the action's real return type, the action reads the row type off your database schema, and nothing is generated in between.</p>
         </div>
         <div class="grid gap-6 grid-cols-1 md:grid-cols-2 max-w-5xl mx-auto">
           <div class="flex flex-col min-w-0">
