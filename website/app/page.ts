@@ -578,48 +578,57 @@ export default function LandingPage() {
              (No backticks in here, per invariant 9: a backtick inside an html
              template body closes the literal at JS-parse time, comment or not.
              This comment had two and took the page down until tsc caught it.) -->
-        <div class="grid grid-cols-1 mid:grid-cols-2 gap-px overflow-hidden rounded-2xl border border-border bg-border shadow-[var(--shadow-sm)]">
-          <div class="p-6 bg-bg-elev hover:bg-[color-mix(in_oklch,var(--bg-elev)_92%,var(--fg))] transition-colors duration-200 flex flex-col h-full">
-            <h3 class="font-display font-bold text-base leading-[1.3] tracking-[-0.02em] mt-0 mb-4 pl-1">What arrives</h3>
-            <pre class="scroll-thin m-0 px-5 py-4 overflow-x-auto rounded-xl border border-[var(--editor-border)] bg-[var(--editor-sidebar-bg)] font-mono text-xs leading-[1.7] [tab-size:2] flex-1" role="region" tabindex="0" aria-label="The feature gallery a scaffolded app ships with"><code><span class="text-accent">$</span> npm create webjs@latest my-app
+        <div class="grid gap-4 grid-cols-1 wide:grid-cols-3 items-stretch">
+          <div class="flex flex-col min-w-0">
+            <p class="text-sm font-medium leading-[1.4] text-fg-subtle mb-2.5 ml-1">What arrives, and what leaves</p>
+            <figure class=${WIN}>
+              <figcaption class=${WINBAR}>${DOTS}<span class=${WINNAME}>terminal</span></figcaption>
+              <pre class="scroll-thin m-0 p-4 overflow-x-auto font-mono text-sm leading-[1.7] [tab-size:2] flex-1" role="region" tabindex="0" aria-label="The feature gallery a scaffolded app ships with"><code><span class="text-accent">$</span> npm create webjs@latest my-app
 <span class="text-accent">$</span> ls my-app/app/features
-async-render    auth             boundaries    broadcast
-caching         client-router    components    directives
-env             file-storage     forms         frames
+async-render   boundaries
+auth           broadcast
+caching        client-router
 <span class="text-fg-subtle">... 26 in all</span>
-<span class="text-fg-subtle"># a working demo of every feature WebJs ships,</span>
-<span class="text-fg-subtle"># in the repo your agent already has open.</span></code></pre>
+
+<span class="text-accent">$</span> npm run gallery:clear
+Gallery cleared (44 paths
+removed). The skill and your
+database wiring are kept.</code></pre>
+            </figure>
           </div>
-          <div class="p-6 bg-bg-elev hover:bg-[color-mix(in_oklch,var(--bg-elev)_92%,var(--fg))] transition-colors duration-200 flex flex-col h-full">
-            <h3 class="font-display font-bold text-base leading-[1.3] tracking-[-0.02em] mt-0 mb-4 pl-1">What is left</h3>
-            <pre class="scroll-thin m-0 px-5 py-4 overflow-x-auto rounded-xl border border-[var(--editor-border)] bg-[var(--editor-sidebar-bg)] font-mono text-xs leading-[1.7] [tab-size:2] flex-1" role="region" tabindex="0" aria-label="Clearing the gallery with npm run gallery clear"><code><span class="text-accent">$</span> npm run gallery:clear
-Gallery cleared (44 paths removed).
-The agent skill and your database wiring are kept.
-<span class="text-fg-subtle"># app/ is layout.ts and page.ts now. the demos</span>
-<span class="text-fg-subtle"># are gone. what your agent learned from them</span>
-<span class="text-fg-subtle"># is not.</span></code></pre>
-          </div>
-          <div class="p-6 bg-bg-elev hover:bg-[color-mix(in_oklch,var(--bg-elev)_92%,var(--fg))] transition-colors duration-200 flex flex-col h-full">
-            <h3 class="font-display font-bold text-base leading-[1.3] tracking-[-0.02em] mt-0 mb-4 pl-1">Where the code goes</h3>
-            <pre class="scroll-thin m-0 px-5 py-4 overflow-x-auto rounded-xl border border-[var(--editor-border)] bg-[var(--editor-sidebar-bg)] font-mono text-xs leading-[1.7] [tab-size:2] flex-1" role="region" tabindex="0" aria-label="The modules architecture a scaffolded app ships with"><code>modules/auth/
+                    <div class="flex flex-col min-w-0">
+            <p class="text-sm font-medium leading-[1.4] text-fg-subtle mb-2.5 ml-1">Where the code goes</p>
+            <figure class=${WIN}>
+              <figcaption class=${WINBAR}>${DOTS}<span class=${WINNAME}>modules/</span></figcaption>
+              <pre class="scroll-thin m-0 p-4 overflow-x-auto font-mono text-sm leading-[1.7] [tab-size:2] flex-1" role="region" tabindex="0" aria-label="The modules architecture a scaffolded app ships with"><code>modules/auth/
   actions/signup.server.ts
   queries/current-user.server.ts
+  auth.server.ts
   types.ts
+modules/forms/
+  actions/send-message.server.ts
 db/schema.server.ts
-<span class="text-fg-subtle"># one feature, one folder. writes live in</span>
-<span class="text-fg-subtle"># actions, reads in queries, one function per</span>
-<span class="text-fg-subtle"># file.</span></code></pre>
+<span class="text-fg-subtle"># one feature, one folder.</span>
+<span class="text-fg-subtle"># writes in actions, reads in</span>
+<span class="text-fg-subtle"># queries, one per file.</span></code></pre>
+            </figure>
           </div>
-          <div class="p-6 bg-bg-elev hover:bg-[color-mix(in_oklch,var(--bg-elev)_92%,var(--fg))] transition-colors duration-200 flex flex-col h-full">
-            <h3 class="font-display font-bold text-base leading-[1.3] tracking-[-0.02em] mt-0 mb-4 pl-1">How the UI is built</h3>
-            <pre class="scroll-thin m-0 px-5 py-4 overflow-x-auto rounded-xl border border-[var(--editor-border)] bg-[var(--editor-sidebar-bg)] font-mono text-xs leading-[1.7] [tab-size:2] flex-1" role="region" tabindex="0" aria-label="Installing a kit component and the design tokens that theme it"><code><span class="text-accent">$</span> webjs ui add button
+          <div class="flex flex-col min-w-0">
+            <p class="text-sm font-medium leading-[1.4] text-fg-subtle mb-2.5 ml-1">How the UI is built</p>
+            <figure class=${WIN}>
+              <figcaption class=${WINBAR}>${DOTS}<span class=${WINNAME}>design system</span></figcaption>
+              <pre class="scroll-thin m-0 p-4 overflow-x-auto font-mono text-sm leading-[1.7] [tab-size:2] flex-1" role="region" tabindex="0" aria-label="Installing a kit component and the design tokens that theme it"><code><span class="text-accent">$</span> webjs ui add button
 <span class="text-accent">✔</span> Wrote components/ui/button.ts
 
---background  --card    --primary   --border
---foreground  --muted   --accent    --input
-<span class="text-accent">class="bg-background text-foreground"</span>
-<span class="text-fg-subtle"># the component is a file you own. the palette</span>
-<span class="text-fg-subtle"># is tokens, so restyling means editing them.</span></code></pre>
+--background   --primary
+--foreground   --border
+--card         --muted
+<span class="text-accent">class="bg-background ..."</span>
+<span class="text-fg-subtle"># the component is a file</span>
+<span class="text-fg-subtle"># you own. the palette is</span>
+<span class="text-fg-subtle"># tokens, so restyling is</span>
+<span class="text-fg-subtle"># editing them.</span></code></pre>
+            </figure>
           </div>
                 </div>
       </div>
