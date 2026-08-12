@@ -638,12 +638,24 @@ export default function LandingPage() {
              deliberate choice. Both halves are accurate: routing is the Next.js
              app/ tree, and the component API matches lit with reactive
              properties as the one documented divergence, which is why this says
-             "as little as possible" rather than "nothing". -->
+             "as little as possible" rather than "nothing".
+
+             Kept to TWO lines at max-w-3xl on a laptop, which is what the length
+             is tuned to. It was three, with "what your agent was trained on"
+             orphaned on the last one. The text sets solid at 1728px against a
+             768px box, so two lines want 864px each and roughly 30 characters
+             had to go: "the Next.js file conventions" lost its article,
+             "everything under them is the platform" became "the rest is the
+             platform", and the two transfer clauses merged into one. Measures
+             751 and 729 with 39px of tail slack. A tighter phrasing was
+             available at 751/749 and rejected, since 19px is one font
+             substitution away from wrapping again. Re-measure before changing a
+             word here. -->
+
         <p class="mt-4 mx-auto max-w-3xl text-center text-base leading-[1.6] text-fg-muted">
-          WebJs invents as little as possible. Routing follows the Next.js file
-          conventions, components follow lit's, and everything under them is the
-          platform, so what you already know transfers, and so does what your
-          agent was trained on.
+          WebJs invents as little as possible. Routing follows Next.js file
+          conventions, components follow lit's, and the rest is the platform, so
+          what you know and what your agent was trained on both transfer.
         </p>
       </div>
     </section>
