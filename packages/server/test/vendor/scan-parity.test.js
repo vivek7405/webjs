@@ -10,6 +10,7 @@ import { browserEntryFiles } from '../../src/browser-entries.js';
 import { scanComponents } from '../../src/component-scanner.js';
 import { buildRouteTable } from '../../src/router.js';
 import { analyzeElision } from '../../src/component-elision.js';
+import { findInstrumentationClient } from '../../src/instrumentation.js';
 
 /**
  * The pin/runtime parity invariant (#197, #446), asserted directly rather than
@@ -49,6 +50,10 @@ async function runtimeScan(dir) {
   const graph = await buildModuleGraph(dir);
   const components = await scanComponents(dir);
   const routeTable = await buildRouteTable(dir);
+  // dev.js attaches this separately (buildRouteTable does not discover it), so
+  // the runtime side of the comparison has to as well or the test would not see
+  // the entry the pin side is being checked against.
+  routeTable.instrumentationClient = await findInstrumentationClient(dir);
   const routeModules = new Set();
   for (const page of routeTable.pages || []) {
     if (page.file) routeModules.add(page.file);
@@ -81,6 +86,12 @@ test('the runtime vendor set is a subset of the pin set, and a build script is i
       Badge.register('x-badge');`,
     // Unreachable from any browser entry: the #1399 repro.
     'scripts/build.mjs': `import { chromium } from 'playwright';\nexport const c = chromium;`,
+    // A browser entry `buildRouteTable` does NOT discover: dev.js attaches it
+    // separately, so the pin path has to as well. Its vendor is the shape that
+    // breaks the subset relation if the pin path misses the entry, and a pinned
+    // app would then serve no importmap entry for the first module its boot
+    // imports.
+    'instrumentation-client.ts': `import * as a from 'analytics-sdk';\na.init();`,
   });
 
   const pin = await scanBareImports(dir);
@@ -89,6 +100,8 @@ test('the runtime vendor set is a subset of the pin set, and a build script is i
   assert.ok([...runtime].every((s) => pin.has(s)),
     `runtime must be a subset of pin; runtime=${JSON.stringify([...runtime])} pin=${JSON.stringify([...pin])}`);
   assert.ok(pin.has('zod') && runtime.has('zod'), 'a shipping vendor is in both');
+  assert.ok(pin.has('analytics-sdk') && runtime.has('analytics-sdk'),
+    'instrumentation-client is a browser entry on BOTH sides');
   assert.ok(pin.has('dayjs'), 'the pin superset keeps an elided-only vendor');
   assert.ok(!runtime.has('dayjs'), 'the runtime set drops an elided-only vendor');
   assert.ok(!pin.has('playwright') && !runtime.has('playwright'),

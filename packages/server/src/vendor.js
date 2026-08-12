@@ -51,6 +51,7 @@ import { buildModuleGraph, reachableBareSpecifiers } from './module-graph.js';
 import { browserEntryFiles } from './browser-entries.js';
 import { scanComponents } from './component-scanner.js';
 import { buildRouteTable } from './router.js';
+import { findInstrumentationClient } from './instrumentation.js';
 
 /**
  * Set of package names whose importmap entries are populated by the
@@ -124,6 +125,14 @@ export async function scanBareImports(appDir) {
     graph = await buildModuleGraph(appDir);
     components = await scanComponents(appDir);
     routeTable = await buildRouteTable(appDir);
+    // `buildRouteTable` does NOT discover `instrumentation-client.*`; dev.js
+    // attaches it separately at boot and on every rebuild. Do the same here, or
+    // the pin path silently loses a browser entry the runtime path has, and a
+    // vendor imported only by instrumentation-client (an APM / analytics SDK,
+    // the documented purpose of the file) would be resolved live but written
+    // into no pin. `prunePinToReachable` can only SHRINK a pin, so the pinned
+    // app would then serve no entry for the first module its boot imports.
+    routeTable.instrumentationClient = await findInstrumentationClient(appDir);
   } catch {
     // An app the analysis cannot process yields no vendor specifiers rather
     // than a throw, matching how check.js and elision-report.js degrade. The

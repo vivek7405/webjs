@@ -5,8 +5,9 @@
  *
  * Why this exists. The `differential elision (#181)` block runs the blog twice
  * and asserts the two builds render identically. Elision ON drops
- * `components/vendor-badge.ts`, the blog's only vendor consumer, so
- * `scanBareImports` finds nothing, `api.jspm.io` is never called, `dayjs`
+ * `components/vendor-badge.ts`, the blog's only vendor consumer, so the dev
+ * server's vendor scan (`reachedBareImports`, which prunes the elision skip set
+ * out of the graph walk) finds nothing, `api.jspm.io` is never called, `dayjs`
  * never enters the importmap, and the browser never contacts a third party.
  * That is the #170 property and another test asserts it. Elision OFF ships
  * that component, so the same page picks up two internet dependencies the ON

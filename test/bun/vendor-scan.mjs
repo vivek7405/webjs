@@ -35,6 +35,7 @@ import { browserEntryFiles } from '../../packages/server/src/browser-entries.js'
 import { scanComponents } from '../../packages/server/src/component-scanner.js';
 import { buildRouteTable } from '../../packages/server/src/router.js';
 import { analyzeElision } from '../../packages/server/src/component-elision.js';
+import { findInstrumentationClient } from '../../packages/server/src/instrumentation.js';
 
 const runtime = process.versions.bun ? `bun ${process.versions.bun}` : `node ${process.versions.node}`;
 const dir = mkdtempSync(join(tmpdir(), 'webjs-vendor-scan-x-'));
@@ -71,6 +72,9 @@ Badge.register('my-badge');
   write('lib/db.server.js', "import pg from 'pg';\nexport const db = pg;");
   // Unreachable from any browser entry: the literal #1399 repro.
   write('scripts/generate-og.mjs', "import { chromium } from 'playwright';\nexport const c = chromium;");
+  // A browser entry `buildRouteTable` does not discover (dev.js attaches it
+  // separately), so both sides have to attach it or the subset relation breaks.
+  write('instrumentation-client.js', "import * as a from 'analytics-sdk';\na.init();");
   // A docs code sample in a template literal. The old comment-only scanner
   // could not tell it from a real import.
   write('app/page.js', `
@@ -87,6 +91,7 @@ export default () => html\`<my-counter></my-counter><my-badge></my-badge>\`;
   const graph = await buildModuleGraph(dir);
   const components = await scanComponents(dir);
   const routeTable = await buildRouteTable(dir);
+  routeTable.instrumentationClient = await findInstrumentationClient(dir);
   const routeModules = new Set();
   for (const page of routeTable.pages || []) {
     if (page.file) routeModules.add(page.file);
@@ -96,10 +101,11 @@ export default () => html\`<my-counter></my-counter><my-badge></my-badge>\`;
   const skip = new Set([...r.elidableComponents, ...r.inertRouteModules, ...r.importOnlyRouteModules.keys()]);
   const rt = [...reachedBareImports(graph, [...browserEntryFiles(routeTable, components)], dir, skip)].sort();
 
-  assert.deepEqual(pin, ['dayjs', 'zod'],
-    'pin side: reachable vendors with no elision pruning, so the elided badge keeps dayjs; '
-    + 'pg is behind a server boundary and playwright / drizzle-orm were never edges');
-  assert.deepEqual(rt, ['zod'],
+  assert.deepEqual(pin, ['analytics-sdk', 'dayjs', 'zod'],
+    'pin side: reachable vendors with no elision pruning, so the elided badge keeps dayjs and '
+    + 'instrumentation-client keeps analytics-sdk; pg is behind a server boundary and '
+    + 'playwright / drizzle-orm were never edges');
+  assert.deepEqual(rt, ['analytics-sdk', 'zod'],
     'runtime side: the same roots, pruned of the elided component and the subtree behind it');
   assert.ok(rt.every((s) => pin.includes(s)),
     'the runtime set must stay a subset of the pin set (#197 relies on it)');

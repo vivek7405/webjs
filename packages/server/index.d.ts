@@ -336,7 +336,12 @@ export declare function setVendorEntries(
 // vendor.js (the `webjs vendor` CLI surface)
 // ---------------------------------------------------------------------------
 
-/** Scan a directory's source for bare-specifier npm imports. */
+/**
+ * Bare-specifier npm imports an app could load in the browser, found by walking
+ * the module graph from every browser-bound entry rather than by scanning the
+ * directory. Applies no elision pruning, so the result is a superset of what the
+ * running server serves.
+ */
 export declare function scanBareImports(dir: string): Promise<Set<string>>;
 /** Extract the package name from an import specifier (`dayjs/plugin/utc` -> `dayjs`). */
 export declare function extractPackageName(spec: string): string | null;
