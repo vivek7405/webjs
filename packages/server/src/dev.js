@@ -32,7 +32,7 @@ import { stripTypeScript, ensureStripper } from './ts-strip.js';
 import { defaultLogger } from './logger.js';
 import { assertNodeVersion } from './node-version.js';
 import { applyEnvValidation } from './env-schema.js';
-import { runInstrumentation, findInstrumentationClient } from './instrumentation.js';
+import { runInstrumentation } from './instrumentation.js';
 import { withRequest, setCspNonce, setBodyLimits, setRequestId, requestId as getRequestId } from './context.js';
 import { buildInfoResponse } from './build-info.js';
 import { readCspConfig, mintNonce, buildCspHeader, cspHeaderName } from './csp.js';
@@ -740,9 +740,8 @@ export async function createRequestHandler(opts) {
   // Hints, and WebSocket lookups need it available before the first request.
   const routeTable = await buildRouteTable(appDir);
   // instrumentation-client.{js,ts} (#848) is an app-ROOT file (sibling of app/,
-  // like env.js / readiness.js), not a router stem. Resolve it once and stash it
-  // on the route table so ssrOpts + the browser-servable gate reach it uniformly.
-  routeTable.instrumentationClient = await findInstrumentationClient(appDir);
+  // like env.js / readiness.js), not a router stem. `buildRouteTable` resolves it
+  // onto the table so ssrOpts + the browser-servable gate reach it uniformly.
   // Auto-linked favicons: tell the head builder which icon metadata routes
   // exist, so `app/icon.*` is linked when the app declares no metadata.icons.
   // Bound here rather than threaded through ssrOpts, matching
@@ -1221,7 +1220,6 @@ export async function createRequestHandler(opts) {
     // The route table is the only eager artifact (cheap directory scan); rebuild
     // it so routing reflects added/removed route files immediately.
     state.routeTable = await buildRouteTable(appDir);
-    state.routeTable.instrumentationClient = await findInstrumentationClient(appDir);
     // Adding or deleting app/icon.* changes whether the head auto-links it.
     setMetadataIconRoutes(state.routeTable.metadataRoutes);
     // Refresh the generated route types (#258) so adding/removing a route file

@@ -1,5 +1,6 @@
 import { join, relative, sep, posix } from 'node:path';
 import { walk } from './fs-walk.js';
+import { findInstrumentationClient } from './instrumentation.js';
 
 /**
  * @typedef {{
@@ -35,6 +36,7 @@ import { walk } from './fs-walk.js';
  *   globalError: string | null,
  *   globalNotFound: string | null,
  *   metadataRoutes: MetadataRoute[],
+ *   instrumentationClient: string | null,
  *   appDir: string
  * }} RouteTable
  */
@@ -185,7 +187,15 @@ export async function buildRouteTable(appDir) {
   }
 
   pages.sort(compareSpecificity);
-  return { pages, apis, notFound, notFounds, globalError, globalNotFound, metadataRoutes, appDir };
+  // `instrumentation-client.*` is an app-ROOT convention file, not a router
+  // stem, but it is a browser-bound entry (the boot imports it first), so the
+  // table is where every consumer already looks for one. Resolved HERE rather
+  // than by each caller: it used to be attached by the dev server alone, and a
+  // second consumer that built its own table (the vendor scan) silently lost
+  // the entry, which inverted the pin-is-a-superset invariant. Deriving it in
+  // the one place that builds the table makes that class of miss impossible.
+  const instrumentationClient = await findInstrumentationClient(appDir);
+  return { pages, apis, notFound, notFounds, globalError, globalNotFound, metadataRoutes, instrumentationClient, appDir };
 }
 
 /**

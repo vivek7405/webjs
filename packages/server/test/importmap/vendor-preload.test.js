@@ -436,3 +436,41 @@ test('vendorPreloadTargets still excludes core: the hint comes from the head bui
   // fingerprinted deploy and core double-fetches.
   assert.deepEqual(vendorPreloadTargets(['@webjsdev/core', '@webjsdev/core/lazy-loader']), []);
 });
+
+/* ---------------- the served importmap, through the real server ---------------- */
+
+test('a vendor imported only by instrumentation-client survives the pin prune (real runtime path)', async () => {
+  // `instrumentation-client.*` is an app-ROOT convention file, not a router
+  // stem, so it reaches the browser-bound entry set only because
+  // `buildRouteTable` resolves it onto the table. When the dev server alone
+  // attached it, the vendor scan (which builds its own table) lost the entry.
+  //
+  // A pinned app is where that becomes user-visible: `prunePinToReachable`
+  // intersects the committed pin with the runtime's reachable set, and it can
+  // only SHRINK, so an entry the scan cannot see is dropped from the served
+  // map. The boot imports instrumentation-client FIRST, so the browser then
+  // hits an unresolved bare specifier before anything else runs.
+  //
+  // This boots a real handler and reads the importmap off the served HTML, so
+  // it exercises dev.js's own scan closure rather than a hand-rebuilt
+  // stand-in: it fails if any link in the real runtime path stops carrying the
+  // entry, not only if the one line a mirror copies goes missing.
+  const appDir = makeApp({
+    pin: { imports: { dayjs: DAYJS_URL }, integrity: { [DAYJS_URL]: DAYJS_INTEGRITY } },
+  });
+  writeFileSync(
+    join(appDir, 'instrumentation-client.js'),
+    `import dayjs from 'dayjs';\nglobalThis.__booted = typeof dayjs;\n`,
+  );
+  writeFileSync(
+    join(appDir, 'app', 'page.js'),
+    `import { html } from ${JSON.stringify(HTML_URL)};\n` +
+    `export default () => html\`<main>hi</main>\`;\n`,
+  );
+  const app = await createRequestHandler({ appDir, dev: false });
+  await app.warmup();
+  const html = await (await app.handle(new Request('http://x/'))).text();
+  assert.equal(importmapTarget(html, 'dayjs'), DAYJS_URL,
+    'the pin prune must keep a vendor reachable only from instrumentation-client');
+  await setCoreInstall(CORE_DIR, true);
+});

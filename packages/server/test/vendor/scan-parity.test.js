@@ -10,7 +10,6 @@ import { browserEntryFiles } from '../../src/browser-entries.js';
 import { scanComponents } from '../../src/component-scanner.js';
 import { buildRouteTable } from '../../src/router.js';
 import { analyzeElision } from '../../src/component-elision.js';
-import { findInstrumentationClient } from '../../src/instrumentation.js';
 
 /**
  * The pin/runtime parity invariant (#197, #446), asserted directly rather than
@@ -50,10 +49,6 @@ async function runtimeScan(dir) {
   const graph = await buildModuleGraph(dir);
   const components = await scanComponents(dir);
   const routeTable = await buildRouteTable(dir);
-  // dev.js attaches this separately (buildRouteTable does not discover it), so
-  // the runtime side of the comparison has to as well or the test would not see
-  // the entry the pin side is being checked against.
-  routeTable.instrumentationClient = await findInstrumentationClient(dir);
   const routeModules = new Set();
   for (const page of routeTable.pages || []) {
     if (page.file) routeModules.add(page.file);

@@ -35,7 +35,6 @@ import { browserEntryFiles } from '../../packages/server/src/browser-entries.js'
 import { scanComponents } from '../../packages/server/src/component-scanner.js';
 import { buildRouteTable } from '../../packages/server/src/router.js';
 import { analyzeElision } from '../../packages/server/src/component-elision.js';
-import { findInstrumentationClient } from '../../packages/server/src/instrumentation.js';
 
 const runtime = process.versions.bun ? `bun ${process.versions.bun}` : `node ${process.versions.node}`;
 const dir = mkdtempSync(join(tmpdir(), 'webjs-vendor-scan-x-'));
@@ -91,7 +90,6 @@ export default () => html\`<my-counter></my-counter><my-badge></my-badge>\`;
   const graph = await buildModuleGraph(dir);
   const components = await scanComponents(dir);
   const routeTable = await buildRouteTable(dir);
-  routeTable.instrumentationClient = await findInstrumentationClient(dir);
   const routeModules = new Set();
   for (const page of routeTable.pages || []) {
     if (page.file) routeModules.add(page.file);

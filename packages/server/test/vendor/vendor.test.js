@@ -882,6 +882,36 @@ test('pinAll default: writes importmap.json with jspm.io URLs', async () => {
   }
 });
 
+test('pinAll: a vendor imported only by instrumentation-client is pinned (real pin path)', async () => {
+  // `instrumentation-client.*` is an app-ROOT convention file, not a router
+  // stem, so it reaches the entry set only because `buildRouteTable` resolves
+  // it onto the table. It used to be attached by the dev server ALONE, so the
+  // vendor scan, which builds its own table, lost the entry: the specifier
+  // resolved live on an unpinned app and was pinned on none. Since
+  // `prunePinToReachable` can only SHRINK a pin, the pinned app then served an
+  // importmap with no entry for the first module its boot imports.
+  //
+  // This drives `pinAll` itself rather than a hand-rebuilt stand-in, so it
+  // fails if ANY link in the real pin path stops carrying the entry, not only
+  // if the one line a mirror happens to copy goes missing.
+  const dir = await makeTempAppWithSource({
+    'app/page.ts': `export default function Page() { return null; }`,
+    'instrumentation-client.ts': `import pico from 'picocolors';\npico.red('boot');`,
+  });
+  try {
+    await withJspmDouble({}, async () => {
+      const result = await pinAll(dir);
+      assert.ok(!result.failed, 'pin should not be flagged failed');
+      const file = await readPinFile(dir);
+      assert.ok(file, 'pin file should exist');
+      assert.match(file.imports['picocolors'], /^https:\/\/ga\.jspm\.io\/npm:picocolors@/,
+        'a vendor reachable ONLY from instrumentation-client must be pinned');
+    });
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
 test('pinAll: a flattened transitive is pinned with a derivable bundle name (#446)', async () => {
   // The unified resolve hoists a transitive to top level, and `pinAll` has to
   // pin it even though it was never a directly scanned install: without it a
