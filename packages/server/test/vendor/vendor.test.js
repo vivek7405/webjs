@@ -7,6 +7,7 @@ import { tmpdir } from 'node:os';
 import {
   extractPackageName,
   scanBareImports,
+  reachedBareImports,
   vendorImportMapEntries,
   getPackageVersion,
   jspmGenerate,
@@ -23,6 +24,10 @@ import {
   findOutdated,
   updatePinned,
 } from '../../src/vendor.js';
+import { buildModuleGraph } from '../../src/module-graph.js';
+import { browserEntryFiles } from '../../src/browser-entries.js';
+import { scanComponents } from '../../src/component-scanner.js';
+import { buildRouteTable } from '../../src/router.js';
 import { withJspmDouble } from '../../../../test/fixtures/jspm-double.mjs';
 
 // --- extractPackageName ---
@@ -70,107 +75,72 @@ test('extractPackageName: lone @scope with no package name returns null', () => 
 });
 
 // --- scanBareImports ---
+//
+// The scan is rooted in the module graph (#1399), so every fixture below is a
+// real minimal app: a `package.json`, an `app/page.ts` the route table finds,
+// and whatever the page reaches from there. A loose file in a bare temp dir is
+// unreachable by construction and contributes nothing, which is the point.
+
+/**
+ * Write a minimal app under a fresh temp dir. Keys are app-relative paths.
+ * A `package.json` is supplied unless the fixture writes its own.
+ */
+async function makeVendorApp(slug, files) {
+  const dir = join(tmpdir(), `webjs-test-vendor-${slug}-${Date.now()}`);
+  await mkdir(dir, { recursive: true });
+  if (!files['package.json']) {
+    await writeFile(join(dir, 'package.json'), JSON.stringify({ name: 'scan-fixture', private: true }));
+  }
+  for (const [rel, contents] of Object.entries(files)) {
+    const abs = join(dir, rel);
+    await mkdir(dirname(abs), { recursive: true });
+    await writeFile(abs, contents);
+  }
+  return dir;
+}
 
 test('scanBareImports: finds bare specifiers in source files', async () => {
-  const dir = join(tmpdir(), `webjs-test-vendor-${Date.now()}`);
-  await mkdir(dir, { recursive: true });
-
-  await writeFile(join(dir, 'a.js'), `
-    import dayjs from 'dayjs';
-    import { something } from '@scope/lib';
-    import './local.js';
-  `);
-  await writeFile(join(dir, 'b.ts'), `
-    import { z } from 'zod';
-    const d = await import('dynamic-pkg');
-  `);
-  await writeFile(join(dir, 'c.server.ts'), `
-    import pg from 'pg';
-  `);
+  const dir = await makeVendorApp('basic', {
+    'app/page.ts': `
+      import dayjs from 'dayjs';
+      import { something } from '@scope/lib';
+      import './local.js';
+      import '../b.ts';
+      import { core } from '@webjsdev/core';
+      export default function Page() { return [dayjs, something, core]; }
+    `,
+    'app/local.js': `export const local = 1;`,
+    'b.ts': `
+      import { z } from 'zod';
+      const d = await import('dynamic-pkg');
+      export const b = [z, d];
+    `,
+    'c.server.ts': `import pg from 'pg';\nexport const c = pg;`,
+  });
 
   const found = await scanBareImports(dir);
 
   assert.ok(found.has('dayjs'));
   assert.ok(found.has('@scope/lib'));
-  assert.ok(found.has('zod'));
-  assert.ok(found.has('dynamic-pkg'));
+  assert.ok(found.has('zod'), 'a specifier one hop from the page is reached');
+  assert.ok(found.has('dynamic-pkg'), 'a dynamic-import specifier is reached');
   assert.ok(!found.has('pg'), 'server-only imports should be skipped');
   assert.ok(!found.has('./local.js'), 'relative imports should be excluded');
-  assert.ok(!found.has('@webjsdev/core'));
-
-  await rm(dir, { recursive: true, force: true });
-});
-
-test('scanBareImports: skipFiles excludes specifiers reachable only via elided components', async () => {
-  const dir = join(tmpdir(), `webjs-test-vendor-skip-${Date.now()}`);
-  await mkdir(dir, { recursive: true });
-
-  // badge (elided) imports dayjs; shared is imported by both badge and a
-  // shipping file; counter (shipping) imports zod.
-  await writeFile(join(dir, 'badge.ts'), `import dayjs from 'dayjs';\nimport sh from 'shared-pkg';`);
-  await writeFile(join(dir, 'counter.ts'), `import { z } from 'zod';\nimport sh from 'shared-pkg';`);
-
-  const skip = new Set([join(dir, 'badge.ts')]);
-  const found = await scanBareImports(dir, skip);
-
-  assert.ok(!found.has('dayjs'), 'dayjs is only in the elided component, should drop');
-  assert.ok(found.has('zod'), 'zod is in a shipping component, should stay');
-  assert.ok(found.has('shared-pkg'), 'a dep shared with a shipping file is retained');
-
-  await rm(dir, { recursive: true, force: true });
-});
-
-test('scanBareImports: skips route.ts and middleware.ts (file-router server-only convention)', async () => {
-  const dir = join(tmpdir(), `webjs-test-vendor-router-skip-${Date.now()}`);
-  await mkdir(join(dir, 'app', 'api', 'posts'), { recursive: true });
-  await mkdir(join(dir, 'app', 'dashboard'), { recursive: true });
-
-  await writeFile(
-    join(dir, 'app', 'api', 'posts', 'route.ts'),
-    `import Database from 'pg';
-     import 'server-only-helper';`,
-  );
-
-  await writeFile(
-    join(dir, 'app', 'dashboard', 'middleware.ts'),
-    `import { WebSocketServer } from 'ws';
-     import 'another-server-thing';`,
-  );
-
-  await writeFile(
-    join(dir, 'middleware.ts'),
-    `import 'root-mw-server-only';`,
-  );
-
-  await writeFile(
-    join(dir, 'app', 'dashboard', 'page.ts'),
-    `import dayjs from 'dayjs';`,
-  );
-
-  const found = await scanBareImports(dir);
-
-  assert.ok(found.has('dayjs'), 'page.ts imports should be scanned');
-  assert.ok(!found.has('pg'), 'route.ts imports must be skipped');
-  assert.ok(!found.has('server-only-helper'), 'route.ts imports must be skipped');
-  assert.ok(!found.has('ws'), 'middleware.ts imports must be skipped');
-  assert.ok(!found.has('another-server-thing'), 'middleware.ts imports must be skipped');
-  assert.ok(!found.has('root-mw-server-only'), 'root middleware.ts imports must be skipped');
+  assert.ok(!found.has('@webjsdev/core'), 'core is served locally, never vendored');
 
   await rm(dir, { recursive: true, force: true });
 });
 
 test('scanBareImports: skips server-only @webjsdev pkgs (#713)', async () => {
-  const dir = join(tmpdir(), `webjs-test-vendor-server-only-${Date.now()}`);
-  await mkdir(join(dir, 'app'), { recursive: true });
-  // A page that legitimately imports a server-only framework pkg name directly
-  // (defensive: even if surfaced, it must not reach the jspm path).
-  await writeFile(
-    join(dir, 'app', 'page.ts'),
-    `import dayjs from 'dayjs';
+  const dir = await makeVendorApp('server-only', {
+    // A page that legitimately imports a server-only framework pkg name directly
+    // (defensive: even if surfaced, it must not reach the jspm path).
+    'app/page.ts': `import dayjs from 'dayjs';
      import '@webjsdev/cli/bin/webjs.js';
      import '@webjsdev/server/some';
-     import '@webjsdev/mcp';`,
-  );
+     import '@webjsdev/mcp';
+     export default function Page() { return dayjs; }`,
+  });
 
   const found = await scanBareImports(dir);
 
@@ -182,32 +152,15 @@ test('scanBareImports: skips server-only @webjsdev pkgs (#713)', async () => {
   await rm(dir, { recursive: true, force: true });
 });
 
-test('scanBareImports: skips test/ and tests/ directories', async () => {
-  const dir = join(tmpdir(), `webjs-test-vendor-test-skip-${Date.now()}`);
-  await mkdir(join(dir, 'test'), { recursive: true });
-  await mkdir(join(dir, 'tests'), { recursive: true });
-
-  await writeFile(join(dir, 'test', 'a.test.ts'), `import 'test-only-pkg';`);
-  await writeFile(join(dir, 'tests', 'b.test.ts'), `import 'another-test-pkg';`);
-  await writeFile(join(dir, 'app.ts'), `import 'real-dep';`);
-
-  const found = await scanBareImports(dir);
-  assert.ok(found.has('real-dep'));
-  assert.ok(!found.has('test-only-pkg'));
-  assert.ok(!found.has('another-test-pkg'));
-
-  await rm(dir, { recursive: true, force: true });
-});
-
 test('scanBareImports: skips import type statements (TS erases them)', async () => {
-  const dir = join(tmpdir(), `webjs-test-vendor-typeimport-skip-${Date.now()}`);
-  await mkdir(dir, { recursive: true });
-
-  await writeFile(join(dir, 'a.ts'), `
-    import type { WebSocket } from 'ws';
-    import type { Database as DB } from 'pg';
-    import dayjs from 'dayjs';
-  `);
+  const dir = await makeVendorApp('typeimport-skip', {
+    'app/page.ts': `
+      import type { WebSocket } from 'ws';
+      import type { Database as DB } from 'pg';
+      import dayjs from 'dayjs';
+      export default function Page() { return dayjs; }
+    `,
+  });
 
   const found = await scanBareImports(dir);
   assert.ok(found.has('dayjs'), 'real value imports remain');
@@ -218,16 +171,16 @@ test('scanBareImports: skips import type statements (TS erases them)', async () 
 });
 
 test('scanBareImports: preserves full specifiers including subpaths', async () => {
-  const dir = join(tmpdir(), `webjs-test-vendor-subpath-${Date.now()}`);
-  await mkdir(dir, { recursive: true });
-
-  await writeFile(join(dir, 'a.ts'), `
-    import dayjs from 'dayjs';
-    import utc from 'dayjs/plugin/utc';
-    import timezone from 'dayjs/plugin/timezone';
-    import { Turbo } from '@hotwired/turbo';
-    import frame from '@hotwired/turbo/elements/turbo-frame';
-  `);
+  const dir = await makeVendorApp('subpath', {
+    'app/page.ts': `
+      import dayjs from 'dayjs';
+      import utc from 'dayjs/plugin/utc';
+      import timezone from 'dayjs/plugin/timezone';
+      import { Turbo } from '@hotwired/turbo';
+      import frame from '@hotwired/turbo/elements/turbo-frame';
+      export default function Page() { return [dayjs, utc, timezone, Turbo, frame]; }
+    `,
+  });
 
   const found = await scanBareImports(dir);
   assert.ok(found.has('dayjs'), 'root dayjs import preserved');
@@ -239,149 +192,111 @@ test('scanBareImports: preserves full specifiers including subpaths', async () =
   await rm(dir, { recursive: true, force: true });
 });
 
-test('scanBareImports: skips import strings inside comments (JSDoc examples etc.)', async () => {
-  const dir = join(tmpdir(), `webjs-test-vendor-comments-skip-${Date.now()}`);
-  await mkdir(dir, { recursive: true });
-
-  await writeFile(join(dir, 'a.ts'), `
-    /**
-     * Example usage:
-     *   import { clsx } from 'clsx';
-     *   import { twMerge } from 'tailwind-merge';
-     */
-    // import 'commented-out-pkg';
-    import real from 'real-only-pkg';
-  `);
-
-  const found = await scanBareImports(dir);
-  assert.ok(found.has('real-only-pkg'));
-  assert.ok(!found.has('clsx'), 'JSDoc-comment imports must be skipped');
-  assert.ok(!found.has('tailwind-merge'), 'JSDoc-comment imports must be skipped');
-  assert.ok(!found.has('commented-out-pkg'), 'line-comment imports must be skipped');
-
-  await rm(dir, { recursive: true, force: true });
-});
-
-test('scanBareImports: skips node_modules and _private dirs', async () => {
-  const dir = join(tmpdir(), `webjs-test-vendor-skip-${Date.now()}`);
-  await mkdir(join(dir, 'node_modules'), { recursive: true });
-  await mkdir(join(dir, '_private'), { recursive: true });
-
-  await writeFile(join(dir, 'node_modules', 'x.js'), `import 'should-not-find';`);
-  await writeFile(join(dir, '_private', 'y.js'), `import 'also-hidden';`);
-  await writeFile(join(dir, 'app.js'), `import 'visible';`);
+// Replaces the four name-list tests this block used to carry (route/middleware,
+// test//tests/, dot-dirs, *.config.*). Their subject was an exclusion LIST that
+// no longer exists: reachability decides, so the filename is irrelevant and an
+// unreferenced module drops out even when no name rule would ever have caught it.
+test('scanBareImports: an unreachable file contributes nothing, whatever it is called', async () => {
+  const dir = await makeVendorApp('unreachable', {
+    'app/page.ts': `import '../components/widget.ts';\nexport default function Page() { return null; }`,
+    'components/widget.ts': `import real from 'real-dep';\nexport const w = real;`,
+    'scripts/generate-og.mjs': `import { chromium } from 'playwright';\nexport const c = chromium;`,
+    'web-test-runner.config.js': `import { x } from 'tooling-pkg';\nexport const t = x;`,
+    'test/helper.ts': `import 'test-only-pkg';`,
+    '.github/tool.js': `import 'dot-dir-pkg';`,
+    'app/api/x/route.ts': `import pg from 'pg';\nexport const GET = () => pg;`,
+    'middleware.ts': `import 'root-mw-pkg';\nexport default async (req, next) => next();`,
+    // A plain unreferenced module at the app root. No name-based exclusion
+    // would ever have caught this one; only reachability does.
+    'orphan.ts': `import 'orphan-pkg';`,
+  });
 
   const found = await scanBareImports(dir);
-  assert.ok(found.has('visible'));
-  assert.ok(!found.has('should-not-find'));
-  assert.ok(!found.has('also-hidden'));
-
-  await rm(dir, { recursive: true, force: true });
-});
-
-test('scanBareImports: handles CRLF line endings', async () => {
-  const dir = join(tmpdir(), `webjs-scan-crlf-${Date.now()}`);
-  await mkdir(dir, { recursive: true });
-  await writeFile(join(dir, 'a.ts'), "import 'crlf-pkg-a';\r\nimport 'crlf-pkg-b';\r\n");
-  const found = await scanBareImports(dir);
-  assert.ok(found.has('crlf-pkg-a'), 'CRLF line should not hide imports');
-  assert.ok(found.has('crlf-pkg-b'));
-  await rm(dir, { recursive: true, force: true });
-});
-
-test('scanBareImports: handles UTF-8 BOM at file start', async () => {
-  const dir = join(tmpdir(), `webjs-scan-bom-${Date.now()}`);
-  await mkdir(dir, { recursive: true });
-  // UTF-8 BOM is the three bytes 0xEF 0xBB 0xBF
-  await writeFile(join(dir, 'a.ts'), Buffer.concat([Buffer.from([0xEF, 0xBB, 0xBF]), Buffer.from("import 'bom-pkg';")]));
-  const found = await scanBareImports(dir);
-  assert.ok(found.has('bom-pkg'), 'BOM at file start should not hide the first import');
-  await rm(dir, { recursive: true, force: true });
-});
-
-test('scanBareImports: does not crash on unterminated string literal', async () => {
-  const dir = join(tmpdir(), `webjs-scan-broken-${Date.now()}`);
-  await mkdir(dir, { recursive: true });
-  // User mid-edit: half-written file with unterminated string. Scanner
-  // is regex-based so it tolerates this gracefully; the Node runtime
-  // would still fail to load the file but the scan stays correct for
-  // all OTHER files in the project.
-  await writeFile(join(dir, 'broken.ts'), "import 'unterminated\n// some other code");
-  await writeFile(join(dir, 'ok.ts'), "import 'still-found';");
-  const found = await scanBareImports(dir);
-  // The unterminated literal in broken.ts is consumed by the IMPORT_RE
-  // (which matches `[^'"]+`); it greedily eats to the next quote in
-  // the file. We don't assert what it extracts. We assert the scanner
-  // did not crash and still found the OK file's import.
-  assert.ok(found.has('still-found'), 'a broken file must not stop the scan');
-  await rm(dir, { recursive: true, force: true });
-});
-
-test('scanBareImports: handles deeply nested directories', async () => {
-  const dir = join(tmpdir(), `webjs-scan-deep-${Date.now()}`);
-  await mkdir(dir, { recursive: true });
-  let path = dir;
-  for (let i = 0; i < 25; i++) {
-    path = join(path, `level${i}`);
-    await mkdir(path, { recursive: true });
-  }
-  await writeFile(join(path, 'deep.ts'), "import 'deep-pkg';");
-  const found = await scanBareImports(dir);
-  assert.ok(found.has('deep-pkg'), 'imports at 25 levels deep must be found');
-  await rm(dir, { recursive: true, force: true });
-});
-
-test('scanBareImports: handles a multi-MB file without exploding memory or time', async () => {
-  const dir = join(tmpdir(), `webjs-scan-large-${Date.now()}`);
-  await mkdir(dir, { recursive: true });
-  const padding = Array(50000).fill('// boring line\n').join('');
-  // ~5MB file: padding + one buried import + more padding
-  await writeFile(join(dir, 'big.ts'), padding + "import 'buried-import';\n" + padding);
-  const t0 = Date.now();
-  const found = await scanBareImports(dir);
-  const elapsed = Date.now() - t0;
-  assert.ok(found.has('buried-import'), 'import buried in a large file must be found');
-  assert.ok(elapsed < 5000, `scan should complete in under 5s; took ${elapsed}ms`);
-  await rm(dir, { recursive: true, force: true });
-});
-
-test('scanBareImports: skips dot-prefixed dirs (.opencode, .claude, .github, .husky, .git)', async () => {
-  const dir = join(tmpdir(), `webjs-test-vendor-dotdirs-${Date.now()}`);
-  // Each dot-dir holds a file with a bare import that would break jspm.io.
-  for (const name of ['.opencode', '.claude', '.github', '.husky', '.git', '.vscode']) {
-    await mkdir(join(dir, name), { recursive: true });
-    await writeFile(join(dir, name, 'a.ts'), `import { foo } from "${name}-only-pkg";`);
-  }
-  await writeFile(join(dir, 'app.ts'), `import 'visible';`);
-
-  const found = await scanBareImports(dir);
-  assert.ok(found.has('visible'));
-  for (const name of ['.opencode', '.claude', '.github', '.husky', '.git', '.vscode']) {
-    assert.ok(!found.has(`${name}-only-pkg`), `expected ${name} to be excluded`);
+  assert.ok(found.has('real-dep'), 'a specifier a page reaches is found');
+  for (const spec of ['playwright', 'tooling-pkg', 'test-only-pkg', 'dot-dir-pkg', 'pg', 'root-mw-pkg', 'orphan-pkg']) {
+    assert.ok(!found.has(spec), `${spec} is unreachable from any browser entry and must not be vendored`);
   }
 
   await rm(dir, { recursive: true, force: true });
 });
 
-test('scanBareImports: skips *.config.{js,ts,mjs,cjs} files at any depth', async () => {
-  const dir = join(tmpdir(), `webjs-test-vendor-configs-${Date.now()}`);
-  await mkdir(dir, { recursive: true });
-  // Common tooling config files at project root. They import test
-  // runners / build helpers that legitimately cannot resolve via jspm.io.
-  await writeFile(join(dir, 'web-test-runner.config.js'), `import { x } from 'tooling-pkg-1';`);
-  await writeFile(join(dir, 'vitest.config.ts'), `import { y } from 'tooling-pkg-2';`);
-  await writeFile(join(dir, 'tailwind.config.mjs'), `import { z } from 'tooling-pkg-3';`);
-  await writeFile(join(dir, 'app.ts'), `import 'real-pkg';`);
+test('scanBareImports: a bare specifier imported only from scripts/ never reaches the result', async () => {
+  // The literal #1399 repro: website/scripts/generate-og.mjs imports playwright,
+  // which jspm 401s on every cold analysis.
+  const dir = await makeVendorApp('scripts-dir', {
+    'app/page.ts': `import dayjs from 'dayjs';\nexport default function Page() { return dayjs; }`,
+    'scripts/generate-og.mjs': `import { chromium } from 'playwright';\nexport const c = chromium;`,
+  });
 
   const found = await scanBareImports(dir);
-  assert.ok(found.has('real-pkg'));
-  assert.ok(!found.has('tooling-pkg-1'));
-  assert.ok(!found.has('tooling-pkg-2'));
-  assert.ok(!found.has('tooling-pkg-3'));
+  assert.ok(found.has('dayjs'), 'the page vendor is still found');
+  assert.ok(!found.has('playwright'), 'a build script is not a browser entry');
 
   await rm(dir, { recursive: true, force: true });
 });
 
+test('scanBareImports: an import written inside a template literal is not a vendor specifier', async () => {
+  // website/lib/samples.ts holds docs code samples in exported template
+  // literals. The old comment-stripping scanner could not tell them from real
+  // imports, so drizzle-orm was sent to jspm on every cold analysis.
+  const dir = await makeVendorApp('template-sample', {
+    'app/page.ts': `
+      import { z } from 'zod';
+      export const ACTION_SAMPLE = \`
+        'use server';
+        import { eq } from 'drizzle-orm';
+        export async function x() {}
+      \`;
+      export default function Page() { return [z, ACTION_SAMPLE]; }
+    `,
+  });
+
+  const found = await scanBareImports(dir);
+  assert.ok(found.has('zod'), 'the real import is found');
+  assert.ok(!found.has('drizzle-orm'), 'an import written as example text is not an edge');
+
+  await rm(dir, { recursive: true, force: true });
+});
+
+test('scanBareImports: a specifier reachable only through a dynamic import is retained', async () => {
+  // The importmap must cover a lazily-imported module's specifier even though
+  // the preload set (transitiveDeps) deliberately ignores dynamic edges: the
+  // import has to resolve when it finally runs.
+  const dir = await makeVendorApp('dynamic-only', {
+    'app/page.ts': `export default async function Page() { const m = await import('../chart.ts'); return m; }`,
+    'chart.ts': `import c from 'chart-pkg';\nexport default c;`,
+  });
+
+  const found = await scanBareImports(dir);
+  assert.ok(found.has('chart-pkg'), 'a dynamically-reached vendor still needs an importmap entry');
+
+  await rm(dir, { recursive: true, force: true });
+});
+
+test('reachedBareImports: the elision skip set prunes a specifier and the subtree behind it', async () => {
+  // badge (elided) imports dayjs plus a relative ./fmt.ts that imports fmt-pkg;
+  // counter (shipping) imports zod and the same shared-pkg as badge.
+  const dir = await makeVendorApp('skip', {
+    'app/page.ts': `import '../components/badge.ts';\nimport '../components/counter.ts';\nexport default function Page() { return null; }`,
+    'components/badge.ts': `import dayjs from 'dayjs';\nimport sh from 'shared-pkg';\nimport { f } from './fmt.ts';\nexport const b = [dayjs, sh, f];`,
+    'components/fmt.ts': `import fmt from 'fmt-pkg';\nexport const f = fmt;`,
+    'components/counter.ts': `import { z } from 'zod';\nimport sh from 'shared-pkg';\nexport const c = [z, sh];`,
+  });
+
+  const graph = await buildModuleGraph(dir);
+  const components = await scanComponents(dir);
+  const routeTable = await buildRouteTable(dir);
+  const entries = [...browserEntryFiles(routeTable, components)];
+  const skip = new Set([join(dir, 'components', 'badge.ts')]);
+  const found = reachedBareImports(graph, entries, dir, skip);
+
+  assert.ok(!found.has('dayjs'), 'dayjs is only in the elided component, should drop');
+  assert.ok(!found.has('fmt-pkg'), 'the subtree behind an elided component drops with it');
+  assert.ok(found.has('zod'), 'zod is in a shipping component, should stay');
+  assert.ok(found.has('shared-pkg'), 'a dep shared with a shipping file is retained');
+
+  await rm(dir, { recursive: true, force: true });
+});
 // --- getPackageVersion ---
 
 test('getPackageVersion: returns installed version for a known package', () => {
@@ -961,6 +876,36 @@ test('pinAll default: writes importmap.json with jspm.io URLs', async () => {
       const file = await readPinFile(dir);
       assert.ok(file, 'pin file should exist');
       assert.match(file.imports['picocolors'], /^https:\/\/ga\.jspm\.io\/npm:picocolors@/);
+    });
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
+test('pinAll: a vendor imported only by instrumentation-client is pinned (real pin path)', async () => {
+  // `instrumentation-client.*` is an app-ROOT convention file, not a router
+  // stem, so it reaches the entry set only because `buildRouteTable` resolves
+  // it onto the table. It used to be attached by the dev server ALONE, so the
+  // vendor scan, which builds its own table, lost the entry: the specifier
+  // resolved live on an unpinned app and was pinned on none. Since
+  // `prunePinToReachable` can only SHRINK a pin, the pinned app then served an
+  // importmap with no entry for the first module its boot imports.
+  //
+  // This drives `pinAll` itself rather than a hand-rebuilt stand-in, so it
+  // fails if ANY link in the real pin path stops carrying the entry, not only
+  // if the one line a mirror happens to copy goes missing.
+  const dir = await makeTempAppWithSource({
+    'app/page.ts': `export default function Page() { return null; }`,
+    'instrumentation-client.ts': `import pico from 'picocolors';\npico.red('boot');`,
+  });
+  try {
+    await withJspmDouble({}, async () => {
+      const result = await pinAll(dir);
+      assert.ok(!result.failed, 'pin should not be flagged failed');
+      const file = await readPinFile(dir);
+      assert.ok(file, 'pin file should exist');
+      assert.match(file.imports['picocolors'], /^https:\/\/ga\.jspm\.io\/npm:picocolors@/,
+        'a vendor reachable ONLY from instrumentation-client must be pinned');
     });
   } finally {
     await rm(dir, { recursive: true, force: true });
