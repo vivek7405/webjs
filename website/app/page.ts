@@ -652,8 +652,7 @@ export default function LandingPage() {
              What the lede must keep carrying is the LAST sentence, the framework
              source readable in node_modules. That is the one claim in this
              section no card illustrates, and grepping the page shows this is its
-             only mention anywhere. -->
-
+             only mention anywhere.
 
              Every one of these is COPIED FROM A REAL SCAFFOLDED APP, not
              composed for the page. Verified by running webjs create then
@@ -665,7 +664,18 @@ export default function LandingPage() {
 
              (No backticks in here, per invariant 9: a backtick inside an html
              template body closes the literal at JS-parse time, comment or not.
-             This comment had two and took the page down until tsc caught it.) -->
+             This comment had two and took the page down until tsc caught it.
+
+             And exactly ONE closing marker, at the very end. Appending a
+             paragraph to a comment this long, it is easy to close it where your
+             new text stops, which ends the comment mid-block and renders
+             everything after it as visible page text. That shipped once. Note
+             the closing marker cannot be written out even here, since typing it
+             inside a comment is the very thing being warned about, so count the
+             markers instead: openers and closers must be equal in this file.
+             Neither tsc nor webjs check can see the mistake, because a
+             prematurely closed comment is still valid TS and valid HTML. The
+             only detector is looking at the page.) -->
         <div class="grid gap-4 grid-cols-1 wide:grid-cols-3 items-stretch">
           <div class="flex flex-col min-w-0">
             <p class="text-sm font-medium leading-[1.4] text-fg-subtle mb-2.5 ml-1">What arrives, and what leaves</p>
