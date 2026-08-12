@@ -339,7 +339,7 @@ export default function LandingPage() {
              desktop crossover point has not moved.
              Re-measure line counts at 390 / 768 / 1440 before touching any of the
              three numbers; they are chosen against the wrap points, not picked. -->
-        <h1 class="font-display font-extrabold text-[clamp(1.75rem,0.93rem+4.9vw,4.125rem)] leading-[1.02] tracking-[-0.038em] mx-auto mt-2 mb-6 max-w-[64rem]">
+        <h1 class="font-display font-extrabold text-[clamp(1.75rem,0.93rem+4.9vw,4.125rem)] leading-[0.98] tracking-[-0.038em] mx-auto mt-2 mb-6 max-w-[64rem]">
           Conventions your agent follows. Architecture you still own.
         </h1>
         <!-- Two sentences. The second one is the PAGE'S THESIS, and it took a
@@ -390,38 +390,42 @@ export default function LandingPage() {
              and every one turned out to be some section's claim said weaker.
              The six sections ARE the elaboration.
 
-             The break after the bold sentence, the 53rem box and the 1.6rem
-             cap are ONE decision solved against three constraints that pull
-             against each other. Change any of them and re-solve all three.
+             Line breaking is the BROWSER'S job here, not ours. text-balance on
+             the subtitle, no hand-placed break, and the same 64rem box the H1
+             uses. This is the rubyonrails.org model, read off their live CSS:
+             text-wrap: balance on the hero copy, no br anywhere, and no
+             max-width of its own.
 
-               1. Each sentence gets its own line on a laptop. So the box must
-                  be at least as wide as the definition sets solid, or that
-                  sentence wraps and orphans its last word.
-               2. The subtitle must read narrower than the title. The title's
-                  longest line is 925px at 1280, so the definition has to come
-                  in under that with room to spare, not at 916px like it did.
-               3. On a phone the definition needs two lines, not three, which
-                  it only does at 18.4px or smaller.
+             It replaced a hand-tuned system (a br, a 53rem box solved against
+             the title's longest line, and a type cap derived from it) that took
+             six rounds to converge and broke whenever a word changed. What
+             balance buys, measured:
 
-             1 and 2 together fix the type size, because the definition's width
-             scales with it: at 27.8px it sets at 916px (99% of the title, the
-             complaint), at 25.6px it sets at 842px (91%, which is as large as
-             it goes while still reading narrower). So 1.6rem is a ceiling
-             derived from the headline, not a taste call, and it is AT that
-             ceiling: the next step up starts reading level with the title
-             again. The box is then 53rem, the first round number above 842.
+               390px   4 ragged lines (341/262/326/83, an 83px orphan)
+                       becomes 3 even ones (342/336/341)
+               1280px  842/575 becomes 841/842
 
-             3 fixes the curve's low end. The clamp MIN is not the operative
-             term on a phone: at 390px the preferred term runs, so an earlier
-             attempt to fix this by raising the min alone changed nothing at
-             all. The slope carries it instead.
+             The subtitle reads narrower than the title WITHOUT a narrower box,
+             which is the part worth understanding: it has more text, so balance
+             spreads it into even lines while the H1 fills its measure. 91% of
+             the title's longest line at 1280.
 
-             Measured 18.5 / 21.5 / 25.6 / 25.6px at 390 / 768 / 1280 / 1440, with
-             the definition on 2 / 1 / 1 / 1 lines and the install bar above
-             the fold on a 390x844 phone at 547 of 844.
+             The H1 does NOT get text-balance, and that is deliberate. Adding it
+             shortened the H1's lines at 768 (547/475/295 instead of
+             547/655/115) and the subtitle then measured 119% of the title, wider
+             than the thing it sits under. Balance is right for the element with
+             more text and wrong for the one with less.
+
+             Sizes are two tokens now, --text-hero-lede and --text-lede, because
+             a hero subtitle wants to be half the headline and a page lede wants
+             to be readable at six lines. They were fighting over one number.
+
+             Measured 18.5 / 23.6 / 30.4px at 390 / 768 / 1280, install bar above
+             the fold at 499 of 844 on a phone (was 547, the tighter H1 leading
+             bought that back).
 -->
-        <p class="text-lede leading-[1.55] text-fg-muted max-w-[53rem] mx-auto mb-9 text-pretty">
-          <span class="text-fg font-medium">WebJs is a full-stack web components framework with no build step.</span><br>
+        <p class="text-hero-lede leading-[1.3] text-fg-muted max-w-[64rem] mx-auto mb-9 text-balance">
+          <span class="text-fg font-medium">WebJs is a full-stack web components framework with no build step.</span>
           Nothing is hidden from your agent, or from you.
         </p>
         <div class="flex gap-3 justify-center flex-wrap items-center">

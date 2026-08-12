@@ -79,26 +79,18 @@
 
   --text-display: clamp(2.9rem, 1.55rem + 4.5vw, 5.5rem);
   --text-h2:      clamp(1.7rem, 1.2rem + 1.4vw, 2.5rem);
-  /* The lede step, raised from an original 1.28rem cap. At 20.5px against a
-     66px h1 the hero subtitle sat at 0.31 of the headline and read as body
-     copy rather than as the second voice. It is 0.42 now.
+  /* Two lede steps, because the landing hero and a page lede are not the same
+     role and were fighting over one number. The hero wants to be half the
+     headline; a page lede wants to be readable at 6 lines.
 
-     Measured at all three sizes rather than at the one being reviewed:
-     390px 20.8px / 5 lines, 768px 23.7px / 3, 1280px 27.8px / 2, 1440px
-     28.8px. The install bar stays above the fold on a 390x844 phone, at
-     593px of 844.
+     --text-hero-lede is sized against the H1 rather than by eye. Its ceiling
+     is the point where the subtitle's balanced lines stop reading narrower
+     than the title's longest line, which is what "it feels wider" meant.
 
-     The min matters as much as the max here, and for opposite reasons. The
-     landing hero measures in ch (max-w-[62ch]), so on a desktop the box grows
-     WITH the type and the line count never moves however far the max goes. On
-     a phone the viewport caps the box first, so the min is the only term that
-     changes anything, and raising it from 1.08 to 1.3rem is what took the
-     subtitle from four lines to five. That was accepted, not missed.
-
-     Shared with /what-is-webjs, /why-webjs and /brand, whose ledes are longer
-     and therefore feel a raise more: /why-webjs runs to 7 lines at 768px.
-     Check those three, not just the landing page, after any change here. */
-  --text-lede:    clamp(1.1rem, 0.96rem + 0.8vw, 1.6rem);
+     Both are fluid: the MIN term is not the operative one on a phone (at 390px
+     the preferred term runs), so tune the slope, not the min. */
+  --text-hero-lede: clamp(1.1rem, 0.83rem + 1.34vw, 1.9rem);
+  --text-lede:    clamp(1.15rem, 1rem + 0.6vw, 1.5rem);
 
   /* Documentation-page type scale. The docs run a tighter heading rhythm than
      the marketing pages (a reference page wants a calm h1, not a hero), so
