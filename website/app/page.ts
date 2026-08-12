@@ -994,7 +994,21 @@ middleware.ts</pre>
       // A hand-back to the page is allowed here and nowhere else. The
       // stand-alone rule protects readers arriving mid-page from a search
       // result, and nobody arrives at a closing CTA cold.
-      lede: 'Run the command below, then start your coding agent inside the new app folder. The conventions, the demos, and the framework source are already in there.',
+      // Two lines in the CTA panel, which is a 52ch box (525px) shared with
+      // /why-webjs, so the text was cut rather than the box widened. It ran to
+      // three with "are already in there" alone on the last one.
+      //
+      // What went: "coding" from "coding agent" (the page says "your agent"
+      // everywhere else, so this is the house term rather than a loss), the
+      // articles before demos and framework source, and "already". What stayed
+      // is "framework source": shortening it to "source" also fits, and makes
+      // it read as the app's own source, which is the opposite of the point.
+      //
+      // Measures 521 and 442 with 87px of total slack. Variants existed at 26px
+      // and 56px and were rejected: on a two-line fill, one substituted glyph
+      // pushes a word down, and the second line has to absorb it or the
+      // paragraph goes back to three.
+      lede: 'Run the command below, then start your agent in the new app folder. The conventions, demos, and framework source are there.',
       primary: { href: DOCS_START_PATH, label: 'Get started' },
       // NOT a second docs link. This slot used to point at DOCS_PATH while the
       // primary pointed at DOCS_START_PATH, and /docs is a 308 to
