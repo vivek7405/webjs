@@ -202,7 +202,7 @@ Export `GET` / `POST` / etc. as named async functions `(request, { params }) => 
 
 ### `middleware.ts` is per-segment and chainable, not one matcher config
 
-The file stays `middleware.ts`, NOT Next 16's renamed `proxy.ts`. WebJs middleware is in-process, chainable, and per-segment (the Remix / Koa model). There is no `export const config = { matcher }` and no single-file restriction. The default export is `async (req, next) => Response`: return a Response to short-circuit, or call `next()` and post-process. Colocate `app/admin/middleware.ts` next to the admin routes and it runs for that subtree only. An optional root `middleware.ts` runs on every request, outermost to innermost.
+The file stays `middleware.ts`, NOT Next 16's renamed `proxy.ts`. WebJs middleware is in-process, chainable, and per-segment (the Remix / Koa model). There is no `export const config = { matcher }` and no single-file restriction. The default export is `async (req, next) => Response`: return a Response to short-circuit, or call `next()` and post-process. Colocate `app/admin/middleware.ts` next to the admin routes and it runs for that subtree only. An optional root `middleware.ts` runs on every app request, outermost to innermost. Two things are served ahead of it: the framework's own `/__webjs/*` assets and probes, in both modes, and in DEV only, `/public/*` plus the `/sw.js` / `/offline.html` root remaps and `/favicon.ico`, so a stylesheet is never queued behind the dev startup analysis. In production those static files go through root middleware normally, so a middleware that guards an asset still guards it where it counts.
 
 ### No `<Link>`, no `next/navigation`, no `next/*` libraries
 

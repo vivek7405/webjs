@@ -11,7 +11,7 @@ export default function Middleware() {
     <p>Place a <code>middleware.ts</code> at the root of your project (next to <code>app/</code>, not inside it). This middleware runs on <strong>every app request</strong> before WebJs routes it to a page, API route, or server action. Any of <code>middleware.ts</code>, <code>.js</code>, <code>.mts</code>, or <code>.mjs</code> works, and <code>.ts</code> wins if you somehow have more than one.</p>
     <p>Two things are served ahead of it, so root middleware never sees them. The framework's own <code>/__webjs/*</code> assets and health probes bypass it in both dev and production, because they are framework infrastructure your app needs to boot rather than app routes. In <strong>development only</strong>, static files under <code>/public/*</code> (plus the <code>/sw.js</code> and <code>/offline.html</code> root remaps and <code>/favicon.ico</code>) are served ahead of it as well, so a stylesheet is never queued behind the dev server's startup analysis. In production those static files go through root middleware normally, so a middleware that protects an asset still protects it where it counts.</p>
     <code-block>my-app/
-  middleware.ts          # root middleware: runs on every request
+  middleware.ts          # root middleware: runs on every app request
   app/
     page.ts
     api/
@@ -33,7 +33,7 @@ export default async function middleware(
     <h2>Per-Segment Middleware</h2>
     <p>Place a <code>middleware.ts</code> inside any directory under <code>app/</code> to scope it to that subtree. It runs only for requests whose URL matches that segment and its children.</p>
     <code-block>my-app/
-  middleware.ts               # root: every request
+  middleware.ts               # root: every app request
   app/
     page.ts                   # /: root + no segment middleware
     dashboard/

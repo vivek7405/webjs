@@ -48,6 +48,30 @@ test('dev serves the reload SharedWorker, and the client uses it with a direct E
   assert.match(clientSrc, /function startReloadWorker/, 'the client inlines the relay module for the fallback');
   assert.match(clientSrc, /startReloadWorker\(scope, EventSource, "\/__webjs\/events"\)/, 'the fallback runs the relay against the real EventSource');
   assert.match(clientSrc, /scope\.onconnect\(\{ ports: \[\{/, 'and drives it over a shim port');
+  // The shim's postMessage runs application code synchronously, and the relay's
+  // fanout DELETES a port whose postMessage throws (correct for a real
+  // MessagePort, where a throw means the tab is gone). Unguarded, an overlay
+  // render that threw would permanently unsubscribe the tab and silently kill
+  // its live reload, which the pre-#1397 fallback could not do because it
+  // attached to the EventSource directly.
+  //
+  // Sliced to the fallback function's own body first. A regex over the whole
+  // client matches the SharedWorker bootstrap's `try { ... } catch` further
+  // down and passes with the guard removed, which is a test that observes
+  // nothing (found by running exactly that counterfactual).
+  const fallbackStart = clientSrc.indexOf('function __webjsDirectEvents()');
+  assert.notEqual(fallbackStart, -1, 'the fallback function is in the client');
+  const fallbackBody = clientSrc.slice(fallbackStart, clientSrc.indexOf('if (typeof SharedWorker', fallbackStart));
+  assert.match(
+    fallbackBody,
+    /postMessage\(m\)\s*\{[^]*?try\s*\{/,
+    'the shim port opens a try before running any application code',
+  );
+  assert.match(fallbackBody, /\}\s*catch\s*\(_\)/, 'and swallows the throw so the relay cannot drop the tab');
+  assert.ok(
+    fallbackBody.indexOf('try {') < fallbackBody.indexOf('__webjsReloadWhenReady()'),
+    'the guard opens BEFORE the reload call, not around something else',
+  );
   assert.match(clientSrc, /catch\s*\(_\)\s*\{\s*__webjsDirectEvents/, 'a worker failure falls back');
   // The debounce (#1397) is part of the relay, so it ships in BOTH scripts.
   assert.match(clientSrc, /const RELOAD_QUIET_MS/, 'the reload debounce ships in the client fallback');

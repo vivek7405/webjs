@@ -2,19 +2,19 @@
  * The dev live-reload SharedWorker relay (#887), the BROWSER half. Kept as a
  * standalone browser-safe module (no node imports) so the served worker inlines
  * the EXACT source a browser test drives, with no drift, the same pattern as
- * `dev-overlay.js` (#264). `reloadWorkerJs` in dev.js reads this file, strips
- * the `export` keyword, and appends a
- * `startReloadWorker(self, EventSource, '<eventsUrl>')` call.
+ * `dev-overlay.js` (#264).
+ *
+ * BOTH served dev scripts inline this file, `export`-stripped. `reloadWorkerJs`
+ * appends a `startReloadWorker(self, EventSource, '<eventsUrl>')` call for the
+ * SharedWorker, and since #1397 `reloadClientJs` inlines it too, so the per-tab
+ * fallback runs this same relay over a shim port instead of a second copy of
+ * the boot-id rule and the reload debounce.
  *
  * One SharedWorker is shared across every tab of the origin (a SharedWorker is
  * keyed by its script URL), so it holds the ONE `EventSource` to
  * `/__webjs/events` and fans each `reload` / `webjs-error` out to every tab over
  * its `MessagePort`. Tab count never touches the browser's per-host HTTP/1.1
  * connection cap, which the per-tab `EventSource` it replaces used to exhaust.
- *
- * @param {{ onconnect: any }} scope  the worker global (`self`)
- * @param {new (url: string) => any} EventSourceCtor  the `EventSource` constructor
- * @param {string} eventsUrl  the base-path-aware `/__webjs/events` URL
  */
 
 /**
@@ -42,6 +42,14 @@ export const RELOAD_QUIET_MS = 2000;
  */
 export const RELOAD_MAX_HOLD_MS = 5000;
 
+/**
+ * @param {{ onconnect: any, setTimeout?: any, clearTimeout?: any }} scope  the
+ *   worker global (`self`), or a plain shim object for the per-tab fallback.
+ *   Timers are read off it when it has them, which is what lets a browser test
+ *   drive the debounce on a fake clock.
+ * @param {new (url: string) => any} EventSourceCtor  the `EventSource` constructor
+ * @param {string} eventsUrl  the base-path-aware `/__webjs/events` URL
+ */
 export function startReloadWorker(scope, EventSourceCtor, eventsUrl) {
   /** @type {Set<any>} */
   const ports = new Set();

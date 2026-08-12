@@ -3026,8 +3026,19 @@ function __webjsDirectEvents() {
   const scope = {};
   startReloadWorker(scope, EventSource, ${eventsUrl});
   scope.onconnect({ ports: [{ start() {}, postMessage(m) {
-    if (m.type === 'reload') __webjsReloadWhenReady();
-    else if (m.type === 'webjs-error') __webjsApplyError(m.data);
+    // Nothing may throw out of here. The relay's fanout deletes a port whose
+    // postMessage throws, which is the right read for a REAL MessagePort (a
+    // throw there means the tab is gone) and the wrong one for this shim,
+    // whose postMessage runs application code synchronously: an overlay
+    // render that threw would permanently unsubscribe this tab and silently
+    // kill live reload for the rest of the page's life. The old fallback
+    // attached to the EventSource directly, where a handler throw detached
+    // nothing, so swallowing here restores that behaviour rather than adding
+    // a new one.
+    try {
+      if (m.type === 'reload') __webjsReloadWhenReady();
+      else if (m.type === 'webjs-error') __webjsApplyError(m.data);
+    } catch (_) { /* a bad frame must not cost this tab its live reload */ }
   } }] });
 }
 try {

@@ -160,11 +160,25 @@ test('a stale webjs.dev.regenerate output is rebuilt before serving on the early
   assert.equal(await res.text(), 'body{color:lime}', 'the stale output was regenerated, not served as-is');
 });
 
-// #243: the `?v=` fingerprint still decides the cache header on the early path.
-test('?v= still yields immutable on the early path, un-versioned keeps the 1h fallback', async () => {
+// #243: the `?v=` fingerprint still decides the cache header through the
+// extracted function. This is the PROD path deliberately, and it is the one
+// case in this file that is not about the dev hoist. `fileResponse` hard-codes
+// `cache-control: no-cache` whenever `opts.dev` is true, so `immutable` is
+// unobservable on the dev early path by construction; asserting it there would
+// be a test that cannot fail. What this pins is that the extraction did not
+// drop the fingerprint handling on the call site that still serves it.
+test('?v= still yields immutable through the extracted serve (prod), un-versioned keeps the 1h fallback', async () => {
   const app = await createRequestHandler({ appDir: makeApp(), dev: false });
   const versioned = await app.handle(new Request('http://x/public/a.css?v=abc123'));
   assert.match(versioned.headers.get('cache-control') || '', /immutable/, 'content-addressed is immutable');
   const plain = await app.handle(new Request('http://x/public/a.css'));
   assert.doesNotMatch(plain.headers.get('cache-control') || '', /immutable/, 'un-fingerprinted is not');
+
+  // The dev half of the same concern, which IS on the early path: a `?v=`
+  // request still resolves and serves rather than falling through, even though
+  // the header it earns in dev is `no-cache` either way.
+  const devApp = await createRequestHandler({ appDir: makeApp(), dev: true });
+  const devVersioned = await devApp.handle(new Request('http://x/public/a.css?v=abc123'));
+  assert.equal(devVersioned.status, 200, 'a fingerprinted asset still serves on the dev early path');
+  assert.equal(await devVersioned.text(), 'body{color:red}\n');
 });
