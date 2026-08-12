@@ -113,12 +113,21 @@ test('root middleware does not run for /public/* in dev, and does in prod', asyn
 });
 
 // COUNTERFACTUAL: drop the containment check from `tryServePublicAsset` and this
-// serves the file, which is a directory-traversal hole.
+// serves the file, which is a directory-traversal hole. Verified 2026-08-12 at
+// 915c662d by removing the guard and watching this go red.
+//
+// The vector has to use an encoded SLASH (`..%2F`), not encoded dots. The
+// WHATWG URL parser decodes `%2E%2E` to `..` and then normalises the dot
+// segment away, so `/public/%2E%2E/secret.txt` arrives as `/secret.txt` and
+// never enters the public branch at all: asserting on it would pass with the
+// guard removed, which is a test that observes nothing. `..%2F` survives
+// parsing intact, so the branch is entered with a path that `join` then
+// resolves outside `appDir/public/`, which is exactly what the guard is for.
 test('the traversal guard travels with the moved code (dev early path)', async () => {
   const appDir = makeApp();
   writeFileSync(join(appDir, 'secret.txt'), 'nope\n');
   const app = await createRequestHandler({ appDir, dev: true });
-  const res = await app.handle(new Request('http://x/public/%2E%2E/secret.txt'));
+  const res = await app.handle(new Request('http://x/public/..%2Fsecret.txt'));
   assert.equal(res.status, 404, 'a path that escapes appDir/public/ is refused');
   assert.notEqual(await res.text(), 'nope\n');
 });

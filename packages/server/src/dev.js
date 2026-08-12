@@ -2111,14 +2111,17 @@ async function tryServePublicAsset(path, ctx) {
   const p = path === '/favicon.ico' ? '/public/favicon.ico' : (ROOT_ASSETS[path] || path);
   const abs = join(appDir, p);
   // Containment check. `join` normalises `..` segments, so a path
-  // like `/public/%2E%2E/secret/x.svg` decodes (after URL parsing,
-  // which doesn't touch `%2E`) to `/public/../secret/x.svg` and
-  // `join(appDir, ...)` resolves it to `appDir/secret/x.svg`. The
-  // resulting `abs` could be inside `appDir` but OUTSIDE `appDir/
-  // public/`, exposing files the user reasonably thought were
+  // like `/public/..%2Fsecret/x.svg` decodes to `/public/../secret/
+  // x.svg` and `join(appDir, ...)` resolves it to `appDir/secret/
+  // x.svg`. The resulting `abs` could be inside `appDir` but OUTSIDE
+  // `appDir/public/`, exposing files the user reasonably thought were
   // private under their non-public directories. Reject anything
   // that doesn't stay under `appDir/public/` (and the favicon
   // exception, which is already validated above).
+  // The live vector encodes the SLASH, not the dots: the WHATWG URL
+  // parser decodes `%2E%2E` and normalises the dot segment away, so a
+  // `/public/%2E%2E/x` request arrives here as plain `/x` and never
+  // enters this branch. `..%2F` survives parsing intact and does.
   const publicRoot = join(appDir, 'public') + sep;
   if (!abs.startsWith(publicRoot)) {
     return new Response(null, { status: 404 });
