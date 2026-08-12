@@ -374,11 +374,25 @@ export default function LandingPage() {
                  So the rule for this lede: claim nothing about another framework
                and nothing that needs a footnote about which configuration you are
                in. The chips below enumerate, the P.S. below runs the comparison
-               in the reader's own browser, and the prose only has to be true. -->
+               in the reader's own browser, and the prose only has to be true.
+
+               The term "progressive enhancement" comes LAST, after the three
+               concrete behaviours, and it is the one label allowed in here. Put
+               it first and a reader pattern-matches it to no-JS purism and skips
+               the section, which is a constraint they think they know rather
+               than a capability they can check. After the demonstration it is a
+               handle for what they just read, plus the phrase they would search
+               for, next to the brand name. That naming is also why this lede
+               says WebJs at all: nothing else in the section does, and someone
+               arriving here from a search result needs to know whose page this
+               is. "Here it is the default" said nothing to them. -->
+
           <p class="text-fg-muted text-base leading-[1.6] m-0">
             The server sends a finished page. It reads, its links navigate, and
             its forms submit before a single script runs. What loads afterwards
-            is only the components that are actually interactive.
+            is only the components that are actually interactive. That is
+            progressive enhancement, and with WebJs it is the default rather
+            than an effort.
           </p>
           <!-- The dare belongs to THIS section, whose chips below enumerate the
                very things it invites you to check. It stays a dare by naming
