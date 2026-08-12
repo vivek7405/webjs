@@ -402,12 +402,21 @@ export default function LandingPage() {
                for, next to the brand name. That naming is also why this lede
                says WebJs at all: nothing else in the section does, and someone
                arriving here from a search result needs to know whose page this
-               is. "Here it is the default" said nothing to them. -->
+               is. "Here it is the default" said nothing to them.
+
+               The third sentence leads with JavaScript on purpose. It read
+               "What loads afterwards is only the components that are actually
+               interactive", which says the MARKUP arrives late, the opposite of
+               this section's claim: every component is server-rendered into the
+               first paint, and what follows is the module for the interactive
+               ones. Naming JavaScript first makes the sentence unreadable as a
+               statement about markup. -->
 
           <p class="text-fg-muted text-base leading-[1.6] m-0">
             The server sends a finished page. It reads, its links navigate, and
             its forms submit before a single script runs. What loads afterwards
-            is only the components that are actually interactive. That is
+            is JavaScript, and only for the components that are actually
+            interactive. That is
             progressive enhancement, and with WebJs it is the default rather
             than an effort.
           </p>
