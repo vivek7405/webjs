@@ -80,7 +80,8 @@ export const metadata = {
 // previous section closed on:
 //
 //   hero              what this is, and what your agent does with it
-//   first paint       the trade every framework made, and the other side of it
+//   first paint       the server sends a finished page, and only the
+//                     interactive parts load after it
 //   nothing           the editor file and the network-tab file are one file,
 //   compiled away     so here are two of them served as they sit on disk
 //   browser is the    everything here falls out of that one decision
@@ -352,16 +353,32 @@ export default function LandingPage() {
       <div class="max-w-6xl mx-auto px-6">
         <div class="max-w-3xl mx-auto mb-12 text-center">
           <h2 class="font-display font-bold text-h2 leading-[1.12] tracking-[-0.03em] my-3 text-balance">The first paint is the whole page</h2>
+          <!-- 31 words, down from 106, and the shortening was a FACT-CHECK rather
+               than an edit. The old version made three claims about frameworks in
+               general and not one of them survived being checked against the Next
+               source sitting on this machine.
+                 "The runtime has to load, parse, and hydrate before the page can
+               be read at all" is false: Next server-renders client components too
+               (use-flight-response.tsx feeds the Flight stream through
+               createFromReadableStream with an ssrModuleMapping, and next/dynamic
+               defaults to ssr: true), so its HTML reads immediately.
+                 "Every page pays for the runtime" is true of the App Router, whose
+               getRequiredScripts throws an invariant on an empty script list, and
+               false of the Pages Router, which has unstable_runtimeJS: false.
+                 "A page with nothing interactive ships none at all" is true of
+               this framework (ssr.js emits no <script> when moduleUrls is empty)
+               and describes a case almost no app reaches, since one interactive
+               component in the root layout puts every page under it back on the
+               runtime. This website is the proof: all five routes ship core,
+               because the layout renders theme-toggle and site-nav-menu.
+                 So the rule for this lede: claim nothing about another framework
+               and nothing that needs a footnote about which configuration you are
+               in. The chips below enumerate, the P.S. below runs the comparison
+               in the reader's own browser, and the prose only has to be true. -->
           <p class="text-fg-muted text-base leading-[1.6] m-0">
-            Frameworks got good at hiding the platform, and for years that paid
-            for itself. What changed is when the bill arrives. The runtime has to
-            load, parse, and hydrate before the page can be read at all. WebJs
-            takes the other side of that trade. Pages and components render to
-            real HTML on the server, so the page reads, links navigate, and forms
-            submit before a single script loads. Nothing hydrates that does not
-            have to. Pages and layouts never hydrate at all, an interactive
-            component hydrates on its own when the browser upgrades its tag, and
-            a display-only one is statically elided rather than shipped.
+            The server sends a finished page. It reads, its links navigate, and
+            its forms submit before a single script runs. What loads afterwards
+            is only the components that are actually interactive.
           </p>
           <!-- The dare belongs to THIS section, whose chips below enumerate the
                very things it invites you to check. It stays a dare by naming
