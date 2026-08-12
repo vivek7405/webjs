@@ -635,7 +635,7 @@ export default function LandingPage() {
           <div class="${CARD}">
             <div class="mb-6">
               <h3 class="font-display font-bold text-base leading-[1.3] tracking-[-0.02em] mt-0 mb-2">Auth is not a side quest</h3>
-              <p class="m-0 text-sm leading-[1.6] text-fg-muted">Login, a signed session, and a protected route ship in the scaffold, on a real database with a schema and migrations from the first command. Memory store in dev, Redis when you configure one.</p>
+              <p class="m-0 text-sm leading-[1.6] text-fg-muted">Login, a signed session, and a protected route ship in the scaffold, on a real database with a schema and migrations from the first command. Caching, page caching, and rate limits share one store. It runs in memory by default, and one line moves all three to Redis.</p>
             </div>
             <div class="bg-[var(--editor-sidebar-bg)] border border-[var(--editor-border)] rounded-xl p-2.5 flex flex-col gap-1.5 font-mono text-xs text-[var(--editor-fg)] select-none">
               <div class="flex justify-between items-center px-2 py-1 bg-[var(--editor-bg)] border border-[var(--editor-border)] rounded"><span>Login &amp; sessions</span> <span class="text-[var(--accent-text)]">&check;</span></div>
@@ -657,11 +657,6 @@ export default function LandingPage() {
           </div>
 
         </div>
-        <p class="mt-8 mx-auto max-w-3xl text-center text-base leading-[1.6] text-fg-muted">
-          All of it in <span class="text-fg font-medium">43 KB gzipped</span>, client router
-          included, with zero runtime dependencies. A minimal Next.js client bundle is
-          around 99 KB.
-        </p>
         <!-- The familiarity argument, rescued from the deleted stats section,
              where it read "Familiar from day one. WebJs uses Next.js-style
              file-based routing and lit-style web components". It is an adoption
@@ -686,12 +681,29 @@ export default function LandingPage() {
              751 and 729 with 39px of tail slack. A tighter phrasing was
              available at 751/749 and rejected, since 19px is one font
              substitution away from wrapping again. Re-measure before changing a
-             word here. -->
+             word here: the size sentence below was appended after that tuning
+             and re-wrapped the paragraph, so the two-line figure applies to the
+             first two sentences only.
+
+             The size fact used to be its own paragraph above this one ("All of
+             it in 43 KB gzipped, client router included, with zero runtime
+             dependencies. A minimal Next.js client bundle is around 99 KB"),
+             which read as a stat sitting next to an unrelated claim. It is one
+             paragraph now, but NOT one argument: an earlier merge tried "that
+             is why it fits in 43 KB", and inventing little does not cause a
+             bundle size any more than it causes transferability. Two facts, two
+             sentences, no causal frame between them.
+
+             The 99 KB comparison stays because 43 KB means nothing without it.
+             "Zero runtime dependencies" was dropped for length and is the thing
+             to restore first if this ever gets more room. -->
 
         <p class="mt-4 mx-auto max-w-3xl text-center text-base leading-[1.6] text-fg-muted">
           WebJs invents as little as possible. Routing follows Next.js file
           conventions, components follow lit's, and the rest is the platform, so
-          what you know and what your agent was trained on both transfer.
+          what you know and what your agent was trained on both transfer. All of
+          it is <span class="text-fg font-medium">43 KB gzipped</span>, client
+          router included, against about 99 KB for a minimal Next.js bundle.
         </p>
       </div>
     </section>
