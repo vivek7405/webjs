@@ -80,10 +80,10 @@ try {
   writeFileSync(join(dir, 'app/page.ts'), "import { html } from '@webjsdev/core';\nexport default () => html`<h1>ok</h1>`;\n");
   writeFileSync(join(dir, 'public/a.css'), 'body{color:red}\n');
   // Top-level await, so the module does not finish evaluating (and therefore
-  // `loadMiddleware`, and therefore `ensureReady()`, does not resolve) for 1.5s.
+  // `loadMiddleware`, and therefore `ensureReady()`, does not resolve) for 3s, wide margin over the css fetch latency.
   writeFileSync(
     join(dir, 'middleware.ts'),
-    'await new Promise((r) => setTimeout(r, 1500));\n'
+    'await new Promise((r) => setTimeout(r, 3000));\n'
     + 'export default async function middleware(req: Request, next: () => Promise<Response>) { return next(); }\n',
   );
   writeFileSync(join(dir, 'package.json'), JSON.stringify({ name: 'public-warm', type: 'module', imports: { '#*': './*' }, webjs: {} }));
@@ -104,18 +104,25 @@ try {
   const listening = await until(portAccepts, { timeoutMs: 30_000 });
   assert.ok(listening, `dev server never listened on ${runtime}\n--- server log ---\n${log}`);
 
-  // One pass: the CSS must answer while readiness is still gated on the
-  // analysis. Both requests are issued together so neither waits on the other.
-  const [css, ready] = await Promise.all([
-    fetch(`${BASE}/public/a.css`),
-    fetch(`${BASE}/__webjs/ready`),
-  ]);
+  // ORDER of these two fetches is the whole assertion, so they are sequenced,
+  // never raced. `/__webjs/ready` answers IMMEDIATELY (it reports unready
+  // without blocking on the analysis), so a concurrent pair passes whether or
+  // not the hoist exists: the css resolves whenever it resolves and the ready
+  // fetched at t=0 was 503 either way. That exact vacuous shape shipped first
+  // and passed against a server WITHOUT the hoist. Sequenced, the timeline
+  // discriminates: with the hoist the css returns in milliseconds, long before
+  // the fixture middleware's 3s sleep releases the analysis, so the ready
+  // fetched AFTER it is still 503; without the hoist the css itself blocks on
+  // `ensureReady()`, so by the time it returns the analysis is done and the
+  // same ready fetch reads 200, failing the assertion below.
+  const css = await fetch(`${BASE}/public/a.css`);
   const cssBody = await css.text();
+  const ready = await fetch(`${BASE}/__webjs/ready`);
   assert.equal(css.status, 200, `/public/a.css was not served cold on ${runtime}\n--- server log ---\n${log}`);
   assert.equal(cssBody, 'body{color:red}\n', `/public/a.css served the wrong bytes on ${runtime}`);
   assert.equal(
     ready.status, 503,
-    `the analysis had already completed on ${runtime}, so this proves nothing about ordering\n--- server log ---\n${log}`,
+    `the analysis had already completed before the CSS was served on ${runtime}, so the hoist is not doing its job\n--- server log ---\n${log}`,
   );
 
   console.log(`OK  dev serves /public/* before the analysis completes on ${runtime} (#1397)`);
