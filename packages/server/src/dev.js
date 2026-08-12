@@ -48,8 +48,9 @@ import {
   varyWithAcceptEncoding,
   DEV_BOOT_ID,
 } from './listener-core.js';
-import { scanBareImports, resolveVendorImports, serveDownloadedBundle, clearVendorCache, hasVendorPin, readPinFile, prunePinToReachable } from './vendor.js';
+import { reachedBareImports, resolveVendorImports, serveDownloadedBundle, clearVendorCache, hasVendorPin, readPinFile, prunePinToReachable } from './vendor.js';
 import { buildModuleGraph, transitiveDeps, reachableFromEntries, resolveImport, appImportsMap, seenFilesFor } from './module-graph.js';
+import { browserEntryFiles } from './browser-entries.js';
 import { primeComponentRegistry, findOrphanComponents, scanComponents } from './component-scanner.js';
 import { analyzeElision, elideImportsFromSource } from './component-elision.js';
 
@@ -830,6 +831,10 @@ export async function createRequestHandler(opts) {
     elidableComponents: new Set(),
     inertRouteModules: new Set(),
     importOnlyRouteModules: new Map(),
+    // The browser-bound ENTRY files (pages / layouts / boundaries / components),
+    // kept alongside the expanded gate set because the vendor scan roots at the
+    // entries rather than at the closure.
+    browserEntryFiles: new Set(),
     browserBoundFiles: null,
     // Transformed-source cache (stripped TS + applied elision). Per-handler,
     // NOT module-global: the cached bytes bake in THIS handler's elision
@@ -946,7 +951,8 @@ export async function createRequestHandler(opts) {
             const components = await scanComponents(appDir);
             await primeComponentRegistry(appDir, components);
             t.scan = now() - m; m = now();
-            state.browserBoundFiles = computeBrowserBoundFiles(state.routeTable, state.moduleGraph, components, appDir);
+            state.browserEntryFiles = browserEntryFiles(state.routeTable, components);
+            state.browserBoundFiles = reachableFromEntries(state.moduleGraph, [...state.browserEntryFiles], appDir);
             t.gate = now() - m; m = now();
             state.actionIndex = await buildActionIndex(appDir, dev);
             t.actions = now() - m; m = now();
@@ -1140,7 +1146,10 @@ export async function createRequestHandler(opts) {
     if (vendorResolveInFlight) return vendorResolveInFlight;
     vendorResolveInFlight = (async () => {
       try {
-        const scan = () => scanBareImports(appDir, new Set([...state.elidableComponents, ...state.inertRouteModules, ...state.importOnlyRouteModules.keys()]));
+        const scan = async () => {
+          const skip = new Set([...state.elidableComponents, ...state.inertRouteModules, ...state.importOnlyRouteModules.keys()]);
+          return reachedBareImports(state.moduleGraph, [...state.browserEntryFiles], appDir, skip);
+        };
         const v = await resolveVendorImports(appDir, scan);
         let { imports, integrity } = v;
         if (bootVendorPinned) {
@@ -2818,41 +2827,6 @@ function debounce(fn, ms) {
 }
 
 /**
- * Walk the route table + component scanner to collect every file the
- * browser may legitimately fetch as an ES module, then expand via the
- * module graph into the full transitive closure.
- *
- * This is webjs's equivalent of Next.js's bundler-produced page
- * manifest, derived lazily on the first request (and re-derived on every
- * rebuild) instead of at compile time. The dev server's source-file branch uses the returned
- * Set as an authorization gate: in-set → served (subject to the
- * .server.{js,ts} stub guardrail); out-of-set → 404.
- *
- * Browser-bound entries:
- *   - page.{js,ts,mjs,mts}        (re-runs on client for hydration)
- *   - layout.{js,ts,mjs,mts}      (same)
- *   - error.{js,ts,mjs,mts}       (same)
- *   - loading.{js,ts,mjs,mts}     (same)
- *   - not-found.{js,ts,mjs,mts}   (same)
- *   - component files discovered by the scanner (eager + lazy)
- *
- * Server-only entries (NOT in the set):
- *   - route.{js,ts}   (API handlers, never fetched as JS module)
- *   - middleware.{js,ts}
- *   - metadata routes (sitemap.js, robots.js, manifest.js, …)
- *   - .server.{js,ts} files (browser gets a stub, not the source)
- *
- * Components are passed in (rather than rescanned) so the caller can
- * share one scan with `primeComponentRegistry`. Saves a full
- * appDir walk on each analysis (the first request and every rebuild).
- *
- * @param {Awaited<ReturnType<typeof buildRouteTable>>} routeTable
- * @param {Awaited<ReturnType<typeof buildModuleGraph>>} moduleGraph
- * @param {Awaited<ReturnType<typeof scanComponents>>} components
- * @param {string} appDir
- * @returns {Set<string>}
- */
-/**
  * Collect every page + layout file across the route table. These are the
  * modules the client boot script imports, and thus the candidates for
  * inert-route elision (dropping a module that does no client work).
@@ -2869,34 +2843,6 @@ function collectRouteModules(routeTable) {
     for (const f of page.layouts || []) mods.add(f);
   }
   return [...mods];
-}
-
-function computeBrowserBoundFiles(routeTable, moduleGraph, components, appDir) {
-  /** @type {Set<string>} */
-  const entries = new Set();
-  for (const page of routeTable.pages) {
-    if (page.file) entries.add(page.file);
-    for (const f of page.layouts || []) entries.add(f);
-    for (const f of page.errors || []) entries.add(f);
-    for (const f of page.loadings || []) entries.add(f);
-    for (const f of page.forbiddens || []) entries.add(f);
-    for (const f of page.unauthorizeds || []) entries.add(f);
-  }
-  if (routeTable.notFound) entries.add(routeTable.notFound);
-  if (routeTable.notFounds) {
-    for (const f of routeTable.notFounds.values()) entries.add(f);
-  }
-  if (routeTable.globalError) entries.add(routeTable.globalError);
-  if (routeTable.globalNotFound) entries.add(routeTable.globalNotFound);
-  // instrumentation-client is browser-bound (imported first in the boot), so it
-  // must be servable through the gate.
-  if (routeTable.instrumentationClient) entries.add(routeTable.instrumentationClient);
-  // Lazy components live in the registry but no page imports their
-  // class directly; the lazy-loader fetches their module URLs on
-  // viewport entry. Add every discovered component file as an entry so
-  // the graph walk covers both eager and lazy paths.
-  for (const c of components) entries.add(c.file);
-  return reachableFromEntries(moduleGraph, [...entries], appDir);
 }
 
 /**

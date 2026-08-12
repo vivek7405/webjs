@@ -337,7 +337,7 @@ export declare function setVendorEntries(
 // ---------------------------------------------------------------------------
 
 /** Scan a directory's source for bare-specifier npm imports. */
-export declare function scanBareImports(dir: string, skipFiles?: Set<string>): Promise<Set<string>>;
+export declare function scanBareImports(dir: string): Promise<Set<string>>;
 /** Extract the package name from an import specifier (`dayjs/plugin/utc` -> `dayjs`). */
 export declare function extractPackageName(spec: string): string | null;
 /** Resolve bare imports to CDN importmap entries. */

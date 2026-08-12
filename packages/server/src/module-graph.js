@@ -175,6 +175,28 @@ export function bareImports(graph) {
 }
 
 /**
+ * Bare (npm vendor) specifiers imported DYNAMICALLY (`await import('dayjs')`),
+ * kept apart from `BARE_EDGES` for the same reason `DYNAMIC_EDGES` is kept
+ * apart from the static graph: a lazily-imported vendor must RESOLVE when the
+ * import finally runs, so it belongs in the importmap, but it must not be
+ * preloaded (that would fetch a bundle the author deliberately deferred). So
+ * `reachableBareSpecifiers` (the importmap) unions both maps while
+ * `bareImports` (the #754 modulepreload source) stays static-only.
+ * @type {WeakMap<ModuleGraph, Map<string, Set<string>>>}
+ */
+const BARE_DYNAMIC_EDGES = new WeakMap();
+
+/**
+ * The dynamically-imported bare specifiers per file for a built graph, or an
+ * empty map if none.
+ * @param {ModuleGraph} graph
+ * @returns {Map<string, Set<string>>}
+ */
+export function dynamicBareImports(graph) {
+  return BARE_DYNAMIC_EDGES.get(graph) || new Map();
+}
+
+/**
  * Every app source file walked while building a graph (#899). `graph` itself
  * holds only files that HAVE imports, so a leaf (e.g. a no-import `.server.ts`)
  * is absent from it; this side-channel carries the COMPLETE set of `.js/.ts/
@@ -224,12 +246,16 @@ export async function buildModuleGraph(appDir) {
   const dynamic = new Map();
   /** @type {Map<string, Set<string>>} bare vendor specifiers per file (#754) */
   const bare = new Map();
+  /** @type {Map<string, Set<string>>} DYNAMICALLY-imported bare vendor specifiers
+   * per file: importmap-bound but never preloaded (#1399) */
+  const bareDynamic = new Map();
   /** @type {Set<string>} every file walked this build (graph holds only files
    * with deps, so a separate set is needed to know what is still live). */
   const seen = new Set();
-  await walk(appDir, appDir, graph, seen, dynamic, bare);
+  await walk(appDir, appDir, graph, seen, dynamic, bare, bareDynamic);
   if (dynamic.size) DYNAMIC_EDGES.set(graph, dynamic);
   if (bare.size) BARE_EDGES.set(graph, bare);
+  if (bareDynamic.size) BARE_DYNAMIC_EDGES.set(graph, bareDynamic);
   if (seen.size) SEEN_FILES.set(graph, seen);
   // Evict parse-cache entries for files no longer in the tree (a rebuild after
   // a rename or delete), so a long dev session does not accumulate dead
@@ -375,12 +401,81 @@ export function reachableFromEntries(graph, entryFiles, appDir) {
 }
 
 /**
+ * Bare npm vendor specifiers reachable from `entryFiles`, the importmap
+ * analogue of ssr.js's per-page `reachedVendorSpecifiers` (#754).
+ *
+ * Walks the SAME edges the authorization gate walks (static + dynamic, #751,
+ * stopping at `.server.*` boundaries) so the answer is exactly "what a browser
+ * could load from these entries", then unions each reached file's recorded
+ * bare edges, static AND dynamic. Both dynamic forms are included here even
+ * though `transitiveDeps` (preload) ignores them, for the same reason: a
+ * lazily imported module is not preloaded, but its bare specifier still has to
+ * resolve when the import finally runs, so it belongs in the importmap. That
+ * is why a dynamically-imported VENDOR gets its own map (`dynamicBareImports`)
+ * rather than joining `bareImports`, which feeds the preload hints.
+ *
+ * `.server.*` files are reached (the browser fetches a stub at that URL) but
+ * their bare imports are NOT collected: the source never ships, so a DB driver
+ * imported by a server file must never enter the importmap.
+ *
+ * `skip` files are neither collected nor traversed into, so a specifier
+ * reachable ONLY through an elided component drops out along with the subtree
+ * behind it (#197 / #170). Omit `skip` for the un-pruned superset the pin path
+ * needs.
+ *
+ * @param {ModuleGraph} graph
+ * @param {string[]} entryFiles  absolute paths
+ * @param {string} appDir
+ * @param {Set<string>} [skip]  absolute paths to exclude and not traverse
+ * @returns {Set<string>}
+ */
+export function reachableBareSpecifiers(graph, entryFiles, appDir, skip) {
+  /** @type {Set<string>} */
+  const specs = new Set();
+  const bare = BARE_EDGES.get(graph);
+  const bareDynamic = BARE_DYNAMIC_EDGES.get(graph);
+  if (!bare?.size && !bareDynamic?.size) return specs;
+  const dynamic = DYNAMIC_EDGES.get(graph);
+  /** @type {Set<string>} */
+  const visited = new Set();
+  /** @type {string[]} */
+  const queue = [];
+  for (const entry of entryFiles) {
+    if (!entry || !entry.startsWith(appDir)) continue;
+    if (skip && skip.has(entry)) continue;
+    visited.add(entry);
+    queue.push(entry);
+  }
+  while (queue.length) {
+    const file = /** @type {string} */ (queue.shift());
+    if (SERVER_FILE_RE.test(file)) continue;
+    for (const map of [bare, bareDynamic]) {
+      const fileBare = map?.get(file);
+      if (fileBare) for (const spec of fileBare) specs.add(spec);
+    }
+    const staticDeps = graph.get(file);
+    const dynDeps = dynamic && dynamic.get(file);
+    for (const set of [staticDeps, dynDeps]) {
+      if (!set) continue;
+      for (const dep of set) {
+        if (visited.has(dep)) continue;
+        if (!dep.startsWith(appDir)) continue;
+        if (skip && skip.has(dep)) continue;
+        visited.add(dep);
+        queue.push(dep);
+      }
+    }
+  }
+  return specs;
+}
+
+/**
  * Recursively walk a directory, parse imports, and populate the graph.
  * @param {string} dir
  * @param {string} appDir
  * @param {ModuleGraph} graph
  */
-async function walk(dir, appDir, graph, seen, dynamic, bare) {
+async function walk(dir, appDir, graph, seen, dynamic, bare, bareDynamic) {
   let entries;
   try { entries = await readdir(dir, { withFileTypes: true }); }
   catch { return; }
@@ -398,9 +493,9 @@ async function walk(dir, appDir, graph, seen, dynamic, bare) {
     if (e.name.startsWith('.')) continue;
     const full = join(dir, e.name);
     if (e.isDirectory()) {
-      await walk(full, appDir, graph, seen, dynamic, bare);
+      await walk(full, appDir, graph, seen, dynamic, bare, bareDynamic);
     } else if (/\.(js|ts|mjs|mts)$/.test(e.name)) {
-      await parseFile(full, appDir, graph, seen, dynamic, bare);
+      await parseFile(full, appDir, graph, seen, dynamic, bare, bareDynamic);
     }
   }
 }
@@ -428,7 +523,7 @@ export function _parseCacheHas(file) { return PARSE_CACHE.has(file); }
  * @param {string} appDir
  * @param {ModuleGraph} graph
  */
-async function parseFile(file, appDir, graph, seen, dynamic, bare) {
+async function parseFile(file, appDir, graph, seen, dynamic, bare, bareDynamic) {
   let mtimeMs, size;
   try { const st = await stat(file); mtimeMs = st.mtimeMs; size = st.size; }
   catch { return; }
@@ -438,6 +533,7 @@ async function parseFile(file, appDir, graph, seen, dynamic, bare) {
     if (cached.deps.size) graph.set(file, cached.deps);
     if (cached.dynDeps && cached.dynDeps.size && dynamic) dynamic.set(file, cached.dynDeps);
     if (cached.bareDeps && cached.bareDeps.size && bare) bare.set(file, cached.bareDeps);
+    if (cached.bareDynDeps && cached.bareDynDeps.size && bareDynamic) bareDynamic.set(file, cached.bareDynDeps);
     return;
   }
 
@@ -541,19 +637,28 @@ async function parseFile(file, appDir, graph, seen, dynamic, bare) {
   // `,`/`)`), preserving the documented limitation.
   const { redacted: holeAware, literals } = redactToPlaceholders(src);
   const dynDeps = new Set();
+  const bareDynDeps = new Set();
   for (const m of holeAware.matchAll(DYNAMIC_IMPORT_RE)) {
     const token = m[1];
     const pm = /^__STR_(\d+)__$/.exec(token);
     const spec = pm ? literals[Number(pm[1])] : token;
     if (spec == null) continue;
-    if (!spec.startsWith('.') && !spec.startsWith('/') && !expandImportAlias(spec, appDir)) continue;
+    if (!spec.startsWith('.') && !spec.startsWith('/') && !expandImportAlias(spec, appDir)) {
+      // A dynamically-imported VENDOR (`await import('dayjs')`). Not a graph
+      // edge (there is no local file to serve) and not a preload (lazy by
+      // intent), but it still needs an importmap entry or the import fails to
+      // resolve when it runs. Recorded in its own map for that one consumer.
+      if (isVendorSpecifier(spec)) bareDynDeps.add(spec);
+      continue;
+    }
     const resolved = resolveImport(spec, file, appDir);
     if (resolved && !deps.has(resolved)) dynDeps.add(resolved);
   }
-  PARSE_CACHE.set(file, { mtimeMs, size, deps, dynDeps, bareDeps });
+  PARSE_CACHE.set(file, { mtimeMs, size, deps, dynDeps, bareDeps, bareDynDeps });
   if (deps.size) graph.set(file, deps);
   if (dynDeps.size && dynamic) dynamic.set(file, dynDeps);
   if (bareDeps.size && bare) bare.set(file, bareDeps);
+  if (bareDynDeps.size && bareDynamic) bareDynamic.set(file, bareDynDeps);
 }
 
 /**

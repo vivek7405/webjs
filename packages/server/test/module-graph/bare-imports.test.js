@@ -4,7 +4,7 @@ import { mkdtemp, mkdir, writeFile, utimes } from 'node:fs/promises';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 
-import { buildModuleGraph, bareImports } from '../../src/module-graph.js';
+import { buildModuleGraph, bareImports, dynamicBareImports } from '../../src/module-graph.js';
 
 /**
  * A bare npm vendor specifier (`dayjs`, `@scope/pkg/sub`) is recorded as a
@@ -130,4 +130,121 @@ test('bare edges survive the parse cache on rebuild', async () => {
   // which must still carry bareDeps.
   const graph2 = await buildModuleGraph(dir);
   assert.ok(bareImports(graph2).get(clock)?.has('dayjs'), 'cached rebuild keeps the bare edge');
+});
+
+// --- dynamically-imported vendors (#1399) ---
+//
+// `await import('dayjs')` needs an importmap entry (or the import fails to
+// resolve when it runs) but must NOT be preloaded (lazy by author intent), so
+// it is recorded in its own map rather than in `bareImports`, which is what
+// the #754 modulepreload hints read.
+
+test('a dynamically-imported vendor is a dynamic bare edge, not a static one', async () => {
+  const dir = await makeApp({
+    'components/chart.ts': `export async function load() { return import('chart-pkg'); }`,
+  });
+  const graph = await buildModuleGraph(dir);
+  const chart = join(dir, 'components/chart.ts');
+  assert.ok(dynamicBareImports(graph).get(chart)?.has('chart-pkg'), 'recorded as a dynamic bare edge');
+  assert.ok(!bareImports(graph).get(chart)?.has('chart-pkg'),
+    'must stay out of the preload source: the author deferred this fetch');
+});
+
+test('a statically AND dynamically imported vendor appears in both maps', async () => {
+  const dir = await makeApp({
+    'components/both.ts': `import dayjs from 'dayjs';
+      export async function more() { return import('dayjs/plugin/utc'); }
+      export const d = dayjs;`,
+  });
+  const graph = await buildModuleGraph(dir);
+  const both = join(dir, 'components/both.ts');
+  assert.ok(bareImports(graph).get(both)?.has('dayjs'), 'the static one preloads');
+  assert.ok(dynamicBareImports(graph).get(both)?.has('dayjs/plugin/utc'), 'the dynamic one does not');
+  assert.ok(!bareImports(graph).get(both)?.has('dayjs/plugin/utc'));
+});
+
+test('dynamic bare edges survive the parse cache on rebuild', async () => {
+  const dir = await makeApp({
+    'components/lazy.ts': `export const go = () => import('lazy-pkg');`,
+  });
+  const lazy = join(dir, 'components/lazy.ts');
+  await buildModuleGraph(dir); // warms the parse cache
+  const graph2 = await buildModuleGraph(dir);
+  assert.ok(dynamicBareImports(graph2).get(lazy)?.has('lazy-pkg'), 'cached rebuild keeps the dynamic bare edge');
+});
+
+test('a dynamic import written as example text is not a dynamic bare edge', async () => {
+  const dir = await makeApp({
+    'components/docs.ts': `export const SAMPLE = \`await import('phantom-pkg')\`;
+      export const real = () => import('real-lazy-pkg');`,
+  });
+  const graph = await buildModuleGraph(dir);
+  const docs = join(dir, 'components/docs.ts');
+  const found = dynamicBareImports(graph).get(docs);
+  assert.ok(found?.has('real-lazy-pkg'), 'the real dynamic import is an edge');
+  assert.ok(!found?.has('phantom-pkg'), 'a template-literal sample is not an edge');
+});
+
+// --- scanner robustness (moved here from the vendor tests in #1399, where the
+// filesystem walk they exercised used to live) ---
+
+test('handles CRLF line endings', async () => {
+  const dir = await makeApp({ 'components/a.ts': "import 'crlf-pkg-a';\r\nimport 'crlf-pkg-b';\r\n" });
+  const graph = await buildModuleGraph(dir);
+  const bare = bareImports(graph).get(join(dir, 'components/a.ts'));
+  assert.ok(bare?.has('crlf-pkg-a'), 'CRLF line should not hide imports');
+  assert.ok(bare?.has('crlf-pkg-b'));
+});
+
+test('handles a UTF-8 BOM at file start', async () => {
+  // UTF-8 BOM is the three bytes 0xEF 0xBB 0xBF.
+  const dir = await makeApp({ 'components/a.ts': '﻿' + "import 'bom-pkg';" });
+  const graph = await buildModuleGraph(dir);
+  assert.ok(bareImports(graph).get(join(dir, 'components/a.ts'))?.has('bom-pkg'),
+    'BOM at file start should not hide the first import');
+});
+
+test('does not crash on an unterminated string literal', async () => {
+  // User mid-edit: a half-written file. The scan is regex-based over a
+  // redaction mask, so it tolerates this; Node would still fail to LOAD the
+  // file, but the scan stays correct for every OTHER file in the project.
+  const dir = await makeApp({
+    'components/broken.ts': "import 'unterminated\n// some other code",
+    'components/ok.ts': "import 'still-found';",
+  });
+  const graph = await buildModuleGraph(dir);
+  // We do not assert what the broken file yields, only that it did not stop
+  // the walk.
+  assert.ok(bareImports(graph).get(join(dir, 'components/ok.ts'))?.has('still-found'),
+    'a broken file must not stop the scan');
+});
+
+test('handles a multi-MB file without exploding memory or time', async () => {
+  const padding = Array(50000).fill('// boring line\n').join('');
+  const dir = await makeApp({ 'components/big.ts': padding + "import 'buried-import';\n" + padding });
+  const t0 = Date.now();
+  const graph = await buildModuleGraph(dir);
+  const elapsed = Date.now() - t0;
+  assert.ok(bareImports(graph).get(join(dir, 'components/big.ts'))?.has('buried-import'),
+    'an import buried in a large file must be found');
+  assert.ok(elapsed < 5000, `scan should complete in under 5s; took ${elapsed}ms`);
+});
+
+test('an import string inside a comment is not a bare edge (JSDoc examples etc.)', async () => {
+  const dir = await makeApp({
+    'components/a.ts': `
+    /**
+     * Example usage:
+     *   import { clsx } from 'clsx';
+     */
+    // import 'commented-out-pkg';
+    import real from 'real-only-pkg';
+    export const r = real;
+  `,
+  });
+  const graph = await buildModuleGraph(dir);
+  const bare = bareImports(graph).get(join(dir, 'components/a.ts'));
+  assert.ok(bare?.has('real-only-pkg'));
+  assert.ok(!bare?.has('clsx'), 'a JSDoc-comment import must be skipped');
+  assert.ok(!bare?.has('commented-out-pkg'), 'a line-comment import must be skipped');
 });
