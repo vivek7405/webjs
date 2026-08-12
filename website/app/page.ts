@@ -409,9 +409,22 @@ export default function LandingPage() {
                is why the sentence lists what works rather than claiming
                everything does. Keep it that way: the whole point of an
                invitation to go and check is that checking confirms it. -->
-          <p class="text-sm leading-[1.6] text-fg-subtle max-w-[62ch] mx-auto mt-5 mb-0 text-pretty">
-            P.S. Turn JavaScript off and reload. It still reads, navigates, and
-            respects your system theme. Then try that on the <em>next</em>
+          <!-- 68ch, not the 62ch a measure-based default would pick. At 62ch the
+               greedy fill left "mind" and the wink alone on a third line: the
+               text sets solid at about 1078px, so two lines want 539px each and
+               a 62ch box is 548px, close enough that the last words could not
+               fit but not close enough to absorb them. Two lines start at 64ch
+               (564px of a 566px box, flush against the edge), so 68ch is the
+               first width with enough slack that a font substitution cannot push
+               it back to three. Measures 601px wide with lines of 567 and 562 on
+               a laptop. Re-measure if the sentence changes length: three lines
+               here are not a wrapping bug, they are the last two words orphaned,
+               which is the one paragraph on the page where a ragged tail
+               undercuts the tone. Below about 650px of viewport it wraps further
+               and that is correct. -->
+          <p class="text-sm leading-[1.6] text-fg-subtle max-w-[68ch] mx-auto mt-5 mb-0 text-pretty">
+            P.S. Turn JavaScript off and reload. The page still reads, navigates,
+            and respects your system theme. Then try that on the <em>next</em>
             framework's website that comes to mind. 😉
           </p>
         </div>
