@@ -39,12 +39,19 @@ test('dev serves the reload SharedWorker, and the client uses it with a direct E
   // The primary path is one shared connection through the SharedWorker.
   assert.match(clientSrc, /new SharedWorker\(/, 'client constructs a SharedWorker');
   assert.match(clientSrc, /reload-worker\.js/, 'client points the worker at the worker route');
-  // The fallback keeps the original per-tab EventSource where SharedWorker is
-  // unavailable, and the whole thing is guarded so a construction failure (a
-  // strict dev CSP) degrades instead of breaking.
+  // The fallback keeps a per-tab connection where SharedWorker is unavailable,
+  // and the whole thing is guarded so a construction failure (a strict dev CSP)
+  // degrades instead of breaking. Since #1397 the fallback runs the SAME relay
+  // in the tab over a shim port rather than a second copy of the boot-id rule,
+  // so the client inlines the relay module too and hands it `EventSource`.
   assert.match(clientSrc, /typeof SharedWorker/, 'client feature-detects SharedWorker');
-  assert.match(clientSrc, /new EventSource\(/, 'client keeps an EventSource fallback');
+  assert.match(clientSrc, /function startReloadWorker/, 'the client inlines the relay module for the fallback');
+  assert.match(clientSrc, /startReloadWorker\(scope, EventSource, "\/__webjs\/events"\)/, 'the fallback runs the relay against the real EventSource');
+  assert.match(clientSrc, /scope\.onconnect\(\{ ports: \[\{/, 'and drives it over a shim port');
   assert.match(clientSrc, /catch\s*\(_\)\s*\{\s*__webjsDirectEvents/, 'a worker failure falls back');
+  // The debounce (#1397) is part of the relay, so it ships in BOTH scripts.
+  assert.match(clientSrc, /const RELOAD_QUIET_MS/, 'the reload debounce ships in the client fallback');
+  assert.match(clientSrc, /const RELOAD_MAX_HOLD_MS/, 'including the max-hold cap');
   // The overlay still renders on the main thread (a worker has no DOM).
   assert.match(clientSrc, /renderDevOverlay/, 'the error overlay still renders in the client');
   // ...and it tracks the page actually on screen (#1047). The gate lives in the
@@ -67,6 +74,8 @@ test('dev serves the reload SharedWorker, and the client uses it with a direct E
   assert.match(workerSrc, /scope\.onconnect/, 'the relay accepts a port per tab');
   assert.match(workerSrc, /lastError = null/, 'the relay clears the cached error on reload');
   assert.match(workerSrc, /if \(lastError != null\)/, 'a late-joining tab gets the current error');
+  assert.match(workerSrc, /const RELOAD_QUIET_MS/, 'the reload debounce ships in the worker (#1397)');
+  assert.ok(!/\bexport\s/.test(workerSrc), 'no export keyword survives into the classic worker script');
 });
 
 test('both reload routes 404 in prod (never shipped to a production page)', async () => {
@@ -102,13 +111,15 @@ test('the reload client probes the server is up before reloading (no restart fla
   assert.match(clientSrc, /function __webjsReloadWhenReady/, 'reload is gated on a readiness probe');
   assert.match(clientSrc, /fetch\(\"\/__webjs\/version\"/, 'the probe hits the lightweight version endpoint');
   // Both the SharedWorker path and the direct fallback route through the gate,
-  // never a bare location.reload() on a reload signal.
-  assert.match(clientSrc, /if \(m\.type === 'reload'\) __webjsReloadWhenReady\(\)/, 'the SharedWorker path gates the reload');
-  assert.match(clientSrc, /addEventListener\('reload', \(\) => __webjsReloadWhenReady\(\)\)/, 'the direct fallback gates the reload');
-  // The direct fallback reloads on a reconnect only when the boot id changed (a
-  // real restart), never on a same-process transient reconnect.
-  assert.match(clientSrc, /addEventListener\('hello'/, 'the fallback tracks the boot id via the hello frame');
-  assert.match(clientSrc, /if \(lastBoot !== null && e\.data !== lastBoot\) __webjsReloadWhenReady\(\)/, 'only a changed boot id reloads');
+  // never a bare location.reload() on a reload signal. Since #1397 the fallback
+  // reaches it through the shim port the shared relay posts to, which is the
+  // same message contract the SharedWorker path consumes.
+  assert.match(clientSrc, /if \(m\.type === 'reload'\) __webjsReloadWhenReady\(\)/, 'both paths gate the reload');
+  assert.match(clientSrc, /else if \(m\.type === 'webjs-error'\) __webjsApplyError\(m\.data\)/, 'and both route an error frame to the overlay');
+  // The boot-id rule (#893) lives in the relay now, in ONE place, rather than
+  // being re-implemented in the fallback where the two copies could drift.
+  assert.match(clientSrc, /if \(lastBoot !== null && e\.data !== lastBoot\) requestReload\(\)/, 'only a changed boot id reloads');
+  assert.equal(clientSrc.match(/lastBoot !== null/g).length, 1, 'the boot-id rule exists exactly once');
 });
 
 test('the direct-fallback probe carries the base path under a sub-path deploy (#893 + #256)', async () => {

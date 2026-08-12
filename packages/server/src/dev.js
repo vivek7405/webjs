@@ -1567,6 +1567,25 @@ export async function createRequestHandler(opts) {
       try { assetVersioned = new URL(req.url).searchParams.has('v'); } catch { /* none */ }
       const staticResp = await tryServeFrameworkStatic(assetPath, req.method.toUpperCase(), { coreDir, appDir, dev, versioned: assetVersioned });
       if (staticResp) return staticResp;
+      // `/public/*` needs neither the module graph nor the vendor importmap, so
+      // in DEV serve it here rather than behind the analysis (#1397). A cold
+      // `/public/tailwind.css` measured 1907ms at 4a335549, of which 1900ms was
+      // `ensureReady()`, which is why the stylesheet is the request most exposed
+      // to the next `node --watch` restart. DEV ONLY on purpose: in prod
+      // `/__webjs/ready` already holds traffic off a cold instance until the
+      // analysis and the first vendor attempt have both completed, and hoisting
+      // there would silently un-gate a `/public/*` file that an app middleware
+      // protects. The consequence in dev is that root middleware does not run
+      // for these paths, the same trade the framework statics above already make
+      // in both modes. `state.regenerateRules` is loaded at boot inside
+      // createRequestHandler, so the #967 on-request rebuild is available here,
+      // ahead of ensureReady.
+      if (dev) {
+        const publicResp = await tryServePublicAsset(assetPath, {
+          appDir, dev, versioned: assetVersioned, regenerateRules: state.regenerateRules,
+        });
+        if (publicResp) return publicResp;
+      }
       // Build all whole-app analysis on the first request (memoized), before
       // any SSR, module serve, gate check, action dispatch, or middleware runs.
       await ensureReady();
@@ -2066,6 +2085,64 @@ async function tryServeFrameworkStatic(path, method, ctx) {
   return null;
 }
 
+/**
+ * Serve `/public/*`, plus a small set of ROOT assets that must serve at the
+ * site root even though they live under public/. A service worker registered at
+ * /sw.js scopes to the origin root, so it MUST serve at / (not /public/sw.js),
+ * and so must its offline fallback. Same remap shape as the /favicon.ico
+ * special-case. (#830)
+ *
+ * Extracted (#1397) so the dev pre-`ensureReady()` call site and the
+ * `handleCore` one share ONE implementation, and the containment guard below
+ * cannot drift between two copies.
+ *
+ * @param {string} path decoded pathname
+ * @param {{ appDir: string, dev: boolean, versioned?: boolean, regenerateRules: any[] }} ctx
+ * @returns {Promise<Response|null>} a Response, or null when the path is not a
+ *   public asset OR the file does not exist, in both of which cases the caller
+ *   must fall through to the rest of the pipeline (a missing `/public/x.png`
+ *   404s through normal routing today, and that must not change). A containment
+ *   rejection returns a 404 Response and short-circuits.
+ */
+async function tryServePublicAsset(path, ctx) {
+  const { appDir, dev, versioned, regenerateRules } = ctx;
+  const ROOT_ASSETS = { '/sw.js': '/public/sw.js', '/offline.html': '/public/offline.html' };
+  if (!(path.startsWith('/public/') || path === '/favicon.ico' || path in ROOT_ASSETS)) return null;
+  const p = path === '/favicon.ico' ? '/public/favicon.ico' : (ROOT_ASSETS[path] || path);
+  const abs = join(appDir, p);
+  // Containment check. `join` normalises `..` segments, so a path
+  // like `/public/%2E%2E/secret/x.svg` decodes (after URL parsing,
+  // which doesn't touch `%2E`) to `/public/../secret/x.svg` and
+  // `join(appDir, ...)` resolves it to `appDir/secret/x.svg`. The
+  // resulting `abs` could be inside `appDir` but OUTSIDE `appDir/
+  // public/`, exposing files the user reasonably thought were
+  // private under their non-public directories. Reject anything
+  // that doesn't stay under `appDir/public/` (and the favicon
+  // exception, which is already validated above).
+  const publicRoot = join(appDir, 'public') + sep;
+  if (!abs.startsWith(publicRoot)) {
+    return new Response(null, { status: 404 });
+  }
+  // On-request regeneration (#967): in dev, if a `webjs.dev.regenerate` rule
+  // matches this output and it is stale (a source is newer, or it is missing),
+  // rebuild it to completion BEFORE serving, so a newly added utility class is
+  // never served stale. No-op when no rule matches or the output is fresh, and
+  // never runs in prod (rules are empty there). This replaces the fragile
+  // `tailwindcss --watch` that could die mid-session and serve stale CSS.
+  if (dev && regenerateRules.length) {
+    await maybeRegenerate(appDir, p.replace(/^\/+/, ''), regenerateRules);
+  }
+  // A `?v=<hash>` public asset is content-addressed -> immutable (#243).
+  if (await exists(abs)) {
+    const res = await fileResponse(abs, { dev, immutable: versioned });
+    // A worker served below its registration path only controls that subtree
+    // unless the response opts it up to the root scope. (#830)
+    if (path === '/sw.js') res.headers.set('Service-Worker-Allowed', '/');
+    return res;
+  }
+  return null;
+}
+
 async function handleCore(req, ctx) {
   const { state, appDir, coreDir, dev, reportError, reportDevError, hasOnError, logger, cspEnabled, allowedOrigins } = ctx;
   const url = new URL(req.url);
@@ -2109,46 +2186,11 @@ async function handleCore(req, ctx) {
     return invokeAction(state.actionIndex, actMatch[1], actMatch[2], req, onActionError, allowedOrigins);
   }
 
-  // Static: /public/*, plus a small set of ROOT assets that must serve at the
-  // site root even though they live under public/. A service worker registered
-  // at /sw.js scopes to the origin root, so it MUST serve at / (not
-  // /public/sw.js), and so must its offline fallback. Same remap shape as the
-  // /favicon.ico special-case below. (#830)
-  const ROOT_ASSETS = { '/sw.js': '/public/sw.js', '/offline.html': '/public/offline.html' };
-  if (path.startsWith('/public/') || path === '/favicon.ico' || path in ROOT_ASSETS) {
-    const p = path === '/favicon.ico' ? '/public/favicon.ico' : (ROOT_ASSETS[path] || path);
-    const abs = join(appDir, p);
-    // Containment check. `join` normalises `..` segments, so a path
-    // like `/public/%2E%2E/secret/x.svg` decodes (after URL parsing,
-    // which doesn't touch `%2E`) to `/public/../secret/x.svg` and
-    // `join(appDir, ...)` resolves it to `appDir/secret/x.svg`. The
-    // resulting `abs` could be inside `appDir` but OUTSIDE `appDir/
-    // public/`, exposing files the user reasonably thought were
-    // private under their non-public directories. Reject anything
-    // that doesn't stay under `appDir/public/` (and the favicon
-    // exception, which is already validated above).
-    const publicRoot = join(appDir, 'public') + sep;
-    if (!abs.startsWith(publicRoot)) {
-      return new Response(null, { status: 404 });
-    }
-    // On-request regeneration (#967): in dev, if a `webjs.dev.regenerate` rule
-    // matches this output and it is stale (a source is newer, or it is missing),
-    // rebuild it to completion BEFORE serving, so a newly added utility class is
-    // never served stale. No-op when no rule matches or the output is fresh, and
-    // never runs in prod (rules are empty there). This replaces the fragile
-    // `tailwindcss --watch` that could die mid-session and serve stale CSS.
-    if (dev && state.regenerateRules.length) {
-      await maybeRegenerate(appDir, p.replace(/^\/+/, ''), state.regenerateRules);
-    }
-    // A `?v=<hash>` public asset is content-addressed -> immutable (#243).
-    if (await exists(abs)) {
-      const res = await fileResponse(abs, { dev, immutable: versioned });
-      // A worker served below its registration path only controls that subtree
-      // unless the response opts it up to the root scope. (#830)
-      if (path === '/sw.js') res.headers.set('Service-Worker-Allowed', '/');
-      return res;
-    }
-  }
+  // Static: /public/*, the #830 root remaps, and /favicon.ico. In dev this
+  // already ran before ensureReady() (#1397); this stays the LIVE path in prod
+  // and the fallback in dev, and both call sites share one implementation.
+  const publicResp = await tryServePublicAsset(path, { appDir, dev, versioned, regenerateRules: state.regenerateRules });
+  if (publicResp) return publicResp;
 
   // User source modules (served as ES modules, with action-file rewriting).
   //
@@ -2944,6 +2986,7 @@ function reloadClientJs(bp) {
   const versionUrl = JSON.stringify(withBasePath('/__webjs/version', bp));
   return `// webjs dev reload client
 ${DEV_OVERLAY_SRC}
+${RELOAD_WORKER_SRC}
 function __webjsApplyError(data) {
   let f; try { f = JSON.parse(data); } catch (_) { return; }
   renderDevOverlay(f);
@@ -2972,18 +3015,17 @@ function __webjsReloadWhenReady() {
   attempt();
 }
 function __webjsDirectEvents() {
-  // Same restart-reload as the SharedWorker relay (#893), for the per-tab
-  // fallback: the hello frame carries the server's per-process boot id, so a
-  // CHANGED id on reconnect means a real restart (reload), while a transient
-  // reconnect to the same process keeps the id (no spurious reload).
-  var lastBoot = null;
-  const es = new EventSource(${eventsUrl});
-  es.addEventListener('hello', (e) => {
-    if (lastBoot !== null && e.data !== lastBoot) __webjsReloadWhenReady();
-    lastBoot = e.data;
-  });
-  es.addEventListener('reload', () => __webjsReloadWhenReady());
-  es.addEventListener('webjs-error', (e) => __webjsApplyError(e.data));
+  // No SharedWorker (Chrome for Android has none) or its construction threw (a
+  // strict dev CSP with no worker-src). Run the SAME relay here in the tab over
+  // a shim port instead of a second copy of the boot-id rule (#887, #893) and
+  // the reload debounce (#1397). The shim scope has no setTimeout, so the relay
+  // picks up the tab's own timers.
+  const scope = {};
+  startReloadWorker(scope, EventSource, ${eventsUrl});
+  scope.onconnect({ ports: [{ start() {}, postMessage(m) {
+    if (m.type === 'reload') __webjsReloadWhenReady();
+    else if (m.type === 'webjs-error') __webjsApplyError(m.data);
+  } }] });
 }
 try {
   if (typeof SharedWorker !== 'undefined') {
