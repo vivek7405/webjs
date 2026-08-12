@@ -26,9 +26,9 @@ import { eq } from 'drizzle-orm';
 import { db } from '#db/connection.server.ts';
 import { posts } from '#db/schema.server.ts';
 
-// Import this from a page or component. WebJs
-// rewrites the import into a typed RPC stub (the
-// real call at SSR). No fetch by hand.
+// Import this from a page or component. In the
+// browser the import becomes an RPC call. On the
+// server it is just this function. No fetch by hand.
 export async function getPost(id) {
   const [post] = await db.select()
     .from(posts)

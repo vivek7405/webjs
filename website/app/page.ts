@@ -938,7 +938,7 @@ middleware.ts</pre>
             <div class="cmd-foot pt-2 mt-auto font-mono text-xs leading-[1.6] text-fg-muted max-w-full min-w-0"><copy-cmd>npm create webjs@latest my-api -- --template api</copy-cmd></div>
           </div>
         </div>
-        <p class="mt-8 mx-auto max-w-3xl text-center text-base leading-[1.6] text-fg-muted">Light DOM components, Tailwind, Drizzle, a modules layout, and design tokens are wired before you write a line. Every one of them is a default, not a lock-in. Swap what does not suit you.</p>
+        <p class="mt-8 mx-auto max-w-3xl text-center text-base leading-[1.6] text-fg-muted">Light DOM components, Tailwind CSS, Drizzle ORM, a modules layout, and design tokens are wired before you write a line. Every one of them is a default, not a lock-in. Swap what does not suit you.</p>
         <!-- max-w-4xl, not the max-w-3xl every other lede uses. The line is 782px
              set solid and a 3xl box is 768px, so it wrapped by 14px, which put one
              trailing clause on a second line under a centred first. 4xl gives 114px
