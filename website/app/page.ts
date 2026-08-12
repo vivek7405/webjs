@@ -2,7 +2,7 @@ import { html } from '@webjsdev/core';
 import '#components/copy-cmd.ts';
 import '#components/like-button.ts';
 import { COMPONENT_SAMPLE, TOGGLE_SAMPLE, ACTION_SAMPLE, PAGE_SAMPLE, USAGE_SAMPLE } from '#lib/samples.ts';
-import { DOCS_PATH, DOCS_START_PATH, GH_URL, NEW_TAB, SAME_AS } from '#lib/links.ts';
+import { DOCS_START_PATH, GALLERY_URL, GH_URL, NEW_TAB, SAME_AS } from '#lib/links.ts';
 // highlight() runs only at SSR (codeWindow renders its output into the served
 // HTML), but it does ship to the client as a small dead module: the page loads
 // in the browser to register copy-cmd, and that pulls in its
@@ -79,18 +79,71 @@ export const metadata = {
 // section ledes are what carry it. Each one opens by picking up the idea the
 // previous section closed on:
 //
-//   hero              what this is
-//   arrives finished  the trade every framework made, and the other side of it
+//   hero              what this is, and what your agent does with it
+//   first paint       the trade every framework made, and the other side of it
 //   nothing           a first paint is only honest if what you wrote is what
 //   compiled away     shipped, so here are two files served as they sit on disk
-//   give up nothing   everything here falls out of that one decision
-//   light for AI      a framework that compiles nothing is one you can read
-//   start where       so all of it arrives in one command
+//   browser is the    everything here falls out of that one decision
+//   framework
+//   the app has a     the demos teach, the clear removes them, the shape
+//   shape             stays. pays off the hero's first half
+//   works without     the backend template is the option nobody expects, and
+//   a UI too          it is what converts a reader who thinks this is UI-only.
+//                     NOT "Start where you are": that collided with the CTA
+//                     heading "Start building with AI" directly below it.
 //
 // Rewriting a lede in isolation is what breaks this: the hand-off is in the
 // FIRST sentence of each, so a lede that opens on its own section's topic
 // leaves the page reading as a spec sheet again. Move a section and the two
 // ledes on either side of the seam have to move with it.
+//
+// EVERY SECTION MUST STAND ALONE. This outranks the hand-off above whenever the
+// two conflict. Readers arrive mid-page from a search result or a shared link,
+// so a header and its opening sentence have to resolve with nothing above them.
+// Test it by reading the header plus the first sentence with everything above
+// covered. Four failed that test at once and every failure was a backward
+// reference: "That first paint" (which paint?), "By the time the demos go"
+// (what demos?), "All of it arrives" (all of what?), and the header "Your agent
+// reaches before it writes" (reaches where?).
+//
+// PROTECTIVE repetition is allowed. The anti-repetition rule below is about
+// re-making an ARGUMENT, which is waste, and that is why two bento cards were
+// deleted for restating whole sections. It does NOT cover a line that stops a
+// fast scroller forming a wrong impression from the section they landed on.
+// "It works without a UI too" therefore repeats two things on purpose: that the app
+// arrives with demos AND that one command clears them, and that the defaults
+// are swappable. Someone who lands there cold and reads only "you get a working
+// app full of demos" bounces, and the fix for that is not upstream prose they
+// did not read. Cut an echo when missing it costs the reader nothing. Keep it
+// when missing it costs them the wrong idea.
+//
+// A sequential reader loses nothing, because a self-contained opening still
+// echoes the section above it. "A first paint is only honest..." reads as a
+// hand-off if you came from "The first paint is the whole page" and as a plain
+// claim if you did not. Get both, do not trade one for the other.
+//
+// A lede may hand BACK to the section above, but it must NAME what it is
+// handing back to. A bare pronoun cannot survive the trip, because a large
+// heading sits between the pronoun and its referent and steals the antecedent.
+// "That first paint is only honest..." works, since it names the thing. Three
+// ledes once did not and all three read as broken:
+//
+//   "Everything below falls out of that one decision"  which decision?
+//   "All of that only helps if the agent finds it"     all of what?
+//   "That is true of your code"                        read as referring to the
+//                                                      header directly above it,
+//                                                      which INVERTED the meaning
+//
+// Name it, or open on something self-contained. Do not write "as the previous
+// section showed" either: that is documentation voice and it makes the reader
+// do bookkeeping.
+//
+// The trap is easy to fall into WHILE FIXING one of these. The replacement for
+// the third was "When it needs to go deeper than that, it can", which is the
+// same defect wearing different words. If your fix still contains a bare
+// "that", "this", "the above", or a comparative with no stated baseline, it is
+// not fixed. Read the first sentence with the heading covering everything above
+// it: if it still resolves, it is done.
 //
 // The HEADERS carry their own rule, learned by getting it wrong twice. Each is
 // a self-contained CLAIM, never a label for the contents and never a pointer at
@@ -100,26 +153,20 @@ export const metadata = {
 // header alone. The consequence link belongs in the lede's first sentence,
 // where there is room to name what it refers back to.
 
-// Framework-weight stats. Every number here is MEASURED, and anyone reading
-// the page can re-measure it in seconds, so a stale one is a public error
-// rather than a rounding quibble. Two of them were, which is why the exact
-// command sits beside each. Re-run these before editing a figure:
+// The one surviving measured number, rendered under the bento. It was a
+// four-stat grid in its own section; three of those stats restated sections
+// above them and the section resisted every header it was given, so it went.
+// This one stays because it answers the objection the bento raises, which is
+// that a framework with everything in it must be heavy.
 //
-//   wire size   curl -H 'Accept-Encoding: gzip' -o /dev/null -w '%{size_download}' \
-//                 https://webjs.dev/__webjs/core/dist/webjs-core-browser.js
-//               (the importmap points @webjsdev/core at that exact file, so it
-//                is what a visitor actually pays. It INCLUDES the client
-//                router, which index-browser.js side-effect-imports.)
-//   source      find packages/core/src -name '*.js' | xargs wc -l
-//
-// The ~99 KB Next baseline is the full one (react + react-dom + the Next
-// runtime + the app-router client); react + react-dom alone is ~44 KB.
-const STATS = [
-  { big: '~43 KB', label: 'Client runtime, gzipped', sub: 'A minimal Next.js client bundle is ~99 KB gzipped including React. WebJs is self-sufficient at ~43 KB, 2.3x lighter on the wire, and that already includes the client router.' },
-  { big: '0 build', label: 'Instant agent loops', sub: 'No compilation, no bundler. Agents edit, run tests, and verify in the browser in milliseconds.' },
-  { big: '100%', label: 'Web standards', sub: 'Standard-aligned Web Component lifecycles, so models write components reliably.' },
-  { big: '~23k', label: 'Lines an agent can open', sub: 'The whole of @webjsdev/core is plain JavaScript with JSDoc in node_modules. An agent greps the renderer or the router it is calling and reads the real implementation.' },
-];
+// MEASURE BEFORE EDITING. It has been stale once, at ~29 KB, which made the
+// derived multiplier wrong too:
+//   curl -H 'Accept-Encoding: gzip' -o /dev/null -w '%{size_download}' \
+//     https://webjs.dev/__webjs/core/dist/webjs-core-browser.js
+// The importmap points @webjsdev/core at that exact file, so it is what a
+// visitor pays, and it INCLUDES the client router that index-browser.js
+// side-effect-imports. The ~99 KB Next baseline is the full one (react +
+// react-dom + the Next runtime + the app-router client).
 
 // The interactive component / server action / page samples live in
 // #lib/samples.ts and render through codeWindow() in "Show, don't tell".
@@ -231,14 +278,35 @@ export default function LandingPage() {
     <main id="main" tabindex="-1" class="focus:outline-none">
     <section class="px-6 pt-12 md:pt-20 lg:pt-28 pb-10 md:pb-14 lg:pb-18">
       <div class="text-center">
-        <h1 class="font-display font-extrabold text-display leading-[0.98] tracking-[-0.042em] mx-auto mt-2 mb-6 max-w-[16ch] text-balance">
-          The web framework for AI agents
+        <!-- Same clamp curve as --text-display but with the ceiling lowered from
+             5.5rem to 4.5rem, and a max-width in REM rather than ch. Both are
+             deliberate. This headline is 59 characters where the token was tuned
+             for 31, and at 5.5rem its first sentence alone ran 1222px inside a
+             1464px container, so the line broke mid-second-sentence and the
+             headline sprawled edge to edge. 4.5rem with 62rem breaks it exactly
+             at the full stop, one claim per line. 64rem is 1024px against a measured
+             1008.66px first sentence, so the margin is 15px. Measure an UNWRAPPED
+             clone: summing a Range getClientRects() over already-wrapped text
+             sums the line fragments and gives the wrong number.
+
+             The max-width MUST NOT be in ch. A previous attempt used max-w-[32ch]
+             which computes to 1918px at this font size, wider than the container,
+             so it constrained nothing at all. ch scales with the font, which is
+             the whole trap.
+
+             NO text-balance here either, for the same reason. Balancing splits
+             the headline into evenly weighted lines, which produced three lines
+             breaking mid-word ("Conventions your agent f") even though the first
+             sentence fits its line with 13px to spare. The max-width IS the line
+             break, so greedy filling is what we want. -->
+        <h1 class="font-display font-extrabold text-[clamp(2.9rem,1.55rem+4.5vw,4.5rem)] leading-[1.02] tracking-[-0.038em] mx-auto mt-2 mb-6 max-w-[64rem]">
+          Conventions your agent follows. Architecture you still own.
         </h1>
         <p class="text-lede leading-[1.55] text-fg-muted max-w-[62ch] mx-auto mb-9 text-pretty">
-          WebJs is a full-stack framework that leans on <span class="text-fg font-medium">web standards</span>:
-          native web components, SSR, and progressive enhancement, with
-          <span class="text-fg font-medium">zero build step</span>.
-          Lean enough for an agent to read end to end. Runs on Node 24+ or Bun.
+          <span class="text-fg font-medium">WebJs is a full-stack web components framework with no build step.</span>
+          Conventions guide the first prompt to production-ready code, so fewer
+          tokens go to plumbing. What your agent writes reaches the browser line
+          for line, so it debugs real code and you read exactly what runs.
         </p>
         <div class="flex gap-3 justify-center flex-wrap items-center">
           <a class=${BTN_PRIMARY} href=${DOCS_START_PATH}>
@@ -261,7 +329,7 @@ export default function LandingPage() {
     <section class="py-16">
       <div class="max-w-6xl mx-auto px-6">
         <div class="max-w-3xl mx-auto mb-12 text-center">
-          <h2 class="font-display font-bold text-h2 leading-[1.12] tracking-[-0.03em] my-3 text-balance">The page arrives finished</h2>
+          <h2 class="font-display font-bold text-h2 leading-[1.12] tracking-[-0.03em] my-3 text-balance">The first paint is the whole page</h2>
           <p class="text-fg-muted text-base leading-[1.6] m-0">
             Frameworks got good at hiding the platform, and for years that paid
             for itself. What changed is when the bill arrives. The runtime has to
@@ -272,6 +340,26 @@ export default function LandingPage() {
             have to. Pages and layouts never hydrate at all, an interactive
             component hydrates on its own when the browser upgrades its tag, and
             a display-only one is statically elided rather than shipped.
+          </p>
+          <!-- The dare belongs to THIS section, whose chips below enumerate the
+               very things it invites you to check. It stays a dare by naming
+               nobody: it asserts nothing about any other site, so it cannot go
+               stale when somebody else redeploys, and it links nowhere, so it
+               does not hand the page's highest-intent readers to a competitor.
+               The pun carries the target.
+
+               Everything it DOES claim about this page is true with JS off: the
+               content reads, an <a> navigates, and the palette follows the OS
+               because it is light-dark() in CSS rather than a class an inline
+               script applies. What does NOT survive is an explicitly toggled
+               theme, whose bootstrap script cannot run, and the live demos. That
+               is why the sentence lists what works rather than claiming
+               everything does. Keep it that way: the whole point of an
+               invitation to go and check is that checking confirms it. -->
+          <p class="text-sm leading-[1.6] text-fg-subtle max-w-[62ch] mx-auto mt-5 mb-0 text-pretty">
+            P.S. Turn JavaScript off and reload. The page still reads, the links
+            still work, and it still respects your system theme. Then try that on
+            the <em>next</em> framework's website that comes to your mind. 😉
           </p>
         </div>
 
@@ -311,7 +399,7 @@ export default function LandingPage() {
       <div class="max-w-5xl mx-auto px-6">
         <div class="max-w-3xl mx-auto mb-12 text-center">
           <h2 class="font-display font-bold text-h2 leading-[1.12] tracking-[-0.03em] my-3 text-balance">Nothing is compiled away</h2>
-          <p class="text-fg-muted text-base leading-[1.6] m-0">That first paint is only honest if what you wrote is what shipped. Here is a server action and the page that calls it, both served to the browser exactly as they sit on disk. The types cross with the import, so the page reads the action's real return type, the action reads the row type off your database schema, and nothing is generated in between.</p>
+          <p class="text-fg-muted text-base leading-[1.6] m-0">A first paint is only honest if what you wrote is what shipped. Here is a server action and the page that calls it, both served to the browser exactly as they sit on disk. <a class="text-fg font-medium underline underline-offset-4 decoration-border-strong hover:decoration-accent hover:text-accent transition-colors" href="https://rubyonrails.org" target="_blank" rel="noopener noreferrer">Rails${NEW_TAB}</a> has shipped its default frontend without a bundler since Rails 7 in 2021, so the approach has production miles behind it. The types cross with the import, so the page reads the action's real return type, the action reads the row type off your database schema, and nothing is generated in between.</p>
         </div>
         <div class="grid gap-6 grid-cols-1 md:grid-cols-2">
           <div class="flex flex-col min-w-0">
@@ -329,48 +417,42 @@ export default function LandingPage() {
     <section class="py-16">
       <div class="max-w-6xl mx-auto px-6">
         <div class="max-w-3xl mx-auto mb-12 text-center">
-          <h2 class="font-display font-bold text-h2 leading-[1.12] tracking-[-0.03em] my-3 text-balance">You give up nothing to stay on the platform</h2>
-          <p class="text-fg-muted text-base leading-[1.6] m-0">Everything below falls out of that one decision. Staying close to the platform is usually where a framework starts asking you to give things up, so each card is a place WebJs takes the standard and keeps the ergonomics anyway. Everything you need to ship, none of the build toolchain you don't.</p>
+          <h2 class="font-display font-bold text-h2 leading-[1.12] tracking-[-0.03em] my-3 text-balance">The browser is the framework. The rest is here.</h2>
+          <p class="text-fg-muted text-base leading-[1.6] m-0">Everything below falls out of the decision to skip the build step. Staying close to the platform is usually where a framework starts asking you to give things up, so each card is a place WebJs takes the standard and keeps the ergonomics anyway. Everything you need to ship, none of the build toolchain you don't.</p>
         </div>
         <div class="grid gap-px overflow-hidden rounded-2xl border border-border bg-border grid-cols-1 xs:grid-cols-2 wide:grid-cols-3 shadow-[var(--shadow-sm)]">
 
+          <!-- CARD RULE, same as the section headers: the h3 is a self-contained
+               CLAIM that makes a scroller stop, the body is the payoff, and the
+               inset carries the concrete noun so the grid still SKIMS. A reader
+               who never reads a body should still be able to tell from the six
+               insets that routing, data, auth, and the rest are covered, because
+               "is this framework complete?" is the objection this grid exists to
+               answer and no other section on the page answers it.
+
+               Two cards were deleted rather than reworded when this grid was
+               rewritten, and they should not come back: "Zero build step" and
+               "Progressive enhancement" each restated a whole section the reader
+               had just finished ("Nothing is compiled away" and "The first paint
+               is the whole page"). They also contradicted this section's header,
+               which promises the cards are what the BROWSER does not give you. -->
           <div class="${CARD}">
             <div class="mb-6">
-              <h3 class="font-display font-bold text-base leading-[1.3] tracking-[-0.02em] mt-0 mb-2">Zero build step</h3>
-              <p class="m-0 text-sm leading-[1.6] text-fg-muted">Source files run as-is, so what you write is exactly what the browser serves. An AI agent debugs against the real served code, never a bundled or minified artifact. Not an untested bet either. Rails has shipped its default frontend without a bundler since Rails 7 in 2021.</p>
+              <h3 class="font-display font-bold text-base leading-[1.3] tracking-[-0.02em] mt-0 mb-2">Your folders are the routes</h3>
+              <p class="m-0 text-sm leading-[1.6] text-fg-muted">A <code class="font-mono text-[0.9em]">page.ts</code> is a route, a <code class="font-mono text-[0.9em]">layout.ts</code> wraps everything under it, and a <code class="font-mono text-[0.9em]">route.ts</code> is an HTTP handler. Dynamic segments, groups, catch-alls, and error boundaries all follow the folder tree, so the URL map is the directory listing.</p>
             </div>
-            <div class="bg-[var(--editor-sidebar-bg)] border border-[var(--editor-border)] rounded-xl p-3.5 font-mono text-xs leading-[1.6] text-[var(--editor-fg)]">
-              <div class="flex items-center gap-1.5 text-fg-subtle mb-2 border-b border-[var(--editor-border)] pb-1.5 select-none">
-                <span class="w-2 h-2 rounded-full bg-[#28c840]"></span><span>bun dev</span>
-              </div>
-              <div><span class="text-fg-subtle">$</span> bun run dev<br><span class="text-fg-subtle">Ready on http://localhost:5001</span><br><span class="text-fg-muted">page.ts reloaded in 3ms</span></div>
+            <div class="bg-[var(--editor-sidebar-bg)] border border-[var(--editor-border)] rounded-xl p-3.5 font-mono text-xs leading-[1.7] text-[var(--editor-fg)] select-none">
+              <div class="text-fg-subtle">app/</div>
+              <div>&nbsp;&nbsp;page.ts<span class="text-fg-subtle"> → /</span></div>
+              <div>&nbsp;&nbsp;posts/[id]/page.ts<span class="text-fg-subtle"> → /posts/7</span></div>
+              <div>&nbsp;&nbsp;api/hooks/route.ts<span class="text-fg-subtle"> → POST</span></div>
             </div>
           </div>
 
           <div class="${CARD}">
             <div class="mb-6">
-              <h3 class="font-display font-bold text-base leading-[1.3] tracking-[-0.02em] mt-0 mb-2">Light DOM web components</h3>
-              <p class="m-0 text-sm leading-[1.6] text-fg-muted">Components render to light DOM by default, so Tailwind and global CSS just work, no shadow plumbing. Scoped styles are one line away when you want them.</p>
-            </div>
-            <!-- Two rows rather than a markup snippet: the point of this card
-                 is which mode is the DEFAULT and how you leave it, and a tag
-                 with Tailwind classes on it shows neither. Same row idiom as
-                 the Built-in essentials card, with the accent border marking
-                 the default and the opt-in stating the real one-line API. -->
-            <div class="bg-[var(--editor-sidebar-bg)] border border-[var(--editor-border)] rounded-xl p-2.5 flex flex-col gap-1.5 font-mono text-xs text-[var(--editor-fg)] select-none">
-              <div class="flex justify-between items-center gap-2 px-2 py-1 bg-[var(--editor-bg)] border border-[var(--accent-border)] rounded">
-                <span>Light DOM</span> <span class="text-[var(--accent-text)] whitespace-nowrap">default</span>
-              </div>
-              <div class="flex justify-between items-center gap-2 px-2 py-1 bg-[var(--editor-bg)] border border-[var(--editor-border)] rounded text-fg-subtle">
-                <span>Shadow DOM</span> <span class="whitespace-nowrap">static shadow = true</span>
-              </div>
-            </div>
-          </div>
-
-          <div class="${CARD}">
-            <div class="mb-6">
-              <h3 class="font-display font-bold text-base leading-[1.3] tracking-[-0.02em] mt-0 mb-2">Server actions, fully typed</h3>
-              <p class="m-0 text-sm leading-[1.6] text-fg-muted">Mark a file <code class="font-mono text-[0.9em]">'use server'</code> and import it. The call site keeps the function's real argument and return types, with no code generation in between, and Date, Map, Set, BigInt, and Blob all round-trip across the wire with real http verbs (GET, POST, PUT, PATCH, DELETE).</p>
+              <h3 class="font-display font-bold text-base leading-[1.3] tracking-[-0.02em] mt-0 mb-2">Call the server like a function</h3>
+              <p class="m-0 text-sm leading-[1.6] text-fg-muted">Mark a file <code class="font-mono text-[0.9em]">'use server'</code> and import it. The call site keeps the function's real argument and return types with no code generation in between, and Date, Map, Set, BigInt, and Blob round-trip across the wire. You never hand-write a fetch.</p>
             </div>
             <div class="bg-[var(--editor-sidebar-bg)] border border-[var(--editor-border)] rounded-xl p-3.5 flex items-center justify-between text-xs font-mono select-none text-[var(--editor-fg)]">
               <div class="text-fg-subtle px-2 py-1 bg-[var(--editor-bg)] rounded border border-[var(--editor-border)]">Client</div>
@@ -381,8 +463,23 @@ export default function LandingPage() {
 
           <div class="${CARD}">
             <div class="mb-6">
-              <h3 class="font-display font-bold text-base leading-[1.3] tracking-[-0.02em] mt-0 mb-2">Streaming Suspense</h3>
-              <p class="m-0 text-sm leading-[1.6] text-fg-muted">Stream slow regions progressively. The shell paints instantly, fallbacks render, and async data fills in as it resolves.</p>
+              <h3 class="font-display font-bold text-base leading-[1.3] tracking-[-0.02em] mt-0 mb-2">Some components ship no JavaScript</h3>
+              <p class="m-0 text-sm leading-[1.6] text-fg-muted">Components render on the server. An interactive one hydrates on its own when the browser upgrades its tag, and a display-only one is stripped from the browser entirely, module and vendor imports included.</p>
+            </div>
+            <div class="bg-[var(--editor-sidebar-bg)] border border-[var(--editor-border)] rounded-xl p-2.5 flex flex-col gap-1.5 font-mono text-xs text-[var(--editor-fg)] select-none">
+              <div class="flex justify-between items-center gap-2 px-2 py-1 bg-[var(--editor-bg)] border border-[var(--accent-border)] rounded">
+                <span>&lt;price-tag&gt;</span> <span class="text-[var(--accent-text)] whitespace-nowrap">0 KB</span>
+              </div>
+              <div class="flex justify-between items-center gap-2 px-2 py-1 bg-[var(--editor-bg)] border border-[var(--editor-border)] rounded text-fg-subtle">
+                <span>&lt;add-to-cart&gt;</span> <span class="whitespace-nowrap">hydrates</span>
+              </div>
+            </div>
+          </div>
+
+          <div class="${CARD}">
+            <div class="mb-6">
+              <h3 class="font-display font-bold text-base leading-[1.3] tracking-[-0.02em] mt-0 mb-2">Slow data never blocks the first byte</h3>
+              <p class="m-0 text-sm leading-[1.6] text-fg-muted">Wrap a slow region and the shell paints immediately while the data streams in behind it. Navigation is client-side already, with nothing to import and nothing to configure.</p>
             </div>
             <div class="bg-[var(--editor-sidebar-bg)] border border-[var(--editor-border)] rounded-xl p-3.5 flex flex-col gap-2 text-[var(--editor-fg)]">
               <div class="h-3 w-1/3 bg-[var(--editor-border)] rounded"></div>
@@ -394,60 +491,161 @@ export default function LandingPage() {
 
           <div class="${CARD}">
             <div class="mb-6">
-              <h3 class="font-display font-bold text-base leading-[1.3] tracking-[-0.02em] mt-0 mb-2">Progressive enhancement</h3>
-              <p class="m-0 text-sm leading-[1.6] text-fg-muted">Real HTML first. Links navigate, forms submit, and pages read before JavaScript loads, so the page is usable well before anything hydrates.</p>
+              <h3 class="font-display font-bold text-base leading-[1.3] tracking-[-0.02em] mt-0 mb-2">Auth is not a side quest</h3>
+              <p class="m-0 text-sm leading-[1.6] text-fg-muted">Login, a signed session, and a protected route ship in the scaffold, on a real database with a schema and migrations from the first command. Memory store in dev, Redis when you configure one.</p>
             </div>
-            <div class="bg-[var(--editor-sidebar-bg)] border border-[var(--editor-border)] rounded-xl p-3.5 flex flex-wrap gap-1.5 justify-center select-none text-[var(--editor-fg)]">
-              <span class="px-2 py-1 bg-bg-subtle border border-border text-fg-muted text-xs font-mono rounded">Usable before hydration</span>
-              <span class="px-2 py-1 bg-[var(--editor-bg)] border border-[var(--editor-border)] text-fg-subtle text-xs font-mono rounded">Static elision</span>
+            <div class="bg-[var(--editor-sidebar-bg)] border border-[var(--editor-border)] rounded-xl p-2.5 flex flex-col gap-1.5 font-mono text-xs text-[var(--editor-fg)] select-none">
+              <div class="flex justify-between items-center px-2 py-1 bg-[var(--editor-bg)] border border-[var(--editor-border)] rounded"><span>Login &amp; sessions</span> <span class="text-[var(--accent-text)]">&check;</span></div>
+              <div class="flex justify-between items-center px-2 py-1 bg-[var(--editor-bg)] border border-[var(--editor-border)] rounded"><span>Database &amp; migrations</span> <span class="text-[var(--accent-text)]">&check;</span></div>
             </div>
           </div>
 
           <div class="${CARD}">
             <div class="mb-6">
-              <h3 class="font-display font-bold text-base leading-[1.3] tracking-[-0.02em] mt-0 mb-2">Built-in essentials</h3>
-              <p class="m-0 text-sm leading-[1.6] text-fg-muted">Auth, sessions, cache, rate limits, and websockets are built right in. Pluggable adapters, zero glue.</p>
+              <h3 class="font-display font-bold text-base leading-[1.3] tracking-[-0.02em] mt-0 mb-2">The unglamorous half, included</h3>
+              <p class="m-0 text-sm leading-[1.6] text-fg-muted">Caching, rate limiting, file storage, and WebSockets, sharing one pluggable store. The parts nobody demos and every production app needs.</p>
             </div>
-            <div class="bg-[var(--editor-sidebar-bg)] border border-[var(--editor-border)] rounded-xl p-2.5 flex flex-col gap-1.5 font-mono text-xs text-[var(--editor-fg)] select-none">
-              <div class="flex justify-between items-center px-2 py-1 bg-[var(--editor-bg)] border border-[var(--editor-border)] rounded"><span>Auth &amp; sessions</span> <span class="text-[var(--accent-text)]">&check;</span></div>
-              <div class="flex justify-between items-center px-2 py-1 bg-[var(--editor-bg)] border border-[var(--editor-border)] rounded"><span>Rate limiting</span> <span class="text-[var(--accent-text)]">&check;</span></div>
+            <div class="bg-[var(--editor-sidebar-bg)] border border-[var(--editor-border)] rounded-xl p-3.5 flex flex-wrap gap-1.5 justify-center select-none text-[var(--editor-fg)]">
+              <span class="px-2 py-1 bg-[var(--editor-bg)] border border-[var(--editor-border)] text-fg-subtle text-xs font-mono rounded">Caching</span>
+              <span class="px-2 py-1 bg-[var(--editor-bg)] border border-[var(--editor-border)] text-fg-subtle text-xs font-mono rounded">Rate limits</span>
+              <span class="px-2 py-1 bg-[var(--editor-bg)] border border-[var(--editor-border)] text-fg-subtle text-xs font-mono rounded">File storage</span>
+              <span class="px-2 py-1 bg-[var(--editor-bg)] border border-[var(--editor-border)] text-fg-subtle text-xs font-mono rounded">WebSockets</span>
             </div>
           </div>
 
         </div>
+        <p class="mt-8 mx-auto max-w-3xl text-center text-base leading-[1.6] text-fg-muted">
+          All of it in <span class="text-fg font-medium">43 KB gzipped</span>, client router
+          included, with zero runtime dependencies. A minimal Next.js client bundle is
+          around 99 KB.
+        </p>
+        <!-- The familiarity argument, rescued from the deleted stats section,
+             where it read "Familiar from day one. WebJs uses Next.js-style
+             file-based routing and lit-style web components". It is an adoption
+             lever (your existing knowledge transfers, so trying this costs
+             less) and nothing else on the page makes it.
+
+             Stated as restraint rather than as a disclaimer. "WebJs is not
+             trying to be unique" says the same thing and reads as an apology;
+             "invents as little as possible" is the same restraint offered as a
+             deliberate choice. Both halves are accurate: routing is the Next.js
+             app/ tree, and the component API matches lit with reactive
+             properties as the one documented divergence, which is why this says
+             "as little as possible" rather than "nothing". -->
+        <p class="mt-4 mx-auto max-w-3xl text-center text-base leading-[1.6] text-fg-muted">
+          WebJs invents as little as possible. Routing follows the Next.js file
+          conventions, components follow lit's, and everything under them is the
+          platform, so what you already know transfers, and so does what your
+          agent was trained on.
+        </p>
       </div>
     </section>
 
     <section class="py-16">
       <div class="max-w-6xl mx-auto px-6">
         <div class="max-w-3xl mx-auto mb-12 text-center">
-          <h2 class="font-display font-bold text-h2 leading-[1.12] tracking-[-0.03em] my-3 text-balance">Light enough for AI</h2>
-          <p class="text-fg-muted text-base leading-[1.6] m-0">A framework that compiles nothing away is a framework you can read, and that turns out to matter most to the newest reader on your team. An AI agent reads and reasons about the entire WebJs source end to end, straight from node_modules, because there is no bundle standing between it and the code.</p>
+          <h2 class="font-display font-bold text-h2 leading-[1.12] tracking-[-0.03em] my-3 text-balance">The app has a shape before your agent starts</h2>
+          <p class="text-fg-muted text-base leading-[1.6] m-0">
+            A scaffolded app arrives with a live demo of every feature WebJs
+            ships, so your agent reads working code instead of guessing at an
+            API. One command clears the demos and leaves the wiring. The
+            architecture stays decided either way, carried in a skill your agent
+            reads on demand, so where a feature's code goes, how the palette is
+            declared, and how a component arrives are all settled. It starts on
+            your feature instead of on the scaffolding. When even that runs out,
+            WebJs ships its own uncompiled source into the app's node_modules,
+            so the router or the renderer it is calling is a file it can open and
+            grep without leaving the working directory.
+          </p>
         </div>
-        <div class="grid gap-px bg-border grid-cols-1 xs:grid-cols-2 wide:grid-cols-4 rounded-2xl border border-border overflow-hidden shadow-[var(--shadow-sm)]">
-          ${STATS.map(s => html`
-            <div class="p-8 text-center bg-bg-elev hover:bg-[color-mix(in_oklch,var(--bg-elev)_92%,var(--fg))] transition-colors">
-              <div class="font-display font-extrabold leading-none tracking-[-0.03em] text-doc-h1 text-fg">${s.big}</div>
-              <div class="mt-3 font-semibold text-sm">${s.label}</div>
-              <p class="mt-1.5 m-0 text-sm leading-[1.55] text-fg-muted">${s.sub}</p>
-            </div>
-          `)}
-        </div>
-        <p class="mt-8 mx-auto max-w-3xl text-center text-base leading-[1.6] text-fg-muted">Familiar from day one. WebJs uses Next.js-style file-based routing and lit-style web components, conventions both people and agents already know.</p>
-        <p class="mt-6 mx-auto max-w-3xl text-center text-fg-subtle text-xs leading-[1.5]">Gzipped production sizes, measured over the wire. A Next.js app ships a client bundle around ~99 KB gzipped (react, react-dom, and the Next runtime); <code class="font-mono">@webjsdev/core</code> is self-sufficient at ~43 KB gzipped, client router included, with zero runtime dependencies and no build step.</p>
+        <!-- THREE artifacts telling one arc: what arrives, what clearing leaves,
+             and the shape that survives both. This section used to be two (a
+             "Read the demos. Then delete them." section sat above it) and they
+             were merged, which is why the lede is longer than the others: it is
+             now the only place the gallery, the clear, the conventions, and the
+             framework-source fallback are described. Two windows did not survive
+             the merge, the webjs ui add terminal and the design tokens; their
+             content lives in the lede's third sentence.
+
+             Every one of these is COPIED FROM A REAL SCAFFOLDED APP, not
+             composed for the page. Verified by running webjs create then
+             npm run gallery:clear: 26 routes under app/features before,
+             "Gallery cleared (44 paths removed)" as the actual stdout, and the
+             module paths from the generated tree. Re-generate and re-run before
+             editing any of them. The 26 and the 44 go stale quietly, and a
+             plausible-looking invented path is exactly what a reader tries once.
+
+             (No backticks in here, per invariant 9: a backtick inside an html
+             template body closes the literal at JS-parse time, comment or not.
+             This comment had two and took the page down until tsc caught it.) -->
+        <div class="grid grid-cols-1 mid:grid-cols-2 gap-px overflow-hidden rounded-2xl border border-border bg-border shadow-[var(--shadow-sm)]">
+          <div class="p-6 bg-bg-elev hover:bg-[color-mix(in_oklch,var(--bg-elev)_92%,var(--fg))] transition-colors duration-200 flex flex-col h-full">
+            <h3 class="font-display font-bold text-base leading-[1.3] tracking-[-0.02em] mt-0 mb-4 pl-1">What arrives</h3>
+            <pre class="scroll-thin m-0 px-5 py-4 overflow-x-auto rounded-xl border border-[var(--editor-border)] bg-[var(--editor-sidebar-bg)] font-mono text-xs leading-[1.7] [tab-size:2] flex-1" role="region" tabindex="0" aria-label="The feature gallery a scaffolded app ships with"><code><span class="text-accent">$</span> npm create webjs@latest my-app
+<span class="text-accent">$</span> ls my-app/app/features
+async-render    auth             boundaries    broadcast
+caching         client-router    components    directives
+env             file-storage     forms         frames
+<span class="text-fg-subtle">... 26 in all</span>
+<span class="text-fg-subtle"># a working demo of every feature WebJs ships,</span>
+<span class="text-fg-subtle"># in the repo your agent already has open.</span></code></pre>
+          </div>
+          <div class="p-6 bg-bg-elev hover:bg-[color-mix(in_oklch,var(--bg-elev)_92%,var(--fg))] transition-colors duration-200 flex flex-col h-full">
+            <h3 class="font-display font-bold text-base leading-[1.3] tracking-[-0.02em] mt-0 mb-4 pl-1">What is left</h3>
+            <pre class="scroll-thin m-0 px-5 py-4 overflow-x-auto rounded-xl border border-[var(--editor-border)] bg-[var(--editor-sidebar-bg)] font-mono text-xs leading-[1.7] [tab-size:2] flex-1" role="region" tabindex="0" aria-label="Clearing the gallery with npm run gallery clear"><code><span class="text-accent">$</span> npm run gallery:clear
+Gallery cleared (44 paths removed).
+The agent skill and your database wiring are kept.
+<span class="text-fg-subtle"># app/ is layout.ts and page.ts now. the demos</span>
+<span class="text-fg-subtle"># are gone. what your agent learned from them</span>
+<span class="text-fg-subtle"># is not.</span></code></pre>
+          </div>
+          <div class="p-6 bg-bg-elev hover:bg-[color-mix(in_oklch,var(--bg-elev)_92%,var(--fg))] transition-colors duration-200 flex flex-col h-full">
+            <h3 class="font-display font-bold text-base leading-[1.3] tracking-[-0.02em] mt-0 mb-4 pl-1">Where the code goes</h3>
+            <pre class="scroll-thin m-0 px-5 py-4 overflow-x-auto rounded-xl border border-[var(--editor-border)] bg-[var(--editor-sidebar-bg)] font-mono text-xs leading-[1.7] [tab-size:2] flex-1" role="region" tabindex="0" aria-label="The modules architecture a scaffolded app ships with"><code>modules/auth/
+  actions/signup.server.ts
+  queries/current-user.server.ts
+  types.ts
+db/schema.server.ts
+<span class="text-fg-subtle"># one feature, one folder. writes live in</span>
+<span class="text-fg-subtle"># actions, reads in queries, one function per</span>
+<span class="text-fg-subtle"># file.</span></code></pre>
+          </div>
+          <div class="p-6 bg-bg-elev hover:bg-[color-mix(in_oklch,var(--bg-elev)_92%,var(--fg))] transition-colors duration-200 flex flex-col h-full">
+            <h3 class="font-display font-bold text-base leading-[1.3] tracking-[-0.02em] mt-0 mb-4 pl-1">How the UI is built</h3>
+            <pre class="scroll-thin m-0 px-5 py-4 overflow-x-auto rounded-xl border border-[var(--editor-border)] bg-[var(--editor-sidebar-bg)] font-mono text-xs leading-[1.7] [tab-size:2] flex-1" role="region" tabindex="0" aria-label="Installing a kit component and the design tokens that theme it"><code><span class="text-accent">$</span> webjs ui add button
+<span class="text-accent">✔</span> Wrote components/ui/button.ts
+
+--background  --card    --primary   --border
+--foreground  --muted   --accent    --input
+<span class="text-accent">class="bg-background text-foreground"</span>
+<span class="text-fg-subtle"># the component is a file you own. the palette</span>
+<span class="text-fg-subtle"># is tokens, so restyling means editing them.</span></code></pre>
+          </div>
+                </div>
       </div>
     </section>
+
 
     <section id="templates" class="scroll-mt-24 py-16">
       <div class="max-w-6xl mx-auto px-6">
         <div class="max-w-3xl mx-auto mb-12 text-center">
-          <h2 class="font-display font-bold text-h2 leading-[1.12] tracking-[-0.03em] my-3 text-balance">Start where you are</h2>
-          <p class="text-fg-muted text-base leading-[1.6] m-0">All of it arrives in one command. Every decision above is already made in the scaffold, so the first thing you run is a working app rather than an empty directory.</p>
+          <h2 class="font-display font-bold text-h2 leading-[1.12] tracking-[-0.03em] my-3 text-balance">It works without a UI too</h2>
+          <p class="text-fg-muted text-base leading-[1.6] m-0">Two starting points, one command each. One is full-stack, the other is routes and modules with no UI at all. Either gives you a working app with live feature demos rather than an empty directory, and one command takes the demos out whenever you want to start clean.</p>
         </div>
         <div class="grid gap-4 grid-cols-1 max-w-2xl mx-auto wide:grid-cols-2 wide:max-w-3xl">
           <div class="flex flex-col gap-3 p-6 min-w-0 rounded-2xl border border-border bg-bg-elev">
-            <h3 class="font-display font-bold text-lg leading-[1.25] m-0">Full Stack</h3>
-            <p class="m-0 text-sm leading-[1.6] text-fg-muted">SSR pages, web components, server actions, Drizzle, streaming, and a browsable feature gallery. Auth (login, sessions, a protected route) ships as a gallery card. The default.</p>
+            <!-- "Default" is a MARKER beside the heading, not the words "The
+                 default." trailing the paragraph, because someone comparing two
+                 options reads the headings and may never reach the last line of
+                 the body. The card also says "a database" rather than "Drizzle":
+                 the vendor is named once, in the defaults paragraph below, which
+                 is where "default, not a lock-in" lands. Naming it here too split
+                 one idea across two places. -->
+            <div class="flex items-center gap-2.5">
+              <h3 class="font-display font-bold text-lg leading-[1.25] m-0">Full Stack</h3>
+              <span class="font-mono text-[0.65rem] leading-none tracking-widest uppercase text-[var(--accent-text)] border border-[var(--accent-border)] rounded-full px-2 py-1">Default</span>
+            </div>
+            <p class="m-0 text-sm leading-[1.6] text-fg-muted">SSR pages, web components, server actions, a database, streaming, and a browsable feature gallery. Auth (login, sessions, a protected route) ships as a gallery card.</p>
             <pre class="scroll-thin m-0 px-3.5 py-3 overflow-x-auto rounded-lg border border-border bg-bg-subtle font-mono text-xs leading-[1.6] text-fg-muted" role="region" tabindex="0" aria-label="Example files in a full-stack app">app/page.ts
 components/counter.ts
 actions/posts.server.ts</pre>
@@ -462,8 +660,8 @@ middleware.ts</pre>
             <div class="cmd-foot pt-2 mt-auto font-mono text-xs leading-[1.6] text-fg-muted max-w-full min-w-0"><copy-cmd>npm create webjs@latest my-api -- --template api</copy-cmd></div>
           </div>
         </div>
-        <p class="mt-8 mx-auto max-w-3xl text-center text-base leading-[1.6] text-fg-muted">Both scaffolds arrive with the calls already made. Light DOM components, Tailwind, Drizzle, a modules layout, and design tokens are wired before you write a line, and an agent skill ships alongside them so a coding agent reads how this app is meant to be built rather than guessing from what it saw elsewhere. Every one of those is a default, not a lock-in. Swap what does not suit you.</p>
-        <p class="mt-6 mx-auto max-w-3xl text-center text-fg-subtle text-sm leading-[1.55]">Prefer Bun? Add <code class="font-mono">--runtime bun</code> to either template, or run <code class="font-mono">bun create webjs my-app</code> to flavor the scaffold for Bun automatically.</p>
+        <p class="mt-8 mx-auto max-w-3xl text-center text-base leading-[1.6] text-fg-muted">Light DOM components, Tailwind, Drizzle, a modules layout, and design tokens are wired before you write a line. Every one of them is a default, not a lock-in. Swap what does not suit you.</p>
+        <p class="mt-6 mx-auto max-w-3xl text-center text-fg-subtle text-sm leading-[1.55]">Prefer Bun instead of Node.js? Run <code class="font-mono">bun create webjs@latest my-app</code> to flavor the scaffold for Bun automatically.</p>
       </div>
     </section>
 
@@ -471,7 +669,12 @@ middleware.ts</pre>
       title: 'Start building with AI',
       lede: 'Run the command below in your terminal, launch your AI coding agent from the app folder, and tell it what you would like to build.',
       primary: { href: DOCS_START_PATH, label: 'Get started' },
-      secondary: { href: DOCS_PATH, label: 'Read the docs' },
+      // NOT a second docs link. This slot used to point at DOCS_PATH while the
+      // primary pointed at DOCS_START_PATH, and /docs is a 308 to
+      // /docs/getting-started, so both buttons resolved to the identical URL and
+      // the secondary was dead weight. The pair now offers two different
+      // actions, read it or watch it work, which is what a secondary is for.
+      secondary: { href: GALLERY_URL, label: 'See it running', ext: true },
     })}
 
     </main>
