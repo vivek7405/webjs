@@ -670,7 +670,12 @@ middleware.ts</pre>
           </div>
         </div>
         <p class="mt-8 mx-auto max-w-3xl text-center text-base leading-[1.6] text-fg-muted">Light DOM components, Tailwind, Drizzle, a modules layout, and design tokens are wired before you write a line. Every one of them is a default, not a lock-in. Swap what does not suit you.</p>
-        <p class="mt-6 mx-auto max-w-3xl text-center text-fg-subtle text-sm leading-[1.55]">Prefer Bun instead of Node.js? Run <code class="font-mono">bun create webjs@latest my-app</code> to flavor the scaffold for Bun automatically.</p>
+        <!-- max-w-4xl, not the max-w-3xl every other lede uses. The line is 782px
+             set solid and a 3xl box is 768px, so it wrapped by 14px, which put one
+             trailing clause on a second line under a centred first. 4xl gives 114px
+             of slack, enough that a font substitution cannot re-wrap it, and it
+             still folds to two lines below ~830px where two lines are correct. -->
+        <p class="mt-6 mx-auto max-w-4xl text-center text-fg-subtle text-sm leading-[1.55]">Prefer Bun instead of Node.js? Flavor the whole scaffold for Bun by running <copy-cmd inline>bun create webjs@latest my-app</copy-cmd></p>
       </div>
     </section>
 

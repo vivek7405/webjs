@@ -340,6 +340,11 @@ export default function RootLayout({ children }: LayoutProps) {
          brackets on purpose: a literal element tag inside this style
          block is rendered as a real component by the SSR pass. */
       copy-cmd { display: block; flex: 1; min-width: 0; max-width: 100%; }
+      /* The in-a-sentence variant. The block host above would break the
+         sentence around the command; this puts it back in the text flow.
+         copy-cmd[inline] is one specificity point above the bare tag, so it
+         wins without !important and without reordering. */
+      copy-cmd[inline] { display: inline; flex: none; max-width: none; }
       /* Template-card commands hide the horizontal scrollbar entirely (no
          track, no gutter, even on hover), so all three sit flush at the same
          bottom baseline with no reserved strip. The command stays scrollable

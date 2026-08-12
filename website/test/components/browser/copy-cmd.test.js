@@ -266,6 +266,73 @@ suite('copy-cmd', () => {
     }
   });
 
+  suite('inline variant', () => {
+    const mountInline = async (text) => {
+      const el = document.createElement('copy-cmd');
+      el.setAttribute('inline', '');
+      el.textContent = text;
+      document.body.appendChild(el);
+      await el.updateComplete;
+      return el;
+    };
+
+    test('renders a code chip and NOT the bar button', async () => {
+      const el = await mountInline('bun create webjs@latest my-app');
+      const target = el.querySelector('[data-copy-text]');
+      assert.ok(target, 'a [data-copy-text] click target is rendered');
+      assert.equal(target.tagName, 'CODE', 'the inline chip is a <code>, keeping the command semantic');
+      // The counterfactual for the whole variant: the bar renders an absolutely
+      // positioned <button> and reserves pr-9 for it, and BOTH would wreck a
+      // line of prose. If the inline branch is deleted, this fails.
+      assert.equal(el.querySelector('button'), null, 'no absolutely positioned bar button inline');
+      assert.ok(!target.className.includes('pr-9'), 'no pr-9 button reservation inline');
+      assert.ok(target.className.includes('whitespace-nowrap'), 'the chip is one unbreakable unit');
+      assert.ok(
+        target.textContent.includes('bun create webjs@latest my-app'),
+        'the slotted command is projected into the chip',
+      );
+      el.remove();
+    });
+
+    test('clicking the chip copies the command', async () => {
+      const el = await mountInline('   bun create webjs@latest my-app   ');
+      el.querySelector('[data-copy-text]').click();
+      await tick(10);
+      await el.updateComplete;
+      // The icon lives INSIDE the copy target here, so this also proves the svg
+      // contributes no text: an untrimmed or icon-polluted read would not equal
+      // the command exactly.
+      assert.equal(written, 'bun create webjs@latest my-app', 'the exact command was written to the clipboard');
+      assert.ok(el.querySelector('polyline'), 'the inline icon flipped to the checkmark');
+      assert.equal(el.querySelector('rect'), null, 'the copy icon is gone after copy');
+      assert.equal(
+        el.querySelector('[role="status"]').textContent.trim(),
+        'Copied',
+        'the live region announces to assistive tech inline too',
+      );
+      el.remove();
+    });
+
+    test('keyboard activation copies inline too', async () => {
+      const el = await mountInline('bun create webjs@latest my-app');
+      const target = el.querySelector('[data-copy-text]');
+      assert.equal(target.getAttribute('role'), 'button', 'the chip is exposed as a button');
+      assert.equal(target.getAttribute('tabindex'), '0', 'the chip is reachable by keyboard');
+      target.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
+      await tick(10);
+      await el.updateComplete;
+      assert.equal(written, 'bun create webjs@latest my-app', 'Enter triggers a copy inline');
+      el.remove();
+    });
+
+    test('renders no generated ids inline either (ETag guard)', async () => {
+      const a = await mountInline('bun create webjs@latest my-app');
+      const b = await mountInline('bun create webjs@latest my-app');
+      assert.equal(a.innerHTML, b.innerHTML, 'two inline renders of the same command emit identical markup');
+      a.remove(); b.remove();
+    });
+  });
+
   test('the checkmark resets back to the copy icon', async () => {
     const el = await mount('npm create webjs@latest my-app');
     el.querySelector('[data-copy-text]').click();
