@@ -698,7 +698,7 @@ export default function LandingPage() {
              "Zero runtime dependencies" was dropped for length and is the thing
              to restore first if this ever gets more room. -->
 
-        <p class="mt-4 mx-auto max-w-3xl text-center text-base leading-[1.6] text-fg-muted">
+        <p class="mt-8 mx-auto max-w-3xl text-center text-base leading-[1.6] text-fg-muted">
           WebJs invents as little as possible. Routing follows Next.js file
           conventions, components follow lit's, and the rest is the platform, so
           what you know and what your agent was trained on both transfer. All of
@@ -909,7 +909,7 @@ db/schema.server.ts
              needs to name the folder and the action ("then try to read the
              framework in your last project's node_modules"), because "the same
              folder" pointed at a path that exists in no other app. -->
-        <p class="text-sm leading-[1.6] text-fg-subtle max-w-[68ch] mx-auto mt-6 mb-0 text-center text-pretty">
+        <p class="text-sm leading-[1.6] text-fg-subtle max-w-[68ch] mx-auto mt-8 mb-0 text-center text-pretty">
           Open <code class="font-mono text-sm bg-fg/8 px-1.5 py-0.5 rounded">node_modules/@webjsdev</code> in your app and read any of it.
         </p>
       </div>

@@ -86,6 +86,29 @@ export const READING = 'max-w-210 mx-auto px-6';
 export const SECTION = 'py-16';
 
 /**
+ * The marketing section's vertical rhythm, in one place because it is four
+ * numbers that have to agree across every section on a page and there is no
+ * single element that owns them.
+ *
+ *   section padding      py-16   64px, the SECTION recipe above
+ *   heading to lede      my-3    12px, from the H2 recipe's own margin
+ *   header to artifact   mb-12   48px, on the centered header block
+ *   artifact to closer   mt-8    32px, the FIRST trailing paragraph
+ *   closer to closer     mt-6    24px, every one after that
+ *
+ * The last two are the ones that drift, because a closing sentence is added
+ * one section at a time and each author picks a margin by eye. The landing
+ * page had 16, 24, 32 and 24 across four closers before this was written down.
+ * If a section needs a different value, it needs a reason in a comment.
+ *
+ * Deliberate exception: a closing line that sits INSIDE the header block,
+ * above the artifact rather than below it, is not this pattern. The landing
+ * page's JavaScript-off P.S. is the only one, at mt-5.
+ */
+export const CLOSER = 'mt-8';
+export const CLOSER_NEXT = 'mt-6';
+
+/**
  * A small uppercase label: window chrome, card kickers, sidebar section names.
  *
  * Built from Tailwind's own steps rather than a custom size. A token one pixel
