@@ -471,10 +471,30 @@ export default function LandingPage() {
                 <span class="hidden group-has-[:checked]/stage:inline">Show rendered</span>
               </label>
             </div>
-            <div class="flex-1 grid place-items-center px-6 py-10 group-has-[:checked]/stage:hidden">
-              <like-button count="3"></like-button>
+            <!-- Both states occupy the SAME grid cell (col-start-1 row-start-1),
+                 so the row is as tall as the taller of them and toggling cannot
+                 change the stage's height. They used to be flex siblings
+                 swapped with the hidden utility, which took the usage pane out
+                 of flow: on a phone, where the stage is stacked rather than
+                 side by side, pressing "Show usage" shrank the stage by 60px
+                 and pulled the whole page up under the reader's thumb.
+
+                 The invisible utility rather than hidden is what keeps the
+                 reserved height. It is also the accessible half:
+                 visibility:hidden drops the inactive pane out of the tab order
+                 and the accessibility tree, which an opacity-0 swap would not,
+                 and this pre carries tabindex 0 for its scroll region.
+
+                 (No backticks in here, invariant 9. Writing this comment with
+                 utility names in backticks is what broke the build a minute
+                 ago: a backtick inside an html template body closes the
+                 literal at parse time, comment or not.) -->
+            <div class="flex-1 grid min-w-0">
+              <div class="col-start-1 row-start-1 grid place-items-center px-6 py-10 group-has-[:checked]/stage:invisible">
+                <like-button count="3"></like-button>
+              </div>
+              <pre class="col-start-1 row-start-1 min-w-0 invisible group-has-[:checked]/stage:visible m-0 p-5 overflow-x-auto font-mono text-xs leading-[1.72] text-left" role="region" tabindex="0" aria-label="like-button usage"><code>${highlight(USAGE_SAMPLE)}</code></pre>
             </div>
-            <pre class="hidden group-has-[:checked]/stage:block flex-1 m-0 p-5 overflow-x-auto font-mono text-xs leading-[1.72] text-left" role="region" tabindex="0" aria-label="like-button usage"><code>${highlight(USAGE_SAMPLE)}</code></pre>
             <div class="px-4 py-3 border-t border-border text-center font-mono text-xs leading-[1.5] text-fg-subtle">
               Server-rendered first, then upgraded. Click it.
             </div>
