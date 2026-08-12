@@ -342,11 +342,40 @@ export default function LandingPage() {
         <h1 class="font-display font-extrabold text-[clamp(1.75rem,0.93rem+4.9vw,4.125rem)] leading-[1.02] tracking-[-0.038em] mx-auto mt-2 mb-6 max-w-[64rem]">
           Conventions your agent follows. Architecture you still own.
         </h1>
+        <!-- Two sentences, 18 words, cut from 45. What went and why, because
+             each cut looks like a loss until you see what pays for it below.
+
+             "What your agent writes reaches the browser line for line, so it
+             debugs real code and you read exactly what runs" is the claim
+             "Nothing is compiled away" makes two sections down, with two code
+             windows and a server-action boundary as evidence. A demonstrated
+             claim beats a stated one, and stating it here spends the reveal.
+
+             "Conventions guide the first prompt to production-ready code, so
+             fewer tokens go to plumbing" said the mechanism rather than the
+             outcome, and token economy is the page's only mention of tokens.
+             Rails leads with token efficiency and can afford to, because its
+             subtitle never has to say what Rails is. Half of this one does.
+
+             An ownership clause was drafted twice ("everything it writes stays
+             yours to read and change") and cut twice: the H1's second half
+             already says it, and sections 4 and 5 both pay it off.
+
+             What is left is the definition, which an unknown framework cannot
+             skip, and one checkable outcome. "Starts WORKING on your feature"
+             rather than "starts on": the idiom can read as "begin at", and this
+             is the sentence a stranger reads before deciding to scroll. Both
+             wrap to two lines at 1440, so the extra word is free.
+
+             The break after the bold sentence is deliberate and costs nothing:
+             two lines either way at the same 64px, but 674 and 600 rather than
+             784 and 489, and the break lands on the sentence boundary instead
+             of mid-clause. The definition owns one line, the promise owns the
+             other. On a phone it is two lines each, breaking where the sentence
+             breaks rather than four lines running together. -->
         <p class="text-lede leading-[1.55] text-fg-muted max-w-[62ch] mx-auto mb-9 text-pretty">
-          <span class="text-fg font-medium">WebJs is a full-stack web components framework with no build step.</span>
-          Conventions guide the first prompt to production-ready code, so fewer
-          tokens go to plumbing. What your agent writes reaches the browser line
-          for line, so it debugs real code and you read exactly what runs.
+          <span class="text-fg font-medium">WebJs is a full-stack web components framework with no build step.</span><br>
+          Your agent starts working on your feature, not the scaffolding.
         </p>
         <div class="flex gap-3 justify-center flex-wrap items-center">
           <a class=${BTN_PRIMARY} href=${DOCS_START_PATH}>

@@ -79,7 +79,14 @@
 
   --text-display: clamp(2.9rem, 1.55rem + 4.5vw, 5.5rem);
   --text-h2:      clamp(1.7rem, 1.2rem + 1.4vw, 2.5rem);
-  --text-lede:    clamp(1.08rem, 0.98rem + 0.4vw, 1.28rem);
+  /* The lede step. Raised from a 1.28rem cap: at 20.5px against a 66px h1 the
+     hero subtitle sat at 0.31 of the headline and read as body copy rather
+     than as the second voice. 1.4rem puts it at 0.34.
+
+     The line count does not move with it, because every lede on the site is
+     measured in ch (max-w-[62ch] on the landing hero), so the box grows with
+     the type. Verified 2 lines at 1.28 through 1.5rem before picking. */
+  --text-lede:    clamp(1.08rem, 0.98rem + 0.5vw, 1.4rem);
 
   /* Documentation-page type scale. The docs run a tighter heading rhythm than
      the marketing pages (a reference page wants a calm h1, not a hero), so
