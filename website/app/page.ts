@@ -617,24 +617,43 @@ export default function LandingPage() {
           <p class="text-fg-muted text-base leading-[1.6] m-0">
             A scaffolded app arrives with a live demo of every feature WebJs
             ships, so your agent reads working code instead of guessing at an
-            API. One command clears the demos and leaves the wiring. The
+            API. One command clears the demos and leaves the wiring, and the
             architecture stays decided either way, carried in a skill your agent
-            reads on demand, so where a feature's code goes, how the palette is
-            declared, and how a component arrives are all settled. It starts on
-            your feature instead of on the scaffolding. When even that runs out,
-            WebJs ships its own uncompiled source into the app's node_modules,
-            so the router or the renderer it is calling is a file it can open and
-            grep without leaving the working directory.
+            reads on demand. When even that runs out, the framework's own source
+            sits uncompiled in node_modules.
           </p>
         </div>
         <!-- THREE artifacts telling one arc: what arrives, what clearing leaves,
              and the shape that survives both. This section used to be two (a
              "Read the demos. Then delete them." section sat above it) and they
-             were merged, which is why the lede is longer than the others: it is
-             now the only place the gallery, the clear, the conventions, and the
-             framework-source fallback are described. Two windows did not survive
-             the merge, the webjs ui add terminal and the design tokens; their
-             content lives in the lede's third sentence.
+             were merged.
+
+             The lede was 115 words, the longest on the page, and the merge is
+             why: two windows did not survive it (the webjs ui add terminal and
+             the design tokens) so their content was moved into the prose. The
+             cards have since been rebuilt and both are back, in "How the UI is
+             built". The sentence outlived its reason, and by then it was reading
+             out the card headings: "where a feature's code goes" IS the second
+             card, "how the palette is declared, and how a component arrives" IS
+             the third. It is gone. Before adding prose here, check whether a
+             card already shows it, because a window beats a clause every time.
+
+             The payoff sentence went the same way, for the same reason one level
+             up: "It starts on your feature instead of on the scaffolding" is what
+             the H2 above already says, three inches away, and a scroller reads
+             the heading rather than the fourth clause of a paragraph. Check the
+             HEADER too, not just the cards.
+
+             63 words now, from 115. That is close to the floor: what is left is
+             four facts carried once each (the demos exist, one command removes
+             them, the architecture is decided and lives in a skill, the source is
+             readable). Cutting further costs content rather than duplication.
+
+             What the lede must keep carrying is the LAST sentence, the framework
+             source readable in node_modules. That is the one claim in this
+             section no card illustrates, and grepping the page shows this is its
+             only mention anywhere. -->
+
 
              Every one of these is COPIED FROM A REAL SCAFFOLDED APP, not
              composed for the page. Verified by running webjs create then
