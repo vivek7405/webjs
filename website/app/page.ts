@@ -84,7 +84,7 @@ export const metadata = {
 //                     interactive parts load after it
 //   nothing           the editor file and the network-tab file are one file,
 //   compiled away     and the action beside it never ships at all
-//   browser is the    everything here falls out of that one decision
+//   browser is the    the standard is kept and the ergonomics are kept too
 //   framework
 //   the app has a     the demos teach, the clear removes them, the shape
 //   shape             stays. pays off the hero's first half
@@ -514,7 +514,18 @@ export default function LandingPage() {
       <div class="max-w-6xl mx-auto px-6">
         <div class="max-w-3xl mx-auto mb-12 text-center">
           <h2 class="font-display font-bold text-h2 leading-[1.12] tracking-[-0.03em] my-3 text-balance">The browser is the framework. The rest is here.</h2>
-          <p class="text-fg-muted text-base leading-[1.6] m-0">Everything below falls out of the decision to skip the build step. Staying close to the platform is usually where a framework starts asking you to give things up, so each card is a place WebJs takes the standard and keeps the ergonomics anyway. Everything you need to ship, none of the build toolchain you don't.</p>
+          <!-- The lede opened with "Everything below falls out of the decision to
+               skip the build step" and that was false of five of the six cards.
+               File routing, server actions, streaming, auth, and the caching /
+               rate-limit / storage / WebSocket set all exist in frameworks that
+               DO build; only elision has even a weak link, being per-module
+               because there is no bundler to tree-shake instead. It also fought
+               the header, which promises the cards are what the BROWSER does not
+               give you, so a reader hunting the build-step connection in "Auth is
+               not a side quest" found nothing. The organising principle is the
+               header's, not the build step's. Do not reintroduce a causal frame
+               here: check any new opener against all six cards first. -->
+          <p class="text-fg-muted text-base leading-[1.6] m-0">Staying close to the platform is usually where a framework starts asking you to give things up, so each card is a place WebJs takes the standard and keeps the ergonomics anyway. Everything you need to ship, none of the build toolchain you don't.</p>
         </div>
         <div class="grid gap-px overflow-hidden rounded-2xl border border-border bg-border grid-cols-1 xs:grid-cols-2 wide:grid-cols-3 shadow-[var(--shadow-sm)]">
 
