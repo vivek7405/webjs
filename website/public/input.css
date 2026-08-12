@@ -79,14 +79,26 @@
 
   --text-display: clamp(2.9rem, 1.55rem + 4.5vw, 5.5rem);
   --text-h2:      clamp(1.7rem, 1.2rem + 1.4vw, 2.5rem);
-  /* The lede step. Raised from a 1.28rem cap: at 20.5px against a 66px h1 the
-     hero subtitle sat at 0.31 of the headline and read as body copy rather
-     than as the second voice. 1.4rem puts it at 0.34.
+  /* The lede step, raised from an original 1.28rem cap. At 20.5px against a
+     66px h1 the hero subtitle sat at 0.31 of the headline and read as body
+     copy rather than as the second voice. It is 0.42 now.
 
-     The line count does not move with it, because every lede on the site is
-     measured in ch (max-w-[62ch] on the landing hero), so the box grows with
-     the type. Verified 2 lines at 1.28 through 1.5rem before picking. */
-  --text-lede:    clamp(1.08rem, 0.98rem + 0.5vw, 1.4rem);
+     Measured at all three sizes rather than at the one being reviewed:
+     390px 20.8px / 5 lines, 768px 23.7px / 3, 1280px 27.8px / 2, 1440px
+     28.8px. The install bar stays above the fold on a 390x844 phone, at
+     593px of 844.
+
+     The min matters as much as the max here, and for opposite reasons. The
+     landing hero measures in ch (max-w-[62ch]), so on a desktop the box grows
+     WITH the type and the line count never moves however far the max goes. On
+     a phone the viewport caps the box first, so the min is the only term that
+     changes anything, and raising it from 1.08 to 1.3rem is what took the
+     subtitle from four lines to five. That was accepted, not missed.
+
+     Shared with /what-is-webjs, /why-webjs and /brand, whose ledes are longer
+     and therefore feel a raise more: /why-webjs runs to 7 lines at 768px.
+     Check those three, not just the landing page, after any change here. */
+  --text-lede:    clamp(1.3rem, 1.1rem + 0.8vw, 1.8rem);
 
   /* Documentation-page type scale. The docs run a tighter heading rhythm than
      the marketing pages (a reference page wants a calm h1, not a hero), so
