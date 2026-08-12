@@ -294,13 +294,28 @@ test('a dropped page\'s SSR-only RELATIVE HELPER vendor is NOT preloaded (#754 r
   // Round-2 finding: the walk reached a dropped page's relative helper, whose
   // vendor was collected even though the helper never ships. An inert page
   // imports `./fmt.js` (a pure SSR helper) which imports dayjs as a binding; the
-  // page module is dropped, so neither fmt.js nor dayjs ships. dayjs must NOT be
-  // preloaded, EVEN THOUGH it stays in the app-wide importmap (the helper's bare
-  // import is scanned regardless of the dropped page), which is what makes this
-  // the walk-roots fix and not importmap pruning.
+  // page module is dropped, so neither fmt.js nor dayjs ships, and dayjs must
+  // NOT be preloaded on that route.
+  //
+  // Multi-route for the same reason as the SIBLING-route test above, and since
+  // #1399 for a second one. A sibling `/live` ships dayjs through an interactive
+  // widget, which is what keeps dayjs in the app-wide importmap and therefore
+  // makes the over-fetch possible at all. Single-route, this now asserts nothing:
+  // the vendor scan is rooted in the module graph and does not traverse into a
+  // skipped module, so the subtree behind the dropped page (fmt.js, and dayjs
+  // with it) is pruned from the importmap outright, and a specifier absent from
+  // the importmap can never be preloaded whatever the walk does.
   const appDir = makeApp({
     pin: { imports: { dayjs: DAYJS_URL }, integrity: { [DAYJS_URL]: DAYJS_INTEGRITY } },
   });
+  writeVendorWidget(appDir); // app/widget.js: interactive (@click), imports dayjs
+  mkdirSync(join(appDir, 'app', 'live'), { recursive: true });
+  writeFileSync(
+    join(appDir, 'app', 'live', 'page.js'),
+    `import { html } from ${JSON.stringify(HTML_URL)};\n` +
+    `import '../widget.js';\n` +
+    `export default () => html\`<x-widget></x-widget>\`;\n`,
+  );
   writeFileSync(
     join(appDir, 'app', 'fmt.js'),
     `import dayjs from 'dayjs';\nexport const fmt = () => typeof dayjs;\n`,
@@ -314,9 +329,9 @@ test('a dropped page\'s SSR-only RELATIVE HELPER vendor is NOT preloaded (#754 r
   const app = await createRequestHandler({ appDir, dev: false });
   await app.warmup();
   const html = await (await app.handle(new Request('http://x/'))).text();
-  // Precondition: dayjs stays in the app-wide importmap (the helper's import is
-  // scanned), so excluding it from the preload set is the fix, not importmap pruning.
-  assert.ok(/"dayjs"/.test(html), 'dayjs is in the app-wide importmap (helper import scanned)');
+  // Precondition: dayjs stays in the app-wide importmap (the sibling /live keeps
+  // it reachable), so excluding it from the preload set is the fix under test.
+  assert.ok(/"dayjs"/.test(html), 'dayjs is in the app-wide importmap (sibling /live ships it)');
   // Precondition: the inert page module is dropped from the boot.
   assert.ok(!modulepreloadLinks(html).some((l) => l.includes('/app/page.js')), 'the inert page is dropped');
   // The fix: the SSR-only helper's vendor is NOT preloaded.
