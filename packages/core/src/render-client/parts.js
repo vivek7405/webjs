@@ -550,7 +550,7 @@ export function applyChildInnerRaw(part, value, reconcileFormActionsCb) {
   part.child = [node];
 }
 
-function updateInstance(inst, values, reconcileFormActionsCb) {
+export function updateInstance(inst, values, reconcileFormActionsCb) {
   for (let i = 0; i < values.length; i++) {
     const next = values[i];
     if (Object.is(next, inst.lastValues[i])) continue;

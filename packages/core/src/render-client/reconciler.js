@@ -1,4 +1,4 @@
-import { isTemplate } from '../html.js';
+import { isTemplate, MARKER } from '../html.js';
 import {
   reconcileFormAction, isBoundFormAction, ABSENT, assertSubmitterHasNoName, assertSubmitterType,
   assertSubmitterHasNoValue, assertSubmitterHasNoStaticFormAction,
@@ -7,10 +7,10 @@ import {
   assertIdentifiableAction, FORM_ACTION_FIELD,
 } from '../form-action.js';
 import { isLive } from '../directives.js';
-import { RENDERING, SLOT_OWNER, SLOT_STATE, drainRendererBackstop } from '../slot.js';
+import { RENDERING, SLOT_OWNER, SLOT_STATE, drainRendererBackstop, rescueAssignedNodes } from '../slot.js';
 import { compile, templateCache, submitterActionBindings, INSTANCE } from './template-compiler.js';
 import {
-  applyPart, bindPart, currentRenderRoot, setCurrentRenderRoot,
+  applyPart, bindPart, currentRenderRoot, findSlotHost, setCurrentRenderRoot, updateInstance,
 } from './parts.js';
 
 /**
@@ -31,7 +31,7 @@ export function render(value, container) {
     if (isTemplate(value)) {
       const tr = /** @type {import('../html.js').TemplateResult} */ (value);
       if (prev && prev.strings === tr.strings) {
-        updateInstance(prev, tr.values);
+        updateInstance(prev, tr.values, reconcileFormActions);
         return;
       }
       if (prev) clearInstance(prev, container);
@@ -324,34 +324,6 @@ function createInstance(tr, container) {
   return { strings: tr.strings, bound, lastValues, startNode, endNode };
 }
 
-const MARKER = 'wjm-';
-
-/**
- * @param {TemplateInstance} inst
- * @param {unknown[]} values
- */
-function updateInstance(inst, values) {
-  for (let i = 0; i < values.length; i++) {
-    const next = values[i];
-    if (Object.is(next, inst.lastValues[i])) continue;
-    const bp = inst.bound[i];
-    const anchor = /** @type any */ (bp).mixedAnchor;
-    try {
-      if (bp.kind === 'noop' && anchor != null) {
-        applyPart(inst.bound[anchor], values[anchor], inst.lastValues[anchor], values, reconcileFormActions);
-      } else {
-        applyPart(bp, next, inst.lastValues[i], values, reconcileFormActions);
-      }
-    } catch (err) {
-      inst.lastValues[i] = Symbol('webjs.commitFailed');
-      if (bp.kind === 'noop' && anchor != null) inst.lastValues[anchor] = Symbol('webjs.commitFailed');
-      throw err;
-    }
-    inst.lastValues[i] = next;
-  }
-  reconcileFormActions(templateCache.get(inst.strings)?.formActions ?? null, inst.bound, values);
-}
-
 /**
  * @param {TemplateInstance} inst
  * @param {Element | DocumentFragment | ShadowRoot} container
@@ -372,6 +344,11 @@ function clearInstance(inst, container) {
       }
     }
     if (p.kind === 'slot') {
+      // Detach record-owned children before the teardown disposes the
+      // slot subtree; the record keeps the refs, so a re-created slot
+      // re-places the SAME nodes (children are values, #1015).
+      const host = findSlotHost(p.slotEl);
+      if (host) rescueAssignedNodes(host, p.slotEl);
     }
   }
   /** @type any */ (container).replaceChildren();
