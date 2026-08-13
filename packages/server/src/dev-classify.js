@@ -85,13 +85,19 @@ function verdictRank(v) {
  *
  * The ladder, first match wins:
  *
- * 1. The analysis is cold, so nothing is known yet. Fail safe. This mirrors
- *    Vite's pessimistic seed (`needFullReload = modules.length === 0`). A
- *    rebuild invalidates the lazy analysis, so this rung is live between a
- *    rebuild and the next request. In practice the reload or in-place refresh
- *    each verdict produces IS that request, so the analysis is warm again well
- *    before the next edit lands, and the rung only catches an edit that beat
- *    the browser to it.
+ * 1. The analysis has NEVER completed, so nothing is known yet. Fail safe. This
+ *    mirrors Vite's pessimistic seed (`needFullReload = modules.length === 0`).
+ *    In practice this is the window between boot and the first request.
+ *
+ *    `analysisReady` deliberately means "the sets are POPULATED", not "they are
+ *    current". A rebuild invalidates the lazy analysis and nothing re-warms it
+ *    until an HTTP request arrives, while the relay defers that request by its
+ *    2000ms quiet window (#1397), which is longer than the measured inter-save
+ *    gap. Reading currency here would therefore turn the feature off for every
+ *    edit after the first in a burst. Classifying against the previous build's
+ *    graph is the intended behaviour, and it is conservative in the right
+ *    direction: a file the stale graph has never seen falls to rung 6 and
+ *    reloads.
  * 2. The path is outside `appDir`. The watcher only fires for `appDir` plus the
  *    opt-in `webjs.dev.watch` roots (#894), and a file outside `appDir` is
  *    content the server reads at render time, never a browser module. It can

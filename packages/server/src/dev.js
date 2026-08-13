@@ -907,6 +907,16 @@ export async function createRequestHandler(opts) {
   // platform's traffic and probes are the retry loop. `readyError` holds a
   // propagating analysis failure so /__webjs/ready can report it.
   let analysisDone = false;        // deterministic analysis complete (readiness gate)
+  // Whether the analysis has EVER completed (#1398). Distinct from
+  // `analysisDone`, which `doRebuild` flips false on every edit: the live-reload
+  // classifier needs to know the derived sets are POPULATED, not that they are
+  // current, because it deliberately classifies against the previous build's
+  // graph (see the note in `doRebuild`). Gating it on `analysisDone` turned the
+  // feature off for every edit after the first in a burst, since nothing
+  // re-warms the analysis until an HTTP request arrives and the relay defers
+  // that request by its 2000ms quiet window (#1397), which is longer than the
+  // measured inter-save gap. Never reset.
+  let analysisEverDone = false;
   // A pinned app applied its FULL vendor map and published the build id at boot
   // (above). The deferred vendor stage still runs once (and after every rebuild)
   // to PRUNE that map to the elision-reachable specifiers, so a pinned app serves
@@ -1102,6 +1112,7 @@ export async function createRequestHandler(opts) {
               );
             }
             analysisDone = true;
+            analysisEverDone = true;
             ranAnalysis = true;
           }
           readyError = null;
@@ -1753,7 +1764,7 @@ export async function createRequestHandler(opts) {
       shippedFiles: state.shippedFiles,
       graphFiles: state.graphFiles,
       pageFiles: state.pageFiles,
-      analysisReady: analysisDone,
+      analysisReady: analysisEverDone,
       sep,
     }),
     appDir,

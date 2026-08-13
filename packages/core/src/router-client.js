@@ -2958,9 +2958,11 @@ function handleNavigationError(href, status, error) {
  *   behaviour, so a page rendered through `notFound()`, `forbidden()`, or an
  *   `error.ts` boundary has `ok:false` and `applied:true`. It is `false`
  *   wherever no swap committed: a transport failure, a non-HTML body, an
- *   unparseable one, a 204/205, a discarded revalidation, and an abort. A
- *   caller deciding whether to fall back to a full page load wants `applied`;
- *   one reporting the submission's success wants `ok`.
+ *   unparseable one, a 204/205, a discarded revalidation, an abort, and every
+ *   `applySwap` path that returns without committing (a missing frame, or a
+ *   degradation to a hard navigation from an importmap mismatch or a poisoned
+ *   boundary scan). A caller deciding whether to fall back to a full page load
+ *   wants `applied`; one reporting the submission's success wants `ok`.
  */
 async function fetchAndApply(href, frameId, recordHistory, optimisticState, method, body, signal, token, revalidating, refresh) {
   method = method || 'GET';
@@ -3163,6 +3165,12 @@ async function fetchAndApply(href, frameId, recordHistory, optimisticState, meth
   if (!doc) { restoreOptimistic(optimisticState); handleNavigationError(href, null, new Error('navigation response did not parse as HTML')); return { ok: false, status: respStatus, aborted: false, applied: false }; }
 
   const disposition = applySwap(doc, frameId, !!revalidating, finalUrl, incomingBuild, incomingSrc, refresh);
+  // `'none'` means applySwap returned WITHOUT committing anything: the frame the
+  // response was for is missing, or it degraded to a hard navigation (an
+  // importmap/build mismatch, a poisoned boundary scan). The page is not left
+  // in a bad state either way, but nothing was applied IN PLACE, and `applied`
+  // has to say so or it repeats the hole it exists to close.
+  if (disposition === 'none') return { ok: respOk, status: respStatus, aborted: false, applied: false };
   // A discarded revalidation must be discarded OUTRIGHT: a streamed response's
   // boundary templates must not splice into the restored snapshot afterward
   // (boundary ids are per-render sequential, so a reduced render's numbering
@@ -3694,6 +3702,11 @@ let _swapCommit = Promise.resolve();
  * @param {string | null} href
  * @param {string | null} [incomingBuild]
  * @param {string | null} [incomingSrc]
+ * @returns {'discard' | 'none' | undefined} `'discard'` when a background
+ *   revalidation was thrown away, `'none'` when it returned without committing
+ *   anything (a missing frame, or a degradation to a hard navigation), and
+ *   `undefined` when a swap committed. `fetchAndApply` maps the first two to
+ *   `applied: false`.
  * @param {'page' | 'shell' | undefined} [refresh]  same-URL in-place refresh
  *   mode (#1398). `'shell'` takes the full-body tier directly, because the
  *   layout's OWN markup changed and that lives outside every children range.
@@ -3836,14 +3849,14 @@ function applySwap(doc, frameId, revalidating, href, incomingBuild, incomingSrc,
           if (sessionStorage) sessionStorage.setItem(flag, '1');
           reportFallback('deploy-mismatch', href);
           hardNavigate(href);
-          return;
+          return 'none';
         }
       } catch {
         // sessionStorage unavailable (private mode w/ quota etc.):
         // fall through to a single reload like before.
         reportFallback('deploy-mismatch', href);
         hardNavigate(href);
-        return;
+        return 'none';
       }
     } else if (!mismatch) {
       // No importmap/build mismatch, so no hard reload. But the app-source
@@ -3925,7 +3938,7 @@ function applySwap(doc, frameId, revalidating, href, incomingBuild, incomingSrc,
     if (!evt.defaultPrevented) {
       console.warn(`[webjs] frame "${frameId}" was not in the navigation response, leaving it unchanged. Handle "webjs:frame-missing" (preventDefault) to override.`);
     }
-    return;
+    return 'none';
   }
 
   // 1b. Same-URL refresh in `shell` mode (#1398). A boundary morph can only
@@ -4001,7 +4014,7 @@ function applySwap(doc, frameId, revalidating, href, incomingBuild, incomingSrc,
       : !there ? 'incoming-boundaries-malformed'
       : 'no-shared-boundary', href);
     hardNavigate(href);
-    return;
+    return 'none';
   }
 
   // A BACKGROUND revalidation (revalidating + href) with no trustworthy plan

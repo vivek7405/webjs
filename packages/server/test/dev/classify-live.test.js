@@ -138,6 +138,54 @@ Counter.register('my-counter');
   assert.equal(v.why, 'ships-to-browser');
 });
 
+// THE burst regression. A rebuild invalidates the lazy analysis, and nothing
+// re-warms it until an HTTP request arrives, which the relay defers by its
+// 2000ms quiet window (#1397) while the measured inter-save gap is about a
+// second. So gating the classifier on "the analysis is CURRENT" turned the
+// feature off for every edit after the first in a burst: the second save
+// classified `analysis-cold` and the strongest-verdict rule collapsed the whole
+// batch to a full reload. It is gated on "the sets are POPULATED" instead.
+//
+// Every other case here warms with a fetch before its single edit, so none of
+// them can see this; the second edit has to land with no request in between.
+test('a SECOND edit with no request in between still classifies (the burst case)', async () => {
+  const appDir = scaffold();
+  const srv = await startServer({ appDir, port: 0, dev: true });
+  const port = srv.server.address().port;
+  try {
+    const res = await fetch(`http://127.0.0.1:${port}/`);
+    assert.equal(res.status, 200);
+    await res.text();
+
+    const first = waitForReloadFrame(port, 6000);
+    await sleep(150);
+    writeFileSync(join(appDir, 'app/page.js'), `
+import { html } from '@webjsdev/core';
+import '../components/counter.js';
+export default function Page() {
+  return html\`<main>EDIT_ONE<my-counter></my-counter></main>\`;
+}
+`);
+    assert.equal(JSON.parse(await first).v, 'page', 'the first edit classifies');
+
+    // No fetch here on purpose: this is what a burst looks like.
+    const second = waitForReloadFrame(port, 6000);
+    await sleep(150);
+    writeFileSync(join(appDir, 'app/page.js'), `
+import { html } from '@webjsdev/core';
+import '../components/counter.js';
+export default function Page() {
+  return html\`<main>EDIT_TWO<my-counter></my-counter></main>\`;
+}
+`);
+    const v = JSON.parse(await second);
+    assert.equal(v.v, 'page', 'and so does the second, against the previous build\'s graph');
+    assert.equal(v.why, 'page-module', 'rather than falling back to analysis-cold');
+  } finally {
+    await srv.close();
+  }
+});
+
 test('a LAYOUT edit rides a `shell` verdict, because its own markup is outside every children range', async () => {
   const appDir = scaffold();
   const v = await verdictForEdit(appDir, 'app/layout.js', `

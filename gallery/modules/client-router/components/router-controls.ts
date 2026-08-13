@@ -49,8 +49,9 @@ export class RouterControls extends WebComponent {
         </div>
         <p class="text-sm text-muted-foreground">
           refreshPage() re-renders THIS url on the server and swaps it in.
-          The server time above updates, the counter below keeps counting, and
-          your scroll position does not move.
+          The server time above updates, and your scroll position does not
+          move. On a page with hydrated components outside the swapped region,
+          their state survives too.
         </p>
         <p class="text-sm text-muted-foreground">
           Plain link:
