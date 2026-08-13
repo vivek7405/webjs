@@ -333,25 +333,38 @@ export default function LandingPage() {
              so every phone rendered the identical 46.4px and the size stopped
              responding exactly where it mattered: 58 characters at 46.4px in a
              342px box is 5 ragged lines and a 237px-tall headline. The floor is
-             now 1.75rem, reached only below 314px, so the size is genuinely fluid
+             now 1.5rem, reached only below 282px, so the size is genuinely fluid
              across every real device.
 
-             The slope was then steepened a second time, to land on 32px at
-             390px rather than 34px. That is a 2px change with a whole line in
-             it: at 34px the headline takes FOUR lines on a phone, ending on a
-             75px orphan ("own."), and at 32px it takes three (333/289/180).
-             The curve is solved backwards from that wrap point and the 66px
-             cap, so it still reaches the cap at ~1044px and desktop is
-             untouched.
+             The headline carries a HARD break between its two sentences, and
+             the slope is solved backwards from what that break costs. A break
+             is free at 768 and above, where each sentence fits its own line
+             anyway. On a phone it is not free: at 34px the two sentences take
+             four lines with two orphans ("follows." at 103px, "own." at 70px).
+             At 30px they take three (232/183/337), the same count the inline
+             version needed, with the sentence boundary respected instead of
+             straddling line two. So 30px at 390px is the constraint the whole
+             curve is fitted to, and it still reaches the 66px cap at ~1044px.
 
-             Below about 360px it goes back to four lines, which is correct: a
-             320px phone cannot hold this headline in three without type too
-             small to lead a page.
+             text-balance is safe on the H1 ONLY because of that break. Without
+             it, balance rearranged both sentences together and at 768 shortened
+             the H1 to 547/475/295, which made the subtitle measure 119% of the
+             title, wider than the thing it sits under. With the break, balance
+             can only even the lines WITHIN a sentence, which is what turns
+             312/103/337 into 232/183/337 on a phone and changes nothing above
+             it. Do not remove the break and keep the balance.
 
-             Re-measure line counts at 390 / 768 / 1440 before touching any of the
-             three numbers; they are chosen against the wrap points, not picked. -->
-        <h1 class="font-display font-extrabold text-[clamp(1.75rem,0.73rem+5.2vw,4.125rem)] leading-[0.98] tracking-[-0.038em] mx-auto mt-2 mb-6 max-w-[64rem]">
-          Conventions your agent follows. Architecture you still own.
+             Below about 360px it goes to four lines, which is correct: a 320px
+             phone cannot hold this headline in three without type too small to
+             lead a page.
+
+             Measured 26.1 / 29.9 / 50.7 / 66px at 320 / 390 / 768 / 1280, with
+             the H1 at 4 / 3 / 2 / 2 lines and the subtitle at 91-92% of the
+             title's longest line from 768 up. Re-measure all of them before
+             touching any of the three numbers; they are chosen against the wrap
+             points, not picked. -->
+        <h1 class="font-display font-extrabold text-[clamp(1.5rem,0.53rem+5.5vw,4.125rem)] leading-[0.98] tracking-[-0.038em] mx-auto mt-2 mb-6 max-w-[64rem] text-balance">
+          Conventions your agent follows.<br>Architecture you still own.
         </h1>
         <!-- Two sentences. The second one is the PAGE'S THESIS, and it took a
              long time to find because it is not any single section's claim.
