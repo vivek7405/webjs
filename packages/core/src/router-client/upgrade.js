@@ -6,7 +6,7 @@
  *
  * @module
  */
-import { collectBoundaries, planBoundarySwap } from './boundaries.js';
+import { buildHaveHeader, collectBoundaries, planBoundarySwap } from './boundaries.js';
 import { FALLBACK_MARKER_KEY, FRAME_TOP, LIVE_ATTRS } from './constants.js';
 import { isPreBootNavigation } from './diagnostics.js';
 import { applyOptimisticLoading, blurOutgoingFocus, diffElementInPlace, keyOf, reconcileChildren, restoreOptimistic } from './dom-differ.js';
@@ -15,7 +15,7 @@ import { findAnchorInPath, onPopState, onSubmit } from './events.js';
 import { buildSubmitFormData, encodeSubmitBody, getSubmitAction, getSubmitEnctype, getSubmitMethod } from './form-encoder.js';
 import { activeFrameId, clearFormBusy, clearFrameBusy, markFormBusy, markFrameBusy, resolveTargetFrameId } from './frames.js';
 import { addNewHeadElements, cloneScriptWithCorrectNonce, mergeHead } from './head-merge.js';
-import { buildHaveHeader } from './navigator.js';
+
 import { eligibleAnchorHref, prefetch, prefetchAnchor, prefetchCache, prefetchHasHoverPointer, prefetchMode, prefetchSaysSaveData, prefetchSuppressed, prefetchTake } from './prefetch.js';
 import { snapshotCache } from './snapshot-cache.js';
 import { applyStreamedResolve, readStreamedShell, streamBoundariesProgressively, takeResolveUnit } from './stream.js';

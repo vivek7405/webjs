@@ -34,6 +34,7 @@ export { _prefetchInflightSize, _prefetchPeek, _resetPrefetch } from './router-c
 export { _bumpNavToken, _navToken, _setHardNavigate } from './router-client/state.js';
 
 export {
+  buildHaveHeader as _buildHaveHeader,
   collectBoundaries as _collectBoundaries,
   planBoundarySwap as _planBoundarySwap,
 } from './router-client/boundaries.js';
@@ -81,9 +82,6 @@ export {
   addNewHeadElements as _addNewHeadElements,
   mergeHead as _mergeHead,
 } from './router-client/head-merge.js';
-export {
-  buildHaveHeader as _buildHaveHeader,
-} from './router-client/navigator.js';
 export {
   eligibleAnchorHref as _eligibleAnchorHref,
   prefetch as _prefetch,

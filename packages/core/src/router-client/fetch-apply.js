@@ -8,13 +8,14 @@
  */
 import { markStale, parseTagHeader } from '../action-cache-client.js';
 import { renderStream } from '../webjs-stream.js';
+import { buildHaveHeader } from './boundaries.js';
 import { STREAM_MIME } from './constants.js';
 import { warnIfSmoothScrollOnHtml } from './diagnostics.js';
 import { restoreOptimistic } from './dom-differ.js';
 import { parseHTML } from './dom-parse.js';
 import { clearFrameBusy, markFrameBusy } from './frames.js';
 import { handleNavigationError } from './nav-error.js';
-import { buildHaveHeader, navigate } from './navigator.js';
+import { navigate } from './navigator.js';
 import { prefetchTake } from './prefetch.js';
 import { currentNavigationToken } from './state.js';
 import { readStreamedShell, streamBoundariesProgressively } from './stream.js';

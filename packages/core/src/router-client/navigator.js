@@ -6,7 +6,6 @@
  *
  * @module
  */
-import { collectBoundaries } from './boundaries.js';
 import { ANCHOR_SUPPRESS_FLOOR_MS } from './constants.js';
 import { reportFallback, reportPreBootNavigation, setNavigating, shouldFullLoadDuringParse } from './diagnostics.js';
 import { applyOptimisticLoading } from './dom-differ.js';
@@ -20,12 +19,11 @@ import { clearPrefetchHover, clearPrefetchViewTimers, onPrefetchIntent, onPrefet
 // through bumpRestoreGeneration(), since ESM forbids assigning an import.
 import { afterTwoFrames, bumpRestoreGeneration, cancelScrollCatchUp, catchUpToRestoredScroll, releaseScrollAnchor, restoreGeneration, suppressScrollAnchoring } from './scroll.js';
 import { snapshotCache, snapshotCurrent, snapshotGet } from './snapshot-cache.js';
-import { bumpNavToken, currentNavigationToken, hardNavigate } from './state.js';
+import { _setEnabled, bumpNavToken, currentNavigationToken, enabled, hardNavigate } from './state.js';
 import { _swapCommit, applySwap } from './swap.js';
 import { ensureUpgradeObserver } from './upgrade.js';
 import { viewTransitionsEnabled } from './view-transition.js';
 
-export let enabled = false;
 
 /**
  * AbortController for the currently in-flight fetch. A new navigation /
@@ -67,7 +65,7 @@ export let prevScrollRestoration = null;
 /** Enable the client router. Idempotent. */
 export function enableClientRouter() {
   if (enabled || typeof document === 'undefined') return;
-  enabled = true;
+  _setEnabled(true);
   // Both `click` and `submit` are BUBBLE phase, not capture. A component's
   // per-element `@click` / `@submit` handler (render-client.js) runs in the
   // at-target phase, BEFORE a document-level bubble listener. So onClick /
@@ -118,7 +116,7 @@ export function enableClientRouter() {
 /** Disable the client router. */
 export function disableClientRouter() {
   if (!enabled) return;
-  enabled = false;
+  _setEnabled(false);
   document.removeEventListener('click', onClick, false);
   document.removeEventListener('submit', onSubmit, false);
   window.removeEventListener('popstate', onPopState);
@@ -571,29 +569,6 @@ export async function performSubmission(href, method, body, frameId, form) {
   }
 }
 
-/**
- * Build the X-Webjs-Have header value from the live DOM's boundaries.
- * Comma-separated `<segment>:<route-key>` entries in document order. The
- * ROUTE-KEY rides along so the server's short-circuit can distinguish "the
- * client has this layout" from "the client has this layout rendered for
- * DIFFERENT params": a dynamic `[org]` layout the client holds for org-a
- * must be re-rendered (and re-shipped) on an org-b navigation, or the
- * parent-anchored REPLACE would have no fresh layout markup to swap in.
- * The server ignores the page-boundary entry (never a layout segment).
- *
- * A poisoned live DOM (malformed boundaries) reports an EMPTY have, so the
- * server returns the full page. The subsequent applySwap re-scans, sees the
- * same poisoned live tree, and degrades to a full load: consistent with the
- * integrity-gate model, never a reduced fragment spliced against a tree we
- * cannot trust (#1015).
- *
- * @returns {string}
- */
-export function buildHaveHeader() {
-  const boundaries = collectBoundaries(document.body);
-  if (!boundaries) return '';
-  return [...boundaries.entries()].map(([seg, b]) => `${seg}:${b.routeKey}`).join(',');
-}
 
 /* ====================================================================
  * Link prefetch (Remix-style strategies, fast-by-default)

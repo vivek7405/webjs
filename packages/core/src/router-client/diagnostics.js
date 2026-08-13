@@ -8,7 +8,6 @@
  */
 import { FORM_ACTION_FIELD } from '../form-action.js';
 import { FALLBACK_MARKER_KEY } from './constants.js';
-import { navigate } from './navigator.js';
 
 /**
  * Emit a `console.warn` at most once per `key` for the lifetime of the

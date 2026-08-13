@@ -195,3 +195,27 @@ export function planBoundarySwap(here, there) {
 /* ====================================================================
  * Snapshot cache (Turbo SnapshotCache pattern)
  * ==================================================================== */
+
+/**
+ * Build the X-Webjs-Have header value from the live DOM's boundaries.
+ * Comma-separated `<segment>:<route-key>` entries in document order. The
+ * ROUTE-KEY rides along so the server's short-circuit can distinguish "the
+ * client has this layout" from "the client has this layout rendered for
+ * DIFFERENT params": a dynamic `[org]` layout the client holds for org-a
+ * must be re-rendered (and re-shipped) on an org-b navigation, or the
+ * parent-anchored REPLACE would have no fresh layout markup to swap in.
+ * The server ignores the page-boundary entry (never a layout segment).
+ *
+ * A poisoned live DOM (malformed boundaries) reports an EMPTY have, so the
+ * server returns the full page. The subsequent applySwap re-scans, sees the
+ * same poisoned live tree, and degrades to a full load: consistent with the
+ * integrity-gate model, never a reduced fragment spliced against a tree we
+ * cannot trust (#1015).
+ *
+ * @returns {string}
+ */
+export function buildHaveHeader() {
+  const boundaries = collectBoundaries(document.body);
+  if (!boundaries) return '';
+  return [...boundaries.entries()].map(([seg, b]) => `${seg}:${b.routeKey}`).join(',');
+}

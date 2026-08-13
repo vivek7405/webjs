@@ -69,3 +69,24 @@ export function _bumpNavToken() { return ++currentNavigationToken; }
 export function bumpNavToken() {
   return ++currentNavigationToken;
 }
+
+/**
+ * Whether the client router is currently intercepting navigations.
+ *
+ * Owned here rather than in navigator.js because `events.js` and
+ * `prefetch.js` both gate on it, so parking it beside the code that flips it
+ * made two leaf-ward modules import the orchestrator and pulled them into the
+ * router's import cycle. navigator.js still owns the TRANSITIONS through
+ * `_setEnabled`; this module just holds the bit.
+ */
+export let enabled = false;
+
+/**
+ * Flip the router-enabled bit. Called only by enableClientRouter /
+ * disableClientRouter in navigator.js.
+ *
+ * @param {boolean} v
+ */
+export function _setEnabled(v) {
+  enabled = v;
+}

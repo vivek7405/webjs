@@ -7,9 +7,9 @@
  * @module
  */
 import { LIGHT_SLOT_ATTR, PROJECTION_ACTUAL, PROJECTION_ATTR, SLOT_STATE, isAuthoredContentSlot, keyOfName, projectAuthored } from '../slot.js';
-import { collectBoundaries } from './boundaries.js';
+import { buildHaveHeader, collectBoundaries } from './boundaries.js';
 import { LIVE_ATTRS } from './constants.js';
-import { buildHaveHeader } from './navigator.js';
+
 import { currentNavigationToken } from './state.js';
 import { activateSwappedRange } from './upgrade.js';
 import { regraftPermanentInSlice } from './view-transition.js';

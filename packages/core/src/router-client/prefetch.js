@@ -6,9 +6,11 @@
  *
  * @module
  */
+import { buildHaveHeader } from './boundaries.js';
 import { NON_HTML_EXTENSIONS } from './constants.js';
+import { enabled } from './state.js';
 import { closestAnchor } from './events.js';
-import { buildHaveHeader, enabled } from './navigator.js';
+
 import { cacheKey, snapshotCache } from './snapshot-cache.js';
 
 /** Max speculative responses held at once (LRU). */
