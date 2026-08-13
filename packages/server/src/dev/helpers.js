@@ -339,9 +339,17 @@ export function locatePackageDir(appDir, pkgName) {
   return null;
 }
 
+// The overlay renderer source, read once + `export`-stripped so it inlines as
+// plain functions into the classic reload-client script. Sharing the one source
+// (`dev-overlay.js`, which the browser test imports directly) means the test
+// drives the EXACT code that ships, with no drift (#264).
 const DEV_OVERLAY_SRC = readFileSync(new URL('../dev-overlay.js', import.meta.url), 'utf8')
   .replace(/^export /gm, '');
 
+// The reload SharedWorker relay source (#887), read once + `export`-stripped so
+// it inlines into the served worker script. Sharing the one source
+// (`dev-reload-worker.js`, which the browser test imports directly) means the
+// test drives the EXACT relay code that ships, with no drift (same as #264).
 const RELOAD_WORKER_SRC = readFileSync(new URL('../dev-reload-worker.js', import.meta.url), 'utf8')
   .replace(/^export /gm, '');
 

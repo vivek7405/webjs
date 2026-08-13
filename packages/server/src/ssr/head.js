@@ -329,11 +329,7 @@ export function wrapHead(opts) {
 
   const m = opts.metadata || {};
   const metaTags = [];
-  // linkTags is populated by both the metadata emission below (icons,
-  // alternates, archives, etc.) AND by the preload block further down.
-  // Hoist the declaration so the metadata block can push into it.
   const linkTags = [];
-  // scriptTags collects JSON-LD structured-data blocks (see m.jsonLd below).
   const scriptTags = [];
 
   // Tiny URL resolver against metadataBase. If metadataBase is set and a
@@ -371,7 +367,6 @@ export function wrapHead(opts) {
   if (m.themeColor) metaTags.push(`<meta name="theme-color" content="${escapeAttr(m.themeColor)}">`);
   if (m.colorScheme) metaTags.push(`<meta name="color-scheme" content="${escapeAttr(m.colorScheme)}">`);
 
-  // robots: { index, follow, googleBot, etc. }
   if (m.robots) {
     if (typeof m.robots === 'string') {
       metaTags.push(`<meta name="robots" content="${escapeAttr(m.robots)}">`);
@@ -393,13 +388,11 @@ export function wrapHead(opts) {
     }
   }
 
-  // keywords: string | string[]
   if (m.keywords) {
     const kws = Array.isArray(m.keywords) ? m.keywords.join(', ') : String(m.keywords);
     if (kws) metaTags.push(`<meta name="keywords" content="${escapeAttr(kws)}">`);
   }
 
-  // authors: Array<{ name, url? }> | { name, url? } | string
   if (m.authors) {
     const list = Array.isArray(m.authors) ? m.authors : [m.authors];
     for (const a of list) {
@@ -427,7 +420,6 @@ export function wrapHead(opts) {
   }
 // ---- Long-tail metadata (the Next.js "everything else") ----
 
-  // appleWebApp: { capable, title, statusBarStyle, startupImage }
   if (m.appleWebApp && typeof m.appleWebApp === 'object') {
     if (m.appleWebApp.capable !== undefined) {
       metaTags.push(
@@ -474,14 +466,12 @@ export function wrapHead(opts) {
     }
   }
 
-  // itunes: { appId, appArgument? }
   if (m.itunes && typeof m.itunes === 'object' && m.itunes.appId) {
     let content = `app-id=${m.itunes.appId}`;
     if (m.itunes.appArgument) content += `, app-argument=${m.itunes.appArgument}`;
     metaTags.push(`<meta name="apple-itunes-app" content="${escapeAttr(content)}">`);
   }
 
-  // Plain singleton string fields.
   for (const [field, metaName] of [
     ['category', 'category'],
     ['classification', 'classification'],
@@ -490,8 +480,6 @@ export function wrapHead(opts) {
     if (m[field]) metaTags.push(`<meta name="${metaName}" content="${escapeAttr(String(m[field]))}">`);
   }
 
-  // archives / assets / bookmarks: each is string | string[].
-  // Standard registered link relations.
   for (const [field, rel] of [
     ['archives', 'archives'],
     ['assets', 'assets'],
@@ -605,14 +593,8 @@ export function wrapHead(opts) {
     linkTags.push(`<link rel="preconnect" href="${escapeAttr(h.url)}"${crossoriginAttr(h.crossorigin)}>`);
   }
   for (const h of toHints(m.dnsPrefetch)) {
-    // dns-prefetch never carries crossorigin (it only resolves DNS).
     linkTags.push(`<link rel="dns-prefetch" href="${escapeAttr(h.url)}">`);
   }
-  // Auto vendor preconnect: warm the cross-origin vendor CDN connection for an
-  // unpinned app. Deduped against an author-declared preconnect to the same
-  // origin; emits none for a same-origin pinned app or one with no cross-origin
-  // vendors (vendorPreconnectOrigins returns []). crossorigin is required (the
-  // importmap fetches the module as a CORS request).
   for (const origin of vendorPreconnectOrigins()) {
     if (declaredPreconnectOrigins.has(origin)) continue;
     linkTags.push(`<link rel="preconnect" href="${escapeAttr(origin)}" crossorigin>`);
@@ -624,6 +606,16 @@ export function wrapHead(opts) {
   //   - apple   → <link rel="apple-touch-icon">
   //   - shortcut→ <link rel="shortcut icon">
   //   - other   → <link rel="…" href="…"> using the entry's `rel` field
+  //
+  // With no `icons` declared, an `app/icon.*` / `app/apple-icon.*` metadata
+  // ROUTE is linked automatically (Next parity). Those routes served their
+  // bytes and nothing referenced them before, so writing the file that every
+  // other framework treats as "this is my favicon" produced a blank tab and no
+  // diagnostic. A declared `icons` SUPPRESSES the routes rather than merging
+  // with them, which is also what Next does: it merges static icon files only
+  // when the resolved metadata has no `icons` of its own. Suppressing matters
+  // here because the file is frequently a placeholder an app has outgrown, and
+  // an author who names their icons has said which ones they want.
   //
   // With no `icons` declared, an `app/icon.*` / `app/apple-icon.*` metadata
   // ROUTE is linked automatically (Next parity). Those routes served their
@@ -707,6 +699,15 @@ export function wrapHead(opts) {
     }
   }
 
+  // JSON-LD structured data (schema.org). `m.jsonLd` is a single object
+  // OR an array of objects. The author owns the schema.org shape; the
+  // framework only serializes and HTML-safe-escapes each object into a
+  // `<script type="application/ld+json">` block. A single object emits
+  // ONE script; an array emits one script PER element.
+  //
+  // The block is a NON-EXECUTABLE data island (type application/ld+json),
+  // so CSP script-src does not gate it and it carries NO nonce. Adding one
+  // would wrongly imply it is executable script.
   if (m.jsonLd != null) {
     const list = Array.isArray(m.jsonLd) ? m.jsonLd : [m.jsonLd];
     for (const obj of list) {
@@ -715,7 +716,44 @@ export function wrapHead(opts) {
     }
   }
 
+  // Preload hints: page modules themselves + every discovered component
+  // module, then any custom `metadata.preload` entries (fonts, images, etc.)
+  // (linkTags array was declared earlier so the metadata block above can
+  // push icons / canonical / hreflang / archives / etc. into it.)
+  //
+  // Cross-origin URLs (vendor packages served from jspm.io etc.) MUST
+  // carry `crossorigin="anonymous"` on the preload link. Without it
+  // the browser either ignores the preload entirely or double-fetches
+  // (once for the preload as a non-CORS request, once for the actual
+  // module as a CORS request, defeating the optimization). Same-origin
+  // URLs get no attribute; adding `crossorigin=""` there would also
+  // double-fetch in some browsers because the preload becomes CORS
+  // but the import doesn't.
+  // CSP nonce on the preload link: under strict CSP (script-src
+  // 'nonce-...') the browser also gates modulepreload by the same
+  // policy. Without the attribute the preload is blocked and the
+  // import either falls back to a cold fetch or fails. Rails (via
+  // importmap-rails) applies nonce on every modulepreload tag for
+  // the same reason.
   const noncePreload = opts.nonce ? ` nonce="${escapeAttr(opts.nonce)}"` : '';
+  // Core runtime modulepreload (#1118). Every module the boot imports pulls
+  // `@webjsdev/core`, but the boot script names only page and component URLs,
+  // so without this hint the browser discovers core only after one of those is
+  // fetched AND parsed: one full round trip into the load, which is exactly
+  // where the pre-boot click window lives on a cold, throttled connection.
+  //
+  // The href comes STRAIGHT from the importmap target (no `fp()` rewrite: the
+  // map's targets are already base-path-prefixed and content-hashed), so it is
+  // byte-identical to what the import resolves to. A differing href makes the
+  // browser treat the preload and the import as two resources and fetch core
+  // twice. That is why this copies the vendor loop below, not the module loop
+  // above. `vendorPreloadTargets` still excludes core deliberately; this hint
+  // is emitted from the head builder, not the vendor path.
+  //
+  // Gated on the boot actually shipping something. A fully elided page ships no
+  // boot module and must not be handed a preload for a runtime it never loads
+  // (#780), which also keeps it off `global-error.{js,ts}`, whose document is
+  // returned verbatim with no importmap and no boot script.
   if (opts.moduleUrls.length || lazyEntries) {
     const coreMap = buildImportMap();
     const coreHref = coreMap.imports['@webjsdev/core'];
@@ -741,6 +779,13 @@ export function wrapHead(opts) {
       `${preloadCrossOriginAttr(url)}${integrityAttr(url)}${noncePreload}>`,
     );
   }
+  // Vendor modulepreload (#754): the npm CDN dependencies the page reaches,
+  // hinted up front to flatten the cross-origin waterfall. The href comes
+  // straight from the importmap target (byte-identical, no `fp()` rewrite, so
+  // the browser does not double-fetch) and carries the importmap's `integrity`.
+  // `preloadCrossOriginAttr` adds `crossorigin` for a cross-origin CDN url (a
+  // same-origin pinned `/__webjs/vendor/*` url gets none). Deduped against the
+  // app module/component preloads already emitted above.
   const emittedPreloadHrefs = new Set([
     ...(opts.moduleUrls || []).map((u) => fp(u)),
     ...(opts.preloads || []).map((u) => fp(u)),

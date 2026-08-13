@@ -1581,6 +1581,8 @@ function applyUntil(part, args, reconcileFormActionsCb) {
           return;
         }
         state.highestResolved = i;
+      // Swallow rejection. A rejected Promise is treated as "no value";
+      // the existing render stays in place.
       },
       () => {},
     );
