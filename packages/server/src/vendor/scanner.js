@@ -1,9 +1,7 @@
-import { readFile, readdir } from 'node:fs/promises';
 import { buildModuleGraph, reachableBareSpecifiers } from '../module-graph.js';
 import { browserEntryFiles } from '../browser-entries.js';
 import { scanComponents } from '../component-scanner.js';
 import { buildRouteTable } from '../router.js';
-import { join } from 'node:path';
 
 /**
  * Set of package names whose importmap entries are populated by the
@@ -57,99 +55,6 @@ export function extractPackageName(spec) {
     return parts.length >= 2 ? `${parts[0]}/${parts[1]}` : null;
   }
   return spec.split('/')[0];
-}
-
-// Matches `import { x } from 'pkg'`, `import 'pkg'`, `import * as x from 'pkg'`.
-// The `(?!type\s)` negative lookahead skips `import type … from 'pkg'`
-// because TypeScript type-only imports are fully erased at compile time
-// and never reach the browser.
-const IMPORT_RE = /\bimport\s+(?!type\s)(?:(?:[\w*{}\s,]+)\s+from\s+)?['"]([^'"]+)['"]/g;
-const DYNAMIC_IMPORT_RE = /\bimport\(\s*['"]([^'"]+)['"]\s*\)/g;
-
-const BLOCK_COMMENT_RE = /\/\*[\s\S]*?\*\//g;
-const LINE_COMMENT_RE = /(^|[^:])\/\/.*$/gm;
-
-function stripComments(src) {
-  return src.replace(BLOCK_COMMENT_RE, '').replace(LINE_COMMENT_RE, '$1');
-}
-
-/**
- * Filename matches webjs's server-only file-router conventions.
- *
- * @param {string} name  basename of the file
- */
-function isServerOnlyFile(name) {
-  if (/\.server\.(js|ts|mjs|mts)$/.test(name)) return true;
-  if (/^route\.(js|ts|mjs|mts)$/.test(name)) return true;
-  if (/^middleware\.(js|ts|mjs|mts)$/.test(name)) return true;
-  return false;
-}
-
-/**
- * Tooling config files at any depth. They import test runners, build
- * helpers, AI plugins etc. that legitimately cannot resolve through
- * jspm.io (e.g. `@web/test-runner-playwright` pulls in `playwright-core`
- * with subpaths jspm.io can't bundle). Their bare imports must never
- * reach the importmap.
- */
-const CONFIG_FILE_RE = /\.config\.(js|ts|mjs|mts|cjs|cts)$/;
-
-/**
- * @param {string} dir
- * @param {Set<string>} found
- */
-async function walk(dir, found, skipFiles) {
-  let entries;
-  try { entries = await readdir(dir, { withFileTypes: true }); }
-  catch { return; }
-  for (const e of entries) {
-    if (
-      e.name === 'node_modules' ||
-      e.name === '.webjs' ||
-      e.name === 'public' ||
-      e.name === 'test' ||
-      e.name === 'tests' ||
-      e.name.startsWith('_') ||
-      // Skip ALL dot-prefixed dirs (.opencode, .claude, .github, .husky,
-      // .git, .vscode, .idea, .cursor, …). They hold tooling / IDE /
-      // agent state that imports packages the browser will never load
-      // (e.g. `@opencode-ai/plugin`). The walker visits dirs and files
-      // separately; this guard only fires for directory entries because
-      // dot-prefixed *files* (e.g. `.env.d.ts` someday) still need the
-      // extension check below.
-      (e.isDirectory() && e.name.startsWith('.'))
-    ) continue;
-    const full = join(dir, e.name);
-    if (e.isDirectory()) {
-      await walk(full, found, skipFiles);
-    } else if (skipFiles && skipFiles.has(full)) {
-      // Display-only component file: its imports are stripped from the
-      // served source, so a vendor specifier reachable ONLY through it
-      // never loads in the browser and must not enter the importmap. A
-      // specifier also imported by a shipping file still appears via that
-      // file's scan, so shared deps are retained.
-      continue;
-    } else if (/\.(js|ts|mjs|mts)$/.test(e.name) && !isServerOnlyFile(e.name) && !CONFIG_FILE_RE.test(e.name)) {
-      try {
-        const raw = await readFile(full, 'utf8');
-        if (raw.trimStart().startsWith("'use server'") || raw.trimStart().startsWith('"use server"')) continue;
-        const src = stripComments(raw);
-        // We keep the FULL specifier (with subpath), not just the package
-        // name. `import 'dayjs/plugin/utc'` adds `'dayjs/plugin/utc'` to the
-        // set, not just `'dayjs'`. vendorImportMapEntries needs the
-        // subpath to emit a per-specifier importmap entry; jspm.io
-        // resolves each subpath independently via the package's `exports`
-        // field. extractPackageName is still applied to filter out
-        // relative / absolute / protocol-URL specifiers.
-        for (const m of src.matchAll(IMPORT_RE)) {
-          if (extractPackageName(m[1])) found.add(m[1]);
-        }
-        for (const m of src.matchAll(DYNAMIC_IMPORT_RE)) {
-          if (extractPackageName(m[1])) found.add(m[1]);
-        }
-      } catch { /* unreadable file */ }
-    }
-  }
 }
 
 /**

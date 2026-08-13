@@ -186,3 +186,47 @@ export function satisfiesSemverRange(version, range) {
   }
   return null;
 }
+
+/** How long to wait for a bundle fetch before giving up on hashing it. */
+export const PIN_BUNDLE_TIMEOUT_MS = 60_000;
+
+/**
+ * Fetch a jspm.io URL just to compute its SHA-384 hash, without
+ * writing anything to disk. Used by `webjs vendor pin` (default mode)
+ * so the importmap can carry SRI hashes even when bundles aren't
+ * locally vendored.
+ *
+ * Bounded by PIN_BUNDLE_TIMEOUT_MS, the same budget `downloadBundle`
+ * gets, since it transfers the same bytes and differs only in whether
+ * they are written to disk. Default-mode `pinAll` runs this once per
+ * resolved URL, so a CDN that accepts the connection and then stalls
+ * would otherwise hang the pin with nothing to interrupt it: there is
+ * no ambient deadline on a CLI run (#1150).
+ *
+ * @param {string} url
+ * @returns {Promise<string | null>}  the integrity string, or null on failure
+ */
+export async function fetchIntegrity(url) {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), PIN_BUNDLE_TIMEOUT_MS);
+  try {
+    const response = await fetch(url, { signal: controller.signal });
+    if (!response.ok) {
+      console.error(`[webjs] hash ${url} returned ${response.status}`);
+      return null;
+    }
+    // Hash raw response bytes so the integrity matches what the
+    // browser computes when fetching the same URL. See the
+    // matching comment in downloadBundle.
+    const buf = new Uint8Array(await response.arrayBuffer());
+    return await sha384Integrity(buf);
+  } catch (e) {
+    const why = e && e.name === 'AbortError'
+      ? `timed out after ${PIN_BUNDLE_TIMEOUT_MS}ms`
+      : e && e.message;
+    console.error(`[webjs] hash ${url} failed: ${why}`);
+    return null;
+  } finally {
+    clearTimeout(timer);
+  }
+}

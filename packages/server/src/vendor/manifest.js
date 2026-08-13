@@ -16,12 +16,10 @@ function resolvePackageDir(pkgName, appDir) {
     const req = createRequire(join(appDir, 'package.json'));
     entry = req.resolve(pkgName);
   } catch {
-    try {
-      const req = createRequire(import.meta.url);
-      entry = req.resolve(pkgName);
-    } catch {
-      return null;
-    }
+    // Resolve ONLY from the app. Falling back to the framework's own
+    // resolution would vendor a package the app never installed, which in a
+    // monorepo (where everything hoists to the root) is most of them.
+    return null;
   }
   try {
     const parts = entry.split(sep);

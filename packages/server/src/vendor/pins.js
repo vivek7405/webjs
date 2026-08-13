@@ -5,7 +5,7 @@ import { spawnSync } from 'node:child_process';
 import { BUILTIN, FRAMEWORK_SERVER_ONLY, extractPackageName, scanBareImports } from './scanner.js';
 import { getPackageVersion } from './manifest.js';
 import { SUPPORTED_PROVIDERS } from './providers.js';
-import { sha384Integrity } from './integrity.js';
+import { PIN_BUNDLE_TIMEOUT_MS, fetchIntegrity, sha384Integrity } from './integrity.js';
 import { jspmGenerate } from './jspm.js';
 
 const PIN_DIR_REL = ['.webjs', 'vendor'];
@@ -24,7 +24,6 @@ const PIN_FILE = 'importmap.json';
 // no default whatsoever, which is why this has to be explicit: without it a
 // CDN that accepts the connection and then stalls hangs the pin forever, with
 // no ambient deadline on a CLI run to cut it short.
-const PIN_BUNDLE_TIMEOUT_MS = 60_000;
 
 /** Compute the absolute path of the pin directory for an app. */
 function pinDir(appDir) {
@@ -412,46 +411,6 @@ async function downloadBundle(url, appDir, filename) {
   }
 }
 
-/**
- * Fetch a jspm.io URL just to compute its SHA-384 hash, without
- * writing anything to disk. Used by `webjs vendor pin` (default mode)
- * so the importmap can carry SRI hashes even when bundles aren't
- * locally vendored.
- *
- * Bounded by PIN_BUNDLE_TIMEOUT_MS, the same budget `downloadBundle`
- * gets, since it transfers the same bytes and differs only in whether
- * they are written to disk. Default-mode `pinAll` runs this once per
- * resolved URL, so a CDN that accepts the connection and then stalls
- * would otherwise hang the pin with nothing to interrupt it: there is
- * no ambient deadline on a CLI run (#1150).
- *
- * @param {string} url
- * @returns {Promise<string | null>}  the integrity string, or null on failure
- */
-async function fetchIntegrity(url) {
-  const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), PIN_BUNDLE_TIMEOUT_MS);
-  try {
-    const response = await fetch(url, { signal: controller.signal });
-    if (!response.ok) {
-      console.error(`[webjs] hash ${url} returned ${response.status}`);
-      return null;
-    }
-    // Hash raw response bytes so the integrity matches what the
-    // browser computes when fetching the same URL. See the
-    // matching comment in downloadBundle.
-    const buf = new Uint8Array(await response.arrayBuffer());
-    return await sha384Integrity(buf);
-  } catch (e) {
-    const why = e && e.name === 'AbortError'
-      ? `timed out after ${PIN_BUNDLE_TIMEOUT_MS}ms`
-      : e && e.message;
-    console.error(`[webjs] hash ${url} failed: ${why}`);
-    return null;
-  } finally {
-    clearTimeout(timer);
-  }
-}
 
 /**
  * After writing the new pin output, delete any file in the pin
@@ -473,7 +432,7 @@ async function pruneOrphans(appDir, expected) {
     try {
       await unlink(join(dir, f));
       pruned.push(f);
-    } catch { /* ignore */ }
+    } catch { /* race or permission; ignore */ }
   }
   return pruned;
 }
@@ -849,11 +808,20 @@ export async function unpinPackage(appDir, pkg) {
   if (!file || !(pkg in file.imports)) return { removed: false };
   const url = file.imports[pkg];
   delete file.imports[pkg];
+  // Also strip the integrity entry for this URL, if present.
   const newIntegrity = { ...(file.integrity || {}) };
   delete newIntegrity[url];
   if (Object.keys(file.imports).length === 0) {
-    try { await unlink(pinFilePath(appDir)); } catch { /* ignore */ }
+    // The pin file would now be empty. Delete it so the next boot
+    // falls back to live API resolution rather than seeing an empty
+    // importmap. Same reasoning as pinAll's "don't write empty pin"
+    // guard.
+    try { await unlink(pinFilePath(appDir)); } catch { /* race or never existed */ }
   } else {
+    // Preserve the pin file's persisted provider (jsdelivr, unpkg,
+    // etc.). Without this, `webjs vendor unpin <pkg>` would silently
+    // revert the file to the default jspm provider, defeating
+    // pinAll's stickiness for the remaining packages.
     await writePinFile(appDir, file.imports, newIntegrity, file.provider);
   }
 
@@ -863,7 +831,7 @@ export async function unpinPackage(appDir, pkg) {
     try {
       await unlink(join(pinDir(appDir), filename));
       deletedFile = filename;
-    } catch { /* ignore */ }
+    } catch { /* file already gone; ignore */ }
   }
   return { removed: true, deletedFile };
 }
@@ -882,10 +850,20 @@ export async function listPinned(appDir) {
   for (const [pkg, url] of Object.entries(file.imports)) {
     let version = '(unknown)';
     let bytes;
+    // Order matters: try the local `/__webjs/vendor/` filename
+    // parser first, then the CDN bare-name search. The local
+    // filename embeds the subpath as `__plugin__utc.js`, which the
+    // bare-name regex would match as part of the version (greedy
+    // `[^/]+` swallows the encoded subpath). Handling the local
+    // case explicitly preserves the cleaner version output for
+    // `--download` mode pins.
     if (url.startsWith('/__webjs/vendor/')) {
       const filename = url.slice('/__webjs/vendor/'.length);
       const atIdx = filename.lastIndexOf('@');
       if (atIdx > 0) {
+        // Strip trailing `.js`, split off any `__subpath` segment, keep
+        // only the version. `dayjs@1.11.13__plugin__utc.js` parses as
+        // version `1.11.13` (not `1.11.13__plugin__utc`).
         const afterAt = filename.slice(atIdx + 1, -3);
         const subIdx = afterAt.indexOf('__');
         version = subIdx < 0 ? afterAt : afterAt.slice(0, subIdx);
@@ -893,8 +871,23 @@ export async function listPinned(appDir) {
       try {
         const st = await stat(join(pinDir(appDir), filename));
         bytes = st.size;
-      } catch { /* ignore */ }
+      } catch { /* file missing; bytes stays undefined */ }
     } else {
+      // Derive the version from the URL by searching for the spec's
+      // bare package name followed by `@<version>`. Works across
+      // every CDN we support (jspm.io's `npm:dayjs@1.11.13`,
+      // jsdelivr's `npm/dayjs@1.11.13`, unpkg's bare
+      // `dayjs@1.11.13/`, skypack's `dayjs@1.11.13`). The bare name
+      // lives in entries[].pkg (the import-map key), so we know it
+      // exactly and just need to find the `<bare>@<version>`
+      // substring. Stop at the first `/` after the version so we
+      // don't include the entry-point path.
+      //
+      // Anchor the match against a non-pkg-name char (or string
+      // start) so a short package name like `ms` doesn't false-
+      // match inside another package's URL like `npm/terms@1.0.0/`.
+      // npm package names use `[a-zA-Z0-9._-]` (plus `@` and `/`
+      // for scoped names), so anything else is a safe boundary.
       const bare = extractPackageName(pkg) || pkg;
       const escapedBare = bare.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
       const bareMatch = new RegExp(`(?:^|[^a-zA-Z0-9_.-])${escapedBare}@([^/]+)`).exec(url);

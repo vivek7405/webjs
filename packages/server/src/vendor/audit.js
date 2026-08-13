@@ -1,6 +1,6 @@
 import { extractPackageName } from './scanner.js';
 import { SUPPORTED_PROVIDERS } from './providers.js';
-import { satisfiesSemverRange } from './integrity.js';
+import { PIN_BUNDLE_TIMEOUT_MS, fetchIntegrity, satisfiesSemverRange } from './integrity.js';
 import { jspmGenerate } from './jspm.js';
 import { readPinFile, listPinned, writePinFile } from './pins.js';
 
@@ -24,7 +24,6 @@ const NPM_TIMEOUT_MS = 60_000;
 // no default whatsoever, which is why this has to be explicit: without it a
 // CDN that accepts the connection and then stalls hangs the pin forever, with
 // no ambient deadline on a CLI run to cut it short.
-const PIN_BUNDLE_TIMEOUT_MS = 60_000;
 
 /**
  * Fetch one URL from registry.npmjs.org with a small timeout. Returns
@@ -180,21 +179,6 @@ export async function findOutdated(appDir) {
   return results.filter((x) => x !== null);
 }
 
-async function fetchIntegrity(url) {
-  const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), PIN_BUNDLE_TIMEOUT_MS);
-  try {
-    const response = await fetch(url, { signal: controller.signal });
-    if (!response.ok) return null;
-    const buf = new Uint8Array(await response.arrayBuffer());
-    const digest = await import('./integrity.js').then(m => m.sha384Integrity(buf));
-    return digest;
-  } catch {
-    return null;
-  } finally {
-    clearTimeout(timer);
-  }
-}
 
 /**
  * Re-pin every package returned by findOutdated to its latest version.
