@@ -22,7 +22,7 @@ import { mintNonce, buildCspHeader, cspHeaderName } from '../csp.js';
 import { propagateTrustedRemoteIp } from '../rate-limit.js';
 import { reachedBareImports, resolveVendorImports, clearVendorCache, hasVendorPin, readPinFile, prunePinToReachable } from '../vendor.js';
 import { browserEntryFiles } from '../browser-entries.js';
-import { buildModuleGraph, seenFilesFor, appImportsMap } from '../module-graph.js';
+import { buildModuleGraph, seenFilesFor, appImportsMap, reachableFromEntries } from '../module-graph.js';
 import { primeComponentRegistry, findOrphanComponents, scanComponents } from '../component-scanner.js';
 import { analyzeElision } from '../component-elision.js';
 
