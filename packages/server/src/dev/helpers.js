@@ -1,5 +1,6 @@
-import { join, resolve, dirname, relative, sep } from 'node:path';
+import { join, resolve, dirname, sep } from 'node:path';
 import { readFileSync, readdirSync } from 'node:fs';
+import { stat } from 'node:fs/promises';
 import { fileURLToPath } from 'node:url';
 import { createRequire } from 'node:module';
 import { withBasePath } from '../base-path.js';
@@ -477,4 +478,14 @@ export function reloadWorkerJs(bp) {
 ${RELOAD_WORKER_SRC}
 startReloadWorker(self, EventSource, ${JSON.stringify(withBasePath('/__webjs/events', bp))});
 `;
+}
+
+/**
+ * Whether a path exists, as a boolean rather than a throw.
+ *
+ * @param {string} p
+ * @returns {Promise<boolean>}
+ */
+export async function exists(p) {
+  try { await stat(p); return true; } catch { return false; }
 }

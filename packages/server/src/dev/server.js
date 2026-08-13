@@ -1,6 +1,6 @@
 import { existsSync } from 'node:fs';
 import { watch as fsWatch } from 'node:fs/promises';
-import { relative, sep } from 'node:path';
+import { relative } from 'node:path';
 import { createServer as createHttp1Server } from 'node:http';
 import { createRequestHandler } from './handler.js';
 import { readServerTimeoutsFromApp, readDevWatchPathsFromApp } from './config.js';
