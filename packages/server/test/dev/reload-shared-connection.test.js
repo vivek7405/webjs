@@ -167,7 +167,13 @@ test('the reload client probes the server is up before reloading (no restart fla
   assert.match(clientSrc, /globalThis\.__webjsRefreshPage/, 'the refresh entry is feature-detected on the global');
   assert.match(clientSrc, /typeof refresh === 'function'/, 'and only used when it is actually a function');
   assert.match(clientSrc, /verdict === 'page' \|\| verdict === 'shell'/, 'only the two morphable verdicts take the refresh path');
-  assert.match(clientSrc, /function \(ok\) \{ if \(!ok\) location\.reload\(\); \}/, 'a refresh that declines falls back to a full reload');
+  assert.match(clientSrc, /if \(!ok\) \{ location\.reload\(\); return; \}/, 'a refresh that declines falls back to a full reload');
+  // A swap never re-requests a stylesheet on its own (mergeHead preserves them
+  // per #936, and the dev href carries no content hash), so `webjs.dev.regenerate`
+  // would never run and a newly added utility class would have no backing rule.
+  assert.match(clientSrc, /function __webjsRefreshStyles/, 'the refresh re-requests the page stylesheets (#967 regenerate runs ON REQUEST)');
+  assert.match(clientSrc, /__webjsRefreshStyles\(\);/, 'and the applied refresh actually calls it');
+  assert.match(clientSrc, /next\.addEventListener\('load', drop\)/, 'the old sheet is dropped only once the new one loaded, so the page never flashes unstyled');
   // The verdict parser ships too, so an unparseable frame resolves to reload
   // inside the tab rather than being trusted.
   assert.match(clientSrc, /function parseVerdict/, 'the verdict parser ships in the client fallback');

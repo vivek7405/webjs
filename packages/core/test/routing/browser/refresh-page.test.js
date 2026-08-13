@@ -192,6 +192,42 @@ suite('Client router: refreshPage re-renders the current url in place (#1398)', 
     }
   });
 
+  // The return value has to be READ from the swap outcome, not inferred from
+  // the absence of a throw. `fetchAndApply` reports every real failure as
+  // `{ ok: false }` and throws for none of them, so a bare try/catch would
+  // resolve `true` for exactly the cases the caller's full-load fallback exists
+  // to cover, and the page would silently sit on stale content.
+  test('a refresh that could not apply resolves false, so the caller can fall back', async () => {
+    setup();
+    try {
+      // A rejected fetch is the offline / server-died case, which is precisely
+      // when the dev client has to reload rather than keep the stale page.
+      window.fetch = () => Promise.reject(new TypeError('network down'));
+      assert.equal(await refreshPage(), false, 'a transport failure declines');
+
+      // A non-HTML body (a JSON 500) never reaches a swap either.
+      window.fetch = () => Promise.resolve(new Response('{"nope":true}', {
+        status: 500, headers: { 'content-type': 'application/json' },
+      }));
+      assert.equal(await refreshPage(), false, 'a non-HTML response declines');
+    } finally {
+      teardown();
+    }
+  });
+
+  // The counterfactual for the test above: an implementation that always
+  // resolved `false` would pass it and fail this one.
+  test('a refresh that DID apply resolves true', async () => {
+    setup();
+    try {
+      assert.equal(await refreshPage(), true);
+      await settle();
+      assert.equal(document.getElementById('wj-refresh-inner').textContent, 'INNER_B');
+    } finally {
+      teardown();
+    }
+  });
+
   // The dev reload client feature-DETECTS the refresh entry on the global
   // rather than assuming it, and the absence covers both no-router cases:
   // `webjs.clientRouter: false`, and a page that ships no component at all so

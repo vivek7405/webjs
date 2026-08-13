@@ -123,12 +123,18 @@ describe('E2E: a dev page or layout edit refreshes in place (#1398)', {
     if (dir) rmSync(dir, { recursive: true, force: true });
   });
 
-  /** Open the app, wait for the counter to upgrade, and hand back the page. */
+  /**
+   * Open the app, wait for the counter to upgrade, and hand back the page along
+   * with a live log of stylesheet requests (see the CSS assertion below).
+   */
   async function open() {
     const page = await browser.newPage();
+    const cssRequests = [];
+    page.on('request', (r) => { if (r.url().includes('/public/app.css')) cssRequests.push(r.url()); });
     await page.goto(base + '/', { waitUntil: 'networkidle2' });
     await page.waitForFunction(() => !!customElements.get('morph-counter'), { timeout: 10000 });
     await page.waitForSelector('#bump');
+    page.cssRequests = cssRequests;
     return page;
   }
 
@@ -171,6 +177,18 @@ export default function Home() {
       assert.equal(after.token, before.token, 'the document never loaded again, so this was a real in-place refresh');
       assert.equal(after.scrollY, before.scrollY, 'the reader kept their place');
       assert.equal(after.count, 'count 2', 'and the hydrated counter outside the changed region kept its state');
+
+      // The stylesheet has to be RE-REQUESTED, and this is the only thing that
+      // can cause it: the link sits in the layout's own markup outside the
+      // children range, so the morph never rewrites it, and `mergeHead`
+      // preserves it by identity (#936). A reload used to do the asking, which
+      // is how `webjs.dev.regenerate` (#967) ever ran, since it rebuilds a
+      // stale output ON REQUEST. Without the refresh, an edit adding a utility
+      // class would render with no backing rule until a manual reload.
+      assert.ok(page.cssRequests.length >= 2,
+        `the refresh re-requested the stylesheet (saw ${page.cssRequests.length} request(s))`);
+      assert.match(page.cssRequests[page.cssRequests.length - 1], /__webjs_dev=/,
+        'and it went out cache-busted, so the server actually re-ran its regenerate step');
     } finally {
       await page.close();
     }

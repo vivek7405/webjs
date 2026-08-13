@@ -13,10 +13,16 @@ import '#components/counter.ts';
  * counter would advance and say nothing about whether the document reloaded.
  * A token that only ever assigns when absent survives a re-run and can only
  * change when the whole global scope is replaced, which is exactly a reload.
+ *
+ * The stylesheet link sits in the layout's own markup, outside the children
+ * range, so a page-edit morph never rewrites it. That placement is what makes
+ * the re-request assertion meaningful: nothing but the dev client's explicit
+ * stylesheet refresh can cause the browser to ask for it again.
  */
 export default function RootLayout({ children }: LayoutProps) {
   return html`
     <script>window.__docToken = window.__docToken || String(Math.random());</script>
+    <link rel="stylesheet" href="/public/app.css">
     <header id="layout-marker">LAYOUT_A</header>
     <morph-counter></morph-counter>
     <main>${children}</main>

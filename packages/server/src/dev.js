@@ -3110,6 +3110,46 @@ function __webjsWhenReady(then) {
 // page edit) the hydrated state of components outside the changed region
 // survive. Anything else, including every signal the server could not classify,
 // is the full reload this always was.
+// Re-request the page's stylesheets after an in-place refresh (#1398).
+//
+// A swap never re-requests them on its own: \`mergeHead\` preserves every
+// stylesheet unconditionally (#936) and the dev href carries no content hash
+// (\`asset()\` is prod-only), so the link node is kept by identity and the browser
+// never asks the server for it again. A full reload used to do that asking,
+// which is how \`webjs.dev.regenerate\` (#967) ever ran: it rebuilds a stale build
+// output like \`public/tailwind.css\` ON REQUEST. Without this, an edit that adds
+// a utility class produces a \`page\` verdict, the morph fetches only the HTML,
+// the regenerated CSS is never requested, and the new class has no backing rule
+// until a manual reload. Every in-repo app is configured that way, and it bites
+// the plain \`tailwindcss --watch\` shape too.
+//
+// The new sheet is inserted BESIDE the old one and the old is dropped only once
+// it has loaded, so the page is never briefly unstyled. Same-origin only, and
+// one link per path: the head merge appends the incoming bare-href link
+// alongside the busted one, so without the de-dupe the head would gain a link
+// on every refresh.
+function __webjsRefreshStyles() {
+  var kept = Object.create(null);
+  var links = [].slice.call(document.querySelectorAll('link[rel~="stylesheet"][href]'));
+  for (var i = 0; i < links.length; i++) {
+    var el = links[i], url;
+    try { url = new URL(el.getAttribute('href'), location.href); } catch (_) { continue; }
+    if (url.origin !== location.origin) continue;
+    if (kept[url.pathname]) { if (el.parentNode) el.parentNode.removeChild(el); continue; }
+    kept[url.pathname] = { el: el, url: url };
+  }
+  Object.keys(kept).forEach(function (path) {
+    var old = kept[path].el, url = kept[path].url;
+    if (!old.parentNode) return;
+    url.searchParams.set('__webjs_dev', String(Date.now()));
+    var next = old.cloneNode(false);
+    next.setAttribute('href', url.pathname + url.search);
+    var drop = function () { if (old.parentNode) old.parentNode.removeChild(old); };
+    next.addEventListener('load', drop);
+    next.addEventListener('error', drop);
+    old.parentNode.insertBefore(next, old.nextSibling);
+  });
+}
 function __webjsApplyReload(verdict) {
   __webjsWhenReady(function () {
     // Runtime feature detection, never an assumption. The refresh entry is
@@ -3119,8 +3159,10 @@ function __webjsApplyReload(verdict) {
     // @webjsdev/core never loads in the browser and the module never runs.
     var refresh = globalThis.__webjsRefreshPage;
     if ((verdict === 'page' || verdict === 'shell') && typeof refresh === 'function') {
-      refresh(verdict).then(function (ok) { if (!ok) location.reload(); },
-                            function () { location.reload(); });
+      refresh(verdict).then(function (ok) {
+        if (!ok) { location.reload(); return; }
+        __webjsRefreshStyles();
+      }, function () { location.reload(); });
       return;
     }
     location.reload();

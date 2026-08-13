@@ -791,8 +791,22 @@ export async function refreshPage(mode) {
   // Every cached copy predates the change, so drop both caches before fetching.
   revalidate();
   try {
-    await performNavigation(location.href, false, null, { refresh: mode === 'shell' ? 'shell' : 'page' });
-    return true;
+    const res = await performNavigation(location.href, false, null, { refresh: mode === 'shell' ? 'shell' : 'page' });
+    // The outcome has to be READ, not inferred from the absence of a throw.
+    // `fetchAndApply` reports every real failure as `{ ok: false }` and throws
+    // for none of them (a rejected fetch, a non-HTML body, an unparseable one),
+    // so a bare try/catch here would resolve `true` for exactly the cases the
+    // caller's full-load fallback exists to cover, and the page would silently
+    // sit on stale content.
+    //
+    // Two outcomes are NOT failures. A `null` means no fetch decided it (the
+    // parse guard hard-navigated, or a popstate restored a snapshot), so the
+    // page is already resolved. An `aborted` means a newer navigation
+    // superseded this one and owns the page now, and reloading would yank the
+    // reader out of it; Turbo drops a refresh that lands mid-navigation for the
+    // same reason.
+    if (!res || res.aborted) return true;
+    return res.ok;
   } catch (_) {
     return false;
   }
@@ -1837,6 +1851,12 @@ function cacheKey(url) {
  *   in-place re-render (#1398). It suppresses three things a forward navigation
  *   does and a refresh must not: the outgoing snapshot, the optimistic loading
  *   skeleton, and history plus scroll. See `refreshPage`.
+ * @returns {Promise<{ ok: boolean, status: number | null, aborted: boolean } | null>}
+ *   The `fetchAndApply` outcome, so a caller can tell an applied navigation from
+ *   a failed one (#1398). `null` means no fetch decided the outcome: the parse
+ *   guard hard-navigated, or a popstate restored from the snapshot cache. Both
+ *   already resolved the page, so a caller must not treat `null` as a failure.
+ *   Every other caller ignores the value.
  */
 async function performNavigation(href, isPopState, frameId, opts) {
   const refresh = (opts && opts.refresh) || undefined;
@@ -1853,7 +1873,7 @@ async function performNavigation(href, isPopState, frameId, opts) {
   if (shouldFullLoadDuringParse(isPopState, frameId) && typeof location !== 'undefined') {
     reportFallback('readyState-loading', href);
     hardNavigate(href);
-    return;
+    return null;
   }
 
   // Cancel any in-flight fetch: Turbo Drive's navigator.stop().
@@ -2025,7 +2045,7 @@ async function performNavigation(href, isPopState, frameId, opts) {
             .catch(() => {});
           const floor = new Promise((r) => setTimeout(r, ANCHOR_SUPPRESS_FLOOR_MS));
           Promise.all([revalidated, floor]).then(() => afterTwoFrames(releaseAnchor));
-          return;
+          return null;
         }
       }
       // Cache-miss popstate. Browser-native scroll restoration is
@@ -2041,7 +2061,7 @@ async function performNavigation(href, isPopState, frameId, opts) {
     // duplicate `history.pushState` and the whole scroll block in one flag,
     // which is exactly what the comment above that block already says it means.
     // So Back still goes to the previous page and the reader keeps their place.
-    await fetchAndApply(href, frameId, !isPopState && !refresh, optimisticState, 'GET', null, signal, myToken, /* revalidating */ false, refresh);
+    return await fetchAndApply(href, frameId, !isPopState && !refresh, optimisticState, 'GET', null, signal, myToken, /* revalidating */ false, refresh);
   } finally {
     if (navigatingFlagTimer) clearTimeout(navigatingFlagTimer);
     // Only clear the navigating flag if WE are still the active nav.
