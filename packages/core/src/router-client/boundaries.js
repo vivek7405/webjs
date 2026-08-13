@@ -6,7 +6,6 @@
  *
  * @module
  */
-import { revalidate } from './navigator.js';
 
 /**
  * Walk a node tree collecting KEYED children-boundary pairs into a Map

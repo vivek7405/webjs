@@ -7,12 +7,9 @@
  * @module
  */
 import { NON_HTML_EXTENSIONS } from './constants.js';
-import { applyOptimisticLoading } from './dom-differ.js';
-import { closestAnchor, onClick } from './events.js';
-import { fetchAndApply } from './fetch-apply.js';
-import { buildHaveHeader, disableClientRouter, enabled, navigate, revalidate } from './navigator.js';
+import { closestAnchor } from './events.js';
+import { buildHaveHeader, enabled } from './navigator.js';
 import { cacheKey, snapshotCache } from './snapshot-cache.js';
-import { applySwap } from './swap.js';
 
 /** Max speculative responses held at once (LRU). */
 const PREFETCH_CAP = 8;

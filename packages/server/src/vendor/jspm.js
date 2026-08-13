@@ -1,6 +1,6 @@
 import { BUILTIN, FRAMEWORK_SERVER_ONLY, extractPackageName } from './scanner.js';
 import { getPackageVersion } from './manifest.js';
-import { normalizeProvider, SUPPORTED_PROVIDERS } from './providers.js';
+import { normalizeProvider } from './providers.js';
 
 /**
  * In-memory cache of resolved importmap fragments from api.jspm.io.

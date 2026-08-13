@@ -7,9 +7,6 @@
  * @module
  */
 import { META_KEY_CSP_NONCE } from './constants.js';
-import { parseHTML } from './dom-parse.js';
-import { prefetch } from './prefetch.js';
-import { applySwap } from './swap.js';
 
 /**
  * Read the CSP nonce that the original page load published via

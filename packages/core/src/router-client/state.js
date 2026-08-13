@@ -6,8 +6,6 @@
  *
  * @module
  */
-import { navigate } from './navigator.js';
-import { applySwap } from './swap.js';
 
 /**
  * Monotonic counter incremented at the start of every navigation. Each

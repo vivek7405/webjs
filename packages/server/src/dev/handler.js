@@ -28,9 +28,6 @@ import { withRequest, setCspNonce, setBodyLimits, setRequestId, requestId as get
 import { buildInfoResponse } from '../build-info.js';
 import { mintNonce, buildCspHeader, cspHeaderName } from '../csp.js';
 import { propagateTrustedRemoteIp } from '../rate-limit.js';
-import {
-  isCompressible,
-} from '../listener-core.js';
 import { scanBareImports, resolveVendorImports, serveDownloadedBundle, clearVendorCache, hasVendorPin, readPinFile, prunePinToReachable } from '../vendor.js';
 import { buildModuleGraph, seenFilesFor, resolveImport, appImportsMap } from '../module-graph.js';
 import { primeComponentRegistry, findOrphanComponents, scanComponents } from '../component-scanner.js';

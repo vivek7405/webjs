@@ -9,7 +9,7 @@
 import { collectBoundaries, planBoundarySwap } from './boundaries.js';
 import { FALLBACK_MARKER_KEY, FRAME_TOP, LIVE_ATTRS } from './constants.js';
 import { isPreBootNavigation } from './diagnostics.js';
-import { applyOptimisticLoading, blurOutgoingFocus, diffElementInPlace, keyOf, reconcileChildren, reconcileSiblings, restoreOptimistic } from './dom-differ.js';
+import { applyOptimisticLoading, blurOutgoingFocus, diffElementInPlace, keyOf, reconcileChildren, restoreOptimistic } from './dom-differ.js';
 import { parseHTML, resetParseProbe } from './dom-parse.js';
 import { findAnchorInPath, onPopState, onSubmit } from './events.js';
 import { buildSubmitFormData, encodeSubmitBody, getSubmitAction, getSubmitEnctype, getSubmitMethod } from './form-encoder.js';

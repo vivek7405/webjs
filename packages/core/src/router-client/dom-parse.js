@@ -6,8 +6,6 @@
  *
  * @module
  */
-import { collectBoundaries } from './boundaries.js';
-import { applySwap } from './swap.js';
 
 /**
  * Parse a navigation response into a Document, PRESERVING COMMENTS.

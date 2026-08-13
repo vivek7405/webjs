@@ -9,7 +9,7 @@
  */
 import { isOwnSlot } from './assignment.js';
 import { applySlotAssignments } from './project.js';
-import { effectiveKeyOf, ensureSlotState, repartition } from './state.js';
+import { ensureSlotState, repartition } from './state.js';
 import { FLATTEN_MAX_DEPTH, LIGHT_SLOT_ATTR, PROJECTION_ACTUAL, PROJECTION_ATTR, SLOT_STATE } from './symbols.js';
 
 function detectBrowser() {

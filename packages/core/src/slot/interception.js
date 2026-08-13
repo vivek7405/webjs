@@ -7,7 +7,7 @@
  *
  * @module
  */
-import { applyActualAssignment, isOwnSlot } from './assignment.js';
+import { isOwnSlot } from './assignment.js';
 import { inBrowser } from './polyfills.js';
 import { applySlotAssignments } from './project.js';
 import { INNER_HTML_DESC, N_append, N_appendChild, N_insertBefore, N_prepend, N_removeChild, N_replaceChild, N_replaceChildren, TEXT_CONTENT_DESC, captureNatives, withRendererWrites } from './sensors.js';

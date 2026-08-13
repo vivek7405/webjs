@@ -13,8 +13,8 @@ import { applyOptimisticLoading } from './dom-differ.js';
 import { parseHTML } from './dom-parse.js';
 import { onClick, onPopState, onSubmit } from './events.js';
 import { fetchAndApply } from './fetch-apply.js';
-import { clearFormBusy, formBusyTokens, frameBusyTokens, markFormBusy } from './frames.js';
-import { clearPrefetchHover, clearPrefetchViewTimers, onPrefetchIntent, onPrefetchOut, prefetch, prefetchCache, prefetchTake, refreshPrefetchObservers, teardownPrefetchViewObserver } from './prefetch.js';
+import { clearFormBusy, markFormBusy } from './frames.js';
+import { clearPrefetchHover, clearPrefetchViewTimers, onPrefetchIntent, onPrefetchOut, prefetchCache, refreshPrefetchObservers, teardownPrefetchViewObserver } from './prefetch.js';
 // `restoreGeneration` is imported READ-ONLY: the deferred restore captures it
 // and re-compares after the frame, so it must be the live binding. Writes go
 // through bumpRestoreGeneration(), since ESM forbids assigning an import.

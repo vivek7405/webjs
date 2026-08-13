@@ -1,6 +1,6 @@
 import { extractPackageName } from './scanner.js';
 import { SUPPORTED_PROVIDERS } from './providers.js';
-import { satisfiesSemverRange, parseSemver } from './integrity.js';
+import { satisfiesSemverRange } from './integrity.js';
 import { jspmGenerate } from './jspm.js';
 import { readPinFile, listPinned, writePinFile } from './pins.js';
 

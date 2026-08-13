@@ -11,7 +11,7 @@ import { isOwnSlot } from './assignment.js';
 import { instanceOwns } from './interception.js';
 import { inBrowser } from './polyfills.js';
 import { applySlotAssignments } from './project.js';
-import { adoptSSRAssignments, ensureSlotState } from './state.js';
+import { ensureSlotState } from './state.js';
 import { FRAMEWORK_DETACHED, LIGHT_SLOT_ATTR, PARK, RENDERING, SLOT_STATE } from './symbols.js';
 
 // Saved native references, captured once in the browser (Node has no `Node`).

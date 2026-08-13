@@ -2,13 +2,8 @@ import { readFile, stat } from 'node:fs/promises';
 import { join, relative, sep, basename, dirname } from 'node:path';
 import { walk } from '../fs-walk.js';
 import {
-  redactStringsAndTemplates,
-  redactToPlaceholders,
-  extractWebComponentClassBodies,
-  matchClosingBrace,
-  matchClosingParenthesis,
-  parsePropEntries,
-  classifyActionHole,
+  redactStringsAndTemplates, redactToPlaceholders, extractWebComponentClassBodies,
+  matchClosingBrace, parsePropEntries, classifyActionHole,
 } from '../js-scan.js';
 import { buildModuleGraph, transitiveDeps, resolveImport } from '../module-graph.js';
 import { scanComponents } from '../component-scanner.js';

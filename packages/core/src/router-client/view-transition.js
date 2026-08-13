@@ -6,7 +6,6 @@
  *
  * @module
  */
-import { reactivateScripts } from './upgrade.js';
 
 /**
  * Whether the current page opts into the native View Transitions API for

@@ -6,11 +6,6 @@
  *
  * @module
  */
-import { reportFallback } from './diagnostics.js';
-import { onClick } from './events.js';
-import { resolveTargetFrameId } from './frames.js';
-import { getCspNonce } from './head-merge.js';
-import { disableClientRouter, enableClientRouter, performNavigation } from './navigator.js';
 
 /** The content type a content-negotiated stream-action response carries (#248). */
 export const STREAM_MIME = 'text/vnd.webjs-stream.html';

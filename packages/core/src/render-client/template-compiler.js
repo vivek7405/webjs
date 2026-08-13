@@ -1,4 +1,4 @@
-import { isTemplate, MARKER } from '../html.js';
+import { MARKER } from '../html.js';
 import { BINDING_PREFIXES, isBindingPrefix } from '../binding-prefixes.js';
 import { isSubmitterReflectedProp } from '../form-action.js';
 import { LIGHT_SLOT_ATTR } from '../slot.js';

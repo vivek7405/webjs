@@ -1,7 +1,6 @@
 import { isTemplate, MARKER } from '../html.js';
 import {
-  assertNotFunctionActionAttr, assertNotFunctionReflectedActionProp,
-  isBoundFormAction, formActionId, assertIdentifiableAction, FORM_ACTION_FIELD,
+  assertNotFunctionActionAttr, assertNotFunctionReflectedActionProp, isBoundFormAction,
 } from '../form-action.js';
 import { isRepeat } from '../repeat.js';
 import {
@@ -9,16 +8,9 @@ import {
 } from '../directives.js';
 import { Signal } from '../signal.js';
 import {
-  LIGHT_SLOT_ATTR,
-  SLOT_FALLBACK_FRAG,
-  SLOT_STATE,
-  SLOT_OWNER,
-  RENDERING,
-  applySlotAssignments,
-  rescueAssignedNodes,
-  withRendererWrites,
+  SLOT_FALLBACK_FRAG, SLOT_STATE, SLOT_OWNER, applySlotAssignments, withRendererWrites,
 } from '../slot.js';
-import { compile, templateCache, submitterActionBindings, INSTANCE } from './template-compiler.js';
+import { compile, templateCache } from './template-compiler.js';
 
 /**
  * The container the in-progress `render()` is committing into, or null

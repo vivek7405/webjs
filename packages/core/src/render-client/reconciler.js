@@ -1,11 +1,10 @@
 import { isTemplate } from '../html.js';
 import {
-  reconcileFormAction, isBoundFormAction, ABSENT, assertSubmitterHasNoName,
-  assertSubmitterType, assertSubmitterHasNoValue, assertSubmitterHasNoStaticFormAction,
-  assertSubmitterHasNoFormAttribute, assertSingleSubmitterAction,
-  resolveBoundSubmitterAttrs, applyResolvedAttr, releaseSubmitterAttrs,
-  assertConvergentSubmitter, isSubmitterReflectedProp,
-  formActionId, assertIdentifiableAction, FORM_ACTION_FIELD,
+  reconcileFormAction, isBoundFormAction, ABSENT, assertSubmitterHasNoName, assertSubmitterType,
+  assertSubmitterHasNoValue, assertSubmitterHasNoStaticFormAction,
+  assertSubmitterHasNoFormAttribute, assertSingleSubmitterAction, resolveBoundSubmitterAttrs,
+  applyResolvedAttr, releaseSubmitterAttrs, assertConvergentSubmitter, formActionId,
+  assertIdentifiableAction, FORM_ACTION_FIELD,
 } from '../form-action.js';
 import { isLive } from '../directives.js';
 import { RENDERING, SLOT_OWNER, SLOT_STATE, drainRendererBackstop } from '../slot.js';

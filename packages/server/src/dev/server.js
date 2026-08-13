@@ -7,7 +7,6 @@ import { readServerTimeoutsFromApp, readDevWatchPathsFromApp } from './config.js
 import { defaultLogger } from '../logger.js';
 import { SseHub, makeShutdown, installProcessHandlers, DEV_BOOT_ID, serverRuntime } from '../listener-core.js';
 import { urlFromRequest } from '../forwarded.js';
-import { propagateTrustedRemoteIp } from '../rate-limit.js';
 import { stripBasePath } from '../base-path.js';
 import { basePath } from '../importmap.js';
 import { attachWebSocket } from '../websocket.js';

@@ -7,8 +7,6 @@
  *
  * @module
  */
-import { isOwnSlot } from './assignment.js';
-import { installSlotPolyfills } from './polyfills.js';
 
 /**
  * Symbol-keyed slot state stored on each light-DOM WebComponent host.

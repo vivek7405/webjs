@@ -10,9 +10,7 @@
 import { isOwnSlot } from './assignment.js';
 import { isInsideAuthored } from './interception.js';
 import { manualSlotFor } from './polyfills.js';
-import { applySlotAssignments } from './project.js';
-import { reconnectSweep } from './sensors.js';
-import { FRAMEWORK_DETACHED, LIGHT_SLOT_ATTR, PARK, PROJECTION_ACTUAL, PROJECTION_ATTR, SLOT_STATE } from './symbols.js';
+import { FRAMEWORK_DETACHED, LIGHT_SLOT_ATTR, PROJECTION_ACTUAL, PROJECTION_ATTR, SLOT_STATE } from './symbols.js';
 
 /**
  * Lazily create and return the slot state for a host element.

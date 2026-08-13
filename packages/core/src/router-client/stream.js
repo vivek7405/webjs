@@ -7,7 +7,6 @@
  * @module
  */
 import { warnDropped } from './diagnostics.js';
-import { _swapCommit } from './swap.js';
 import { upgradeTree } from './upgrade.js';
 
 /**

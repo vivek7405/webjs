@@ -9,7 +9,6 @@
 import { FRAME_TOP } from './constants.js';
 import { warnOnce } from './diagnostics.js';
 import { outerHTMLForDiff } from './head-merge.js';
-import { applySwap } from './swap.js';
 
 /**
  * Find the id of the innermost <webjs-frame> enclosing `el`, walking up

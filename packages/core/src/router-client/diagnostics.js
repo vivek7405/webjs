@@ -8,8 +8,7 @@
  */
 import { FORM_ACTION_FIELD } from '../form-action.js';
 import { FALLBACK_MARKER_KEY } from './constants.js';
-import { disableClientRouter, enableClientRouter, navigate } from './navigator.js';
-import { prefetch } from './prefetch.js';
+import { navigate } from './navigator.js';
 
 /**
  * Emit a `console.warn` at most once per `key` for the lifetime of the

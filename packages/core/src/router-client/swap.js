@@ -9,11 +9,10 @@
 import { scanSeeds } from '../action-seed-client.js';
 import { collectBoundaries, planBoundarySwap } from './boundaries.js';
 import { reportFallback } from './diagnostics.js';
-import { blurOutgoingFocus, diffChildren, diffElementInPlace, reconcileChildren, replaceBoundaryRange, resyncEnclosingHostSlots, swapMarkerRange } from './dom-differ.js';
+import { blurOutgoingFocus, diffChildren, replaceBoundaryRange, resyncEnclosingHostSlots, swapMarkerRange } from './dom-differ.js';
 import { trackedReloadSignature } from './frames.js';
 import { addNewHeadElements, mergeHead } from './head-merge.js';
-import { navigate } from './navigator.js';
-import { prefetch, prefetchCache } from './prefetch.js';
+import { prefetchCache } from './prefetch.js';
 import { snapshotCache } from './snapshot-cache.js';
 import { hardNavigate } from './state.js';
 import { forwardSuspenseResolvers } from './stream.js';

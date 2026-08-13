@@ -7,8 +7,6 @@
  * @module
  */
 import { ANCHOR_RELEASE_EVENTS, ANCHOR_SUPPRESS_CEILING_MS, ANCHOR_SUPPRESS_FLOOR_MS } from './constants.js';
-import { loadFrame, prevScrollRestoration } from './navigator.js';
-import { currentNavigationToken } from './state.js';
 
 /**
  * Closes the currently open restore window, or null when none is open.

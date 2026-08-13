@@ -7,11 +7,9 @@
  *
  * @module
  */
-import { isVirtualChild } from './interception.js';
 import { inBrowser } from './polyfills.js';
-import { applySlotAssignments } from './project.js';
-import { adoptSSRAssignments, ensureSlotState, hasSlotState, keyOfName } from './state.js';
-import { FRAMEWORK_DETACHED, LIGHT_SLOT_ATTR, PROJECTION_ACTUAL, PROJECTION_ATTR, PROJECTION_FALLBACK, SLOT_FALLBACK_FRAG, SLOT_OWNER, SLOT_OWNER_ATTR, SLOT_STATE } from './symbols.js';
+import { ensureSlotState, hasSlotState, keyOfName } from './state.js';
+import { FRAMEWORK_DETACHED, LIGHT_SLOT_ATTR, PROJECTION_ACTUAL, PROJECTION_ATTR, PROJECTION_FALLBACK, SLOT_FALLBACK_FRAG, SLOT_OWNER, SLOT_OWNER_ATTR } from './symbols.js';
 
 /**
  * True when this host's current markup is FRAMEWORK-RENDERED output rather

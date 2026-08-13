@@ -8,8 +8,6 @@
  */
 import { collectBoundaries } from './boundaries.js';
 import { reportFallback } from './diagnostics.js';
-import { navigate } from './navigator.js';
-import { prefetch } from './prefetch.js';
 import { hardNavigate } from './state.js';
 
 /**

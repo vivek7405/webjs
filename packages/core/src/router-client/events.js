@@ -10,7 +10,7 @@ import { NON_HTML_EXTENSIONS } from './constants.js';
 import { warnIfActionSubmissionCannotDeliver } from './diagnostics.js';
 import { buildSubmitFormData, encodeSubmitBody, getSubmitAction, getSubmitEnctype, getSubmitMethod } from './form-encoder.js';
 import { resolveTargetFrameId } from './frames.js';
-import { enableClientRouter, enabled, performNavigation, performSubmission } from './navigator.js';
+import { enabled, performNavigation, performSubmission } from './navigator.js';
 
 /** @param {MouseEvent} e */
 export function onClick(e) {
