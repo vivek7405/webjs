@@ -1,7 +1,7 @@
 // Programmatic client navigation. `navigate(url)` does the same soft, in-place
 // swap an <a> click does, but from an event handler (after a save, a wizard
 // step, etc.). `revalidate(url?)` evicts the browser snapshot cache so the next
-// visit refetches fresh HTML instead of the cached page. `disableClientRouter()`
+// visit refetches fresh HTML instead of the cached page.
 // `refreshPage(mode?)` re-renders the page you are ALREADY on and swaps the
 // result in place, recording no history entry and never scrolling, so the reader
 // keeps their place. 'page' (the default) morphs the deepest shared boundary, so

@@ -6,7 +6,7 @@ export function navigate(url: Route, opts?: { replace?: boolean }): Promise<void
 export function loadFrame(
   frameEl: Element,
   url: string,
-): Promise<{ ok: boolean; status: number | null; aborted: boolean }>;
+): Promise<{ ok: boolean; status: number | null; aborted: boolean; applied: boolean }>;
 export function revalidate(url?: string): void;
 /**
  * Re-render the current url on the server and apply it in place, with no page

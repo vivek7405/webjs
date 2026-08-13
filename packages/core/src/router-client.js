@@ -706,16 +706,20 @@ export async function navigate(url, opts) {
  *
  * @param {Element} frameEl  The live `<webjs-frame>` element to fill.
  * @param {string} url  The `src` value, resolved against `location.href`.
- * @returns {Promise<{ ok: boolean, status: number | null, aborted: boolean }>}
+ * @returns {Promise<{ ok: boolean, status: number | null, aborted: boolean, applied: boolean }>}
+ *   Passed straight through from `fetchAndApply`, so `applied` says whether the
+ *   frame subtree was actually swapped (#1398). Each guard below returns it
+ *   explicitly rather than leaving the field off: one path omitting it would be
+ *   the same kind of contract hole the flag exists to close.
  */
 export async function loadFrame(frameEl, url) {
-  if (typeof location === 'undefined') return { ok: false, status: null, aborted: false };
+  if (typeof location === 'undefined') return { ok: false, status: null, aborted: false, applied: false };
   const id = frameEl && /** @type any */ (frameEl).id;
-  if (!id) return { ok: false, status: null, aborted: false };
+  if (!id) return { ok: false, status: null, aborted: false, applied: false };
   const target = new URL(url, location.href);
   // Cross-origin can't be a same-document frame swap (and a frame fetch must
   // send a same-origin credentialed request). Leave the frame unchanged.
-  if (target.origin !== location.origin) return { ok: false, status: null, aborted: false };
+  if (target.origin !== location.origin) return { ok: false, status: null, aborted: false, applied: false };
 
   // A frame self-load shares the global abort + token machinery so a real
   // navigation that starts mid-load supersedes it (and vice versa), exactly
