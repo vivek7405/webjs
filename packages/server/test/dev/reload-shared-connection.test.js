@@ -173,7 +173,15 @@ test('the reload client probes the server is up before reloading (no restart fla
   // would never run and a newly added utility class would have no backing rule.
   assert.match(clientSrc, /function __webjsRefreshStyles/, 'the refresh re-requests the page stylesheets (#967 regenerate runs ON REQUEST)');
   assert.match(clientSrc, /__webjsRefreshStyles\(\);/, 'and the applied refresh actually calls it');
-  assert.match(clientSrc, /next\.addEventListener\('load', drop\)/, 'the old sheet is dropped only once the new one loaded, so the page never flashes unstyled');
+  // The load and error branches must NOT be symmetric. On load the old sheet
+  // goes, so the page never flashes unstyled; on error the NEW one goes and the
+  // working one stays, because a failed re-request (the server mid-restart, a
+  // renamed file) must never leave the page with no stylesheet at all, which is
+  // the #936 / #1400 failure mode.
+  assert.match(clientSrc, /next\.addEventListener\('load', function \(\) \{\s*if \(old\.parentNode\) old\.parentNode\.removeChild\(old\);/,
+    'a loaded replacement drops the old sheet, so the page never flashes unstyled');
+  assert.match(clientSrc, /next\.addEventListener\('error', function \(\) \{[^}]*if \(next\.parentNode\) next\.parentNode\.removeChild\(next\);/,
+    'a FAILED replacement drops itself and keeps the working sheet');
   // The verdict parser ships too, so an unparseable frame resolves to reload
   // inside the tab rather than being trusted.
   assert.match(clientSrc, /function parseVerdict/, 'the verdict parser ships in the client fallback');

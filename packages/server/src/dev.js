@@ -3123,11 +3123,20 @@ function __webjsWhenReady(then) {
 // until a manual reload. Every in-repo app is configured that way, and it bites
 // the plain \`tailwindcss --watch\` shape too.
 //
-// The new sheet is inserted BESIDE the old one and the old is dropped only once
-// it has loaded, so the page is never briefly unstyled. Same-origin only, and
-// one link per path: the head merge appends the incoming bare-href link
-// alongside the busted one, so without the de-dupe the head would gain a link
-// on every refresh.
+// The new sheet is inserted BESIDE the old one, and which one survives depends
+// on how the request went. On LOAD the old one is dropped, so the page is never
+// briefly unstyled. On ERROR the NEW one is dropped and the old one kept: the
+// re-request can fail (the server is mid-restart, the file was renamed), and
+// removing the last working sheet there would leave the page permanently
+// unstyled, which is the exact failure #936 and #1400 exist to prevent.
+//
+// Same-origin only, and one link per identity, where the identity is every
+// attribute EXCEPT the href's query. The duplicate being collapsed is the one
+// the head merge re-appends (the incoming bare-href link beside the busted
+// one), so the head would otherwise gain a link on every refresh. Keying on the
+// path alone would be wrong in the other direction: it would delete an author's
+// second, legitimately distinct link to the same file, such as a
+// \`media="print"\` sheet.
 function __webjsRefreshStyles() {
   var kept = Object.create(null);
   var links = [].slice.call(document.querySelectorAll('link[rel~="stylesheet"][href]'));
@@ -3135,18 +3144,30 @@ function __webjsRefreshStyles() {
     var el = links[i], url;
     try { url = new URL(el.getAttribute('href'), location.href); } catch (_) { continue; }
     if (url.origin !== location.origin) continue;
-    if (kept[url.pathname]) { if (el.parentNode) el.parentNode.removeChild(el); continue; }
-    kept[url.pathname] = { el: el, url: url };
+    var parts = [];
+    var attrs = el.attributes;
+    for (var a = 0; a < attrs.length; a++) {
+      if (attrs[a].name === 'href') continue;
+      parts.push([attrs[a].name, attrs[a].value]);
+    }
+    parts.sort(function (x, y) { return x[0] < y[0] ? -1 : x[0] > y[0] ? 1 : 0; });
+    var key = JSON.stringify([url.pathname, parts]);
+    if (kept[key]) { if (el.parentNode) el.parentNode.removeChild(el); continue; }
+    kept[key] = { el: el, url: url };
   }
-  Object.keys(kept).forEach(function (path) {
-    var old = kept[path].el, url = kept[path].url;
+  Object.keys(kept).forEach(function (key) {
+    var old = kept[key].el, url = kept[key].url;
     if (!old.parentNode) return;
     url.searchParams.set('__webjs_dev', String(Date.now()));
     var next = old.cloneNode(false);
     next.setAttribute('href', url.pathname + url.search);
-    var drop = function () { if (old.parentNode) old.parentNode.removeChild(old); };
-    next.addEventListener('load', drop);
-    next.addEventListener('error', drop);
+    next.addEventListener('load', function () {
+      if (old.parentNode) old.parentNode.removeChild(old);
+    });
+    next.addEventListener('error', function () {
+      // Keep the sheet that still works rather than the one that just 404ed.
+      if (next.parentNode) next.parentNode.removeChild(next);
+    });
     old.parentNode.insertBefore(next, old.nextSibling);
   });
 }

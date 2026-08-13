@@ -14,10 +14,11 @@ import '#components/counter.ts';
  * A token that only ever assigns when absent survives a re-run and can only
  * change when the whole global scope is replaced, which is exactly a reload.
  *
- * The stylesheet link sits in the layout's own markup, outside the children
- * range, so a page-edit morph never rewrites it. That placement is what makes
- * the re-request assertion meaningful: nothing but the dev client's explicit
- * stylesheet refresh can cause the browser to ask for it again.
+ * The stylesheet link is HOISTED into `<head>` by the SSR (a leading body tag
+ * is collected into the head before the response is served), which is what
+ * makes the re-request assertion meaningful: neither swap tier ever removes a
+ * head stylesheet, so nothing but the dev client's explicit stylesheet refresh
+ * can cause the browser to ask for it again.
  */
 export default function RootLayout({ children }: LayoutProps) {
   return html`

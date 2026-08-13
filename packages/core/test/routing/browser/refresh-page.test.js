@@ -228,6 +228,33 @@ suite('Client router: refreshPage re-renders the current url in place (#1398)', 
     }
   });
 
+  // `applied` is a different question from `ok`, and reading the wrong one here
+  // is a real cost rather than a nicety. An HTML body of ANY status is swapped
+  // in place, which is what makes the 422-revalidation and error-boundary
+  // behaviour work, so a page rendered through `notFound()` / `forbidden()` /
+  // an `error.ts` boundary applied perfectly well. Reporting those as failures
+  // would make the dev client reload on top of a swap that already happened,
+  // losing the state the refresh exists to keep, every time you iterate on a
+  // page that currently renders a 4xx or 5xx.
+  test('a swapped error page resolves true, because it applied', async () => {
+    setup();
+    try {
+      for (const status of [404, 403, 500]) {
+        respond = () => docHtml({ shell: 'SHELL_A', inner: 'ERROR_' + status });
+        const origFetchStub = window.fetch;
+        window.fetch = (url, init) => origFetchStub(url, init).then((r) =>
+          new Response(r.body, { status, headers: { 'content-type': 'text/html' } }));
+        assert.equal(await refreshPage(), true, `a ${status} HTML page applied`);
+        await settle();
+        assert.equal(document.getElementById('wj-refresh-inner').textContent, 'ERROR_' + status,
+          `and the ${status} body is what is on screen`);
+        window.fetch = origFetchStub;
+      }
+    } finally {
+      teardown();
+    }
+  });
+
   // The dev reload client feature-DETECTS the refresh entry on the global
   // rather than assuming it, and the absence covers both no-router cases:
   // `webjs.clientRouter: false`, and a page that ships no component at all so

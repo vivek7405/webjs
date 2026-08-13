@@ -793,20 +793,27 @@ export async function refreshPage(mode) {
   try {
     const res = await performNavigation(location.href, false, null, { refresh: mode === 'shell' ? 'shell' : 'page' });
     // The outcome has to be READ, not inferred from the absence of a throw.
-    // `fetchAndApply` reports every real failure as `{ ok: false }` and throws
-    // for none of them (a rejected fetch, a non-HTML body, an unparseable one),
-    // so a bare try/catch here would resolve `true` for exactly the cases the
-    // caller's full-load fallback exists to cover, and the page would silently
-    // sit on stale content.
+    // `fetchAndApply` reports every real failure as `{ applied: false }` and
+    // throws for none of them (a rejected fetch, a non-HTML body, an
+    // unparseable one), so a bare try/catch here would resolve `true` for
+    // exactly the cases the caller's full-load fallback exists to cover, and
+    // the page would silently sit on stale content.
     //
-    // Two outcomes are NOT failures. A `null` means no fetch decided it (the
-    // parse guard hard-navigated, or a popstate restored a snapshot), so the
-    // page is already resolved. An `aborted` means a newer navigation
+    // It reads `applied`, NOT `ok`. An HTML body of any status is swapped in
+    // place, so a page rendered through `notFound()`, `forbidden()`, or an
+    // `error.ts` boundary is `ok: false` and applied perfectly well. Reading
+    // `ok` would report those as failures and make the dev client reload on top
+    // of a swap that already happened, losing the state this exists to keep,
+    // every time you iterate on a page that currently renders a 4xx or 5xx.
+    //
+    // Two outcomes are NOT failures either. A `null` means no fetch decided it
+    // (the parse guard hard-navigated, or a popstate restored a snapshot), so
+    // the page is already resolved. An `aborted` means a newer navigation
     // superseded this one and owns the page now, and reloading would yank the
     // reader out of it; Turbo drops a refresh that lands mid-navigation for the
     // same reason.
     if (!res || res.aborted) return true;
-    return res.ok;
+    return res.applied;
   } catch (_) {
     return false;
   }
@@ -2931,13 +2938,23 @@ function handleNavigationError(href, status, error) {
  * @param {'page' | 'shell'} [refresh]  Same-URL in-place refresh (#1398). It
  *   suppresses the `X-Webjs-Have` header and picks the swap tier; see
  *   `refreshPage`.
- * @returns {Promise<{ ok: boolean, status: number | null, aborted: boolean }>}
+ * @returns {Promise<{ ok: boolean, status: number | null, aborted: boolean, applied: boolean }>}
  *   The fetch outcome, so a caller (the form-submission busy/event lifecycle)
  *   can report whether the submission settled as a success, an error, or an
  *   abort. `ok` mirrors `response.ok` for an HTTP response (a 422 validation
  *   re-render is `ok:false`), `false` for a transport/parse error, and `false`
  *   for an abort (which also sets `aborted:true`). `status` is the HTTP status
  *   or `null` when the request never produced one.
+ *
+ *   `applied` is a DIFFERENT question from `ok` and the two must not be
+ *   conflated (#1398). An HTML body of ANY status is parsed and swapped in
+ *   place, which is the whole point of the 422-revalidation and error-boundary
+ *   behaviour, so a page rendered through `notFound()`, `forbidden()`, or an
+ *   `error.ts` boundary has `ok:false` and `applied:true`. It is `false`
+ *   wherever no swap committed: a transport failure, a non-HTML body, an
+ *   unparseable one, a 204/205, a discarded revalidation, and an abort. A
+ *   caller deciding whether to fall back to a full page load wants `applied`;
+ *   one reporting the submission's success wants `ok`.
  */
 async function fetchAndApply(href, frameId, recordHistory, optimisticState, method, body, signal, token, revalidating, refresh) {
   method = method || 'GET';
@@ -3040,7 +3057,7 @@ async function fetchAndApply(href, frameId, recordHistory, optimisticState, meth
         restoreOptimistic(optimisticState);
         renderStream(text);
       }
-      return { ok: respOk, status: respStatus, aborted: false };
+      return { ok: respOk, status: respStatus, aborted: false, applied: true };
     }
     // Server-side redirect (PRG, auth-gate, etc.): fetch followed it
     // automatically. Record the FINAL URL in history, not the
@@ -3056,7 +3073,7 @@ async function fetchAndApply(href, frameId, recordHistory, optimisticState, meth
       if (myToken === currentNavigationToken && recordHistory) {
         history.pushState(null, '', finalUrl);
       }
-      return { ok: respOk, status: respStatus, aborted: false };
+      return { ok: respOk, status: respStatus, aborted: false, applied: false };
     }
 
     // Non-HTML response (JSON error, file download, opaque): can't be
@@ -3076,7 +3093,7 @@ async function fetchAndApply(href, frameId, recordHistory, optimisticState, meth
         restoreOptimistic(optimisticState);
         handleNavigationError(href, resp.status, null);
       }
-      return { ok: false, status: respStatus, aborted: false };
+      return { ok: false, status: respStatus, aborted: false, applied: false };
     }
 
     // HTML body of ANY status: 2xx, 4xx validation errors, 5xx error
@@ -3105,30 +3122,30 @@ async function fetchAndApply(href, frameId, recordHistory, optimisticState, meth
     // AbortError is a normal supersede, NOT a navigation error, so it must
     // NEVER dispatch webjs:navigation-error (the key no-false-positive
     // line).
-    if (err && /** @type any */ (err).name === 'AbortError') return { ok: false, status: null, aborted: true };
+    if (err && /** @type any */ (err).name === 'AbortError') return { ok: false, status: null, aborted: true, applied: false };
     // Stale (a newer nav started before we got the network error): the
     // newer nav owns the page now, so don't clobber it.
-    if (myToken !== currentNavigationToken) return { ok: false, status: null, aborted: true };
+    if (myToken !== currentNavigationToken) return { ok: false, status: null, aborted: true, applied: false };
     restoreOptimistic(optimisticState);
     // Transport/parse failure (fetch rejected, e.g. offline / DNS / TLS).
     // Surface a navigation-error so the app can recover in place instead
     // of a destructive full reload.
     handleNavigationError(href, null, err instanceof Error ? err : new Error(String(err)));
-    return { ok: false, status: null, aborted: false };
+    return { ok: false, status: null, aborted: false, applied: false };
   }
 
   // A newer navigation started while we awaited the response body -
   // bail before we overwrite its work.
   if (myToken !== currentNavigationToken) {
     if (streamCtx && streamCtx.reader) { try { streamCtx.reader.cancel(); } catch { /* ignore */ } }
-    return { ok: false, status: respStatus, aborted: true };
+    return { ok: false, status: respStatus, aborted: true, applied: false };
   }
 
   const doc = parseHTML(html);
   // The body claimed text/html but didn't parse into a document (a
   // malformed/empty HTML body). Surface a navigation-error so the app can
   // recover in place rather than a destructive full reload.
-  if (!doc) { restoreOptimistic(optimisticState); handleNavigationError(href, null, new Error('navigation response did not parse as HTML')); return { ok: false, status: respStatus, aborted: false }; }
+  if (!doc) { restoreOptimistic(optimisticState); handleNavigationError(href, null, new Error('navigation response did not parse as HTML')); return { ok: false, status: respStatus, aborted: false, applied: false }; }
 
   const disposition = applySwap(doc, frameId, !!revalidating, finalUrl, incomingBuild, incomingSrc, refresh);
   // A discarded revalidation must be discarded OUTRIGHT: a streamed response's
@@ -3137,7 +3154,7 @@ async function fetchAndApply(href, frameId, recordHistory, optimisticState, meth
   // need not line up with the snapshot's). Cancel the reader and stop here.
   if (disposition === 'discard') {
     if (streamCtx && streamCtx.reader) { try { streamCtx.reader.cancel(); } catch { /* ignore */ } }
-    return { ok: respOk, status: respStatus, aborted: false };
+    return { ok: respOk, status: respStatus, aborted: false, applied: false };
   }
 
   if (recordHistory) history.pushState(null, '', finalUrl);
@@ -3188,7 +3205,7 @@ async function fetchAndApply(href, frameId, recordHistory, optimisticState, meth
   }
 
   document.dispatchEvent(new CustomEvent('webjs:navigate', { detail: { url: finalUrl, frameId, from: 'navigate' } }));
-  return { ok: respOk, status: respStatus, aborted: false };
+  return { ok: respOk, status: respStatus, aborted: false, applied: true };
   } finally {
     // Clear the frame's busy state on every exit path (the early returns
     // above all unwind through here). No-op when this was not a frame nav.

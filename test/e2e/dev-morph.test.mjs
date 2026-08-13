@@ -178,13 +178,16 @@ export default function Home() {
       assert.equal(after.scrollY, before.scrollY, 'the reader kept their place');
       assert.equal(after.count, 'count 2', 'and the hydrated counter outside the changed region kept its state');
 
-      // The stylesheet has to be RE-REQUESTED, and this is the only thing that
-      // can cause it: the link sits in the layout's own markup outside the
-      // children range, so the morph never rewrites it, and `mergeHead`
-      // preserves it by identity (#936). A reload used to do the asking, which
-      // is how `webjs.dev.regenerate` (#967) ever ran, since it rebuilds a
-      // stale output ON REQUEST. Without the refresh, an edit adding a utility
-      // class would render with no backing rule until a manual reload.
+      // The stylesheet has to be RE-REQUESTED, and the dev client's explicit
+      // refresh is the only thing that can cause it. The link is hoisted into
+      // `<head>` by the SSR, and this tier (`page`) merges the incoming head
+      // through `addNewHeadElements`, which is ADD-ONLY and so never touches
+      // the live link; the `shell` tier's `mergeHead` would not either, since
+      // it preserves stylesheets unconditionally (#936). A reload used to do
+      // the asking, which is how `webjs.dev.regenerate` (#967) ever ran, since
+      // it rebuilds a stale output ON REQUEST. Without the refresh, an edit
+      // adding a utility class would render with no backing rule until a
+      // manual reload.
       assert.ok(page.cssRequests.length >= 2,
         `the refresh re-requested the stylesheet (saw ${page.cssRequests.length} request(s))`);
       assert.match(page.cssRequests[page.cssRequests.length - 1], /__webjs_dev=/,
