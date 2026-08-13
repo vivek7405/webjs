@@ -59,7 +59,7 @@ export function siteFooter() {
           </div>
           <div class="flex flex-col gap-3">
             <a href="/" aria-label="WebJs home" class="no-underline text-fg inline-flex w-fit transition-opacity duration-150 hover:opacity-80">${brandLockup('ftr', { height: 26 })}</a>
-            <p class="m-0 text-xs text-fg-muted leading-relaxed">The web framework for AI agents. Full-stack web components, SSR, zero build step.</p>
+            <p class="m-0 text-xs text-fg-muted leading-relaxed">A full-stack web components framework with no build step. Server-rendered, with its own source in your node_modules.</p>
           </div>
         </nav>
         <div class="pt-8 border-t border-border flex flex-col md:flex-row justify-between items-center gap-4 text-fg-subtle text-xs">
