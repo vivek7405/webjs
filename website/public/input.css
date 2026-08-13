@@ -79,7 +79,18 @@
 
   --text-display: clamp(2.9rem, 1.55rem + 4.5vw, 5.5rem);
   --text-h2:      clamp(1.7rem, 1.2rem + 1.4vw, 2.5rem);
-  --text-lede:    clamp(1.08rem, 0.98rem + 0.4vw, 1.28rem);
+  /* Two lede steps, because the landing hero and a page lede are not the same
+     role and were fighting over one number. The hero wants to be half the
+     headline; a page lede wants to be readable at 6 lines.
+
+     --text-hero-lede is sized against the H1 rather than by eye. Its ceiling
+     is the point where the subtitle's balanced lines stop reading narrower
+     than the title's longest line, which is what "it feels wider" meant.
+
+     Both are fluid: the MIN term is not the operative one on a phone (at 390px
+     the preferred term runs), so tune the slope, not the min. */
+  --text-hero-lede: clamp(1.1rem, 0.83rem + 1.34vw, 1.9rem);
+  --text-lede:    clamp(1.15rem, 1rem + 0.6vw, 1.5rem);
 
   /* Documentation-page type scale. The docs run a tighter heading rhythm than
      the marketing pages (a reference page wants a calm h1, not a hero), so

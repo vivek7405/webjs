@@ -1,4 +1,4 @@
-import { WebComponent, html, signal, createRef, ref } from '@webjsdev/core';
+import { WebComponent, html, prop, signal, createRef, ref } from '@webjsdev/core';
 
 /**
  * gtag is installed by the root layout's Google tag snippet. Declaring it
@@ -33,6 +33,17 @@ declare global {
  * Usage:
  *   <copy-cmd>npm create webjs@latest my-app</copy-cmd>
  *
+ * The `inline` variant is for a command sitting INSIDE a sentence rather
+ * than in its own command bar:
+ *   Run <copy-cmd inline>bun create webjs@latest my-app</copy-cmd> to ...
+ *
+ * It renders a `<code>` chip carrying the site's inline-code styling with a
+ * small trailing icon, instead of the bar's absolutely-positioned button. The
+ * bar reserves `pr-9` for that button and the host is `display: block`
+ * (app/layout.ts), both of which would push the chip onto its own line and
+ * put a 28px bordered button in the middle of a 22px line of prose. The whole
+ * chip is the click target here, so the affordance is the chip itself.
+ *
  * On click (or Enter / Space), writes the trimmed text content to the
  * clipboard via navigator.clipboard.writeText and flips the icon to a
  * checkmark for ~1.5s.
@@ -42,7 +53,14 @@ declare global {
  * addEventListener in lifecycle hooks. Cleanup of the auto-reset
  * timer happens in disconnectedCallback.
  */
-export class CopyCmd extends WebComponent {
+export class CopyCmd extends WebComponent({
+  /**
+   * Renders the in-a-sentence chip instead of the command bar. A plain
+   * attribute (`<copy-cmd inline>`), so SSR emits it and the host CSS in
+   * app/layout.ts can select it to undo the block display.
+   */
+  inline: prop(Boolean),
+}) {
   copied = signal(false);
   // Increments on every successful copy. The live-region text is keyed off its
   // parity so a repeat copy within the reset window still changes the text node
@@ -100,6 +118,25 @@ export class CopyCmd extends WebComponent {
     // repeat copy (forcing a re-announce). trim() still yields "Copied", so a
     // screen reader reads the same word and assertions stay simple.
     const announce = isCopied ? (this._copies.get() % 2 ? 'Copied ' : 'Copied') : '';
+    if (this.inline) {
+      // The icon sits INSIDE the [data-copy-text] target, which is safe because
+      // an svg contributes no text nodes: _copy reads textContent and still gets
+      // exactly the command. Keeping it inside is what lets the chip be one
+      // unbreakable inline unit (whitespace-nowrap), so the background box can
+      // never split across two lines mid-command.
+      return html`
+        <code
+          class="font-mono text-sm bg-fg/8 px-1.5 py-0.5 rounded whitespace-nowrap cursor-copy outline-none focus-visible:outline-2 focus-visible:outline-accent focus-visible:outline-offset-2"
+          data-copy-text
+          ${ref(this._textRef)}
+          role="button"
+          tabindex="0"
+          title="Copy command to clipboard"
+          @click=${this._copy}
+          @keydown=${this._onKey}
+        ><slot></slot><span class="inline-block ml-1.5 align-[-0.15em] transition-colors duration-[140ms] ${isCopied ? 'text-[oklch(0.66_0.16_150)]' : 'text-fg-subtle'}" aria-hidden="true">${isCopied ? CHECK_ICON : COPY_ICON}</span></code><span class="sr-only" role="status" aria-live="polite">${announce}</span>
+      `;
+    }
     return html`
       <span class="group relative flex items-center min-w-0">
         <span
