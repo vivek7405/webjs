@@ -342,6 +342,7 @@ function assignPaths(root, parts) {
     for (let i = 0; i < node.childNodes.length; i++) {
       const child = node.childNodes[i];
       path.push(i);
+      // Comment marker?
       if (child.nodeType === 8) {
         const txt = /** @type Comment */ (child).data;
         if (txt.startsWith(MARKER)) {
@@ -352,6 +353,7 @@ function assignPaths(root, parts) {
         }
       } else if (child.nodeType === 1) {
         const el = /** @type Element */ (child);
+        // Sentinel attribute?
         const toRemove = [];
         /** Every part bound to THIS element, which only this walk can see. */
         /** @type {{ idx: number, kind: string, name: string }[]} */
@@ -367,6 +369,13 @@ function assignPaths(root, parts) {
           }
         }
 
+        // #1155 / #1207: record what a bound form or submitter needs, while the
+        // STATIC attributes and the element's part indices are both still
+        // visible. This is the only point in compilation with that whole view,
+        // and it runs once per template, so the record is a constant rather
+        // than runtime memory that can drift out of step with the DOM. It is
+        // also the only place a submitter's own `name` is still legible: by
+        // reconcile time the renderer has written the identity over it.
         if (el.localName === 'form' || el.localName === 'button' || el.localName === 'input') {
           const rec = buildFormActionRecord(el, onEl, parts);
           if (rec) formActions.push(rec);

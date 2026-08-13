@@ -62,6 +62,9 @@ export async function renderToString(value, opts = { ssr: true }) {
  */
 export function renderToStream(value, opts = { ssr: true }) {
   const ctx = opts && opts.suspenseCtx;
+  // Server dev flag for prod-silence of SSR error states (#483), same sourcing
+  // as renderToString: opts.dev wins, else inherit from the ctx, else undefined
+  // (NODE_ENV fallback). Back-fill the ctx so the streamed sub-renders share it.
   const dev = opts && opts.dev !== undefined ? opts.dev : ctx && ctx.dev;
   if (ctx && ctx.dev === undefined && dev !== undefined) ctx.dev = dev;
   return new ReadableStream({
@@ -71,11 +74,15 @@ export function renderToStream(value, opts = { ssr: true }) {
           const { streamRender } = await import('./template-renderer.js');
           await streamRender(value, ctx, controller);
         } else {
+          // Render to string first to run DSD injection (which operates on
+          // the full HTML), then enqueue the result. This matches the
+          // semantics of renderToString but still gives us a stream.
           const html = await render(value, ctx);
           const full = await injectDSD(html, ctx, [], dev);
           controller.enqueue(full);
         }
 
+        // Stream resolved Suspense boundaries after the main content.
         if (ctx && ctx.pending.length) {
           await streamSuspenseBoundaries(ctx, controller, dev);
         }

@@ -195,12 +195,16 @@ export const _wrapWithChildrenMarker = wrapWithChildrenMarker;
  * } | null}
  */
 export function extractUserShell(body) {
+  // Tolerant: allow optional whitespace, optional <!doctype>, then <html ...>.
+  // Capture html attributes (anything between <html and >).
   const htmlOpen = /^\s*(?:<!doctype[^>]*>\s*)?<html\b([^>]*)>\s*([\s\S]*)<\/html>\s*$/i;
   const m = body.match(htmlOpen);
   if (!m) return null;
   const htmlAttrs = m[1] || '';
   const shellInner = m[2];
 
+  // <head> is optional inside the user's shell: if missing, the
+  // framework's head content stands alone. Same for <body>.
   const headRe = /<head\b([^>]*)>([\s\S]*?)<\/head>/i;
   const bodyRe = /<body\b([^>]*)>([\s\S]*?)<\/body>/i;
   const headMatch = shellInner.match(headRe);
@@ -211,6 +215,8 @@ export function extractUserShell(body) {
     headAttrs: headMatch ? (headMatch[1] || '') : '',
     userHead: headMatch ? headMatch[2] : '',
     bodyAttrs: bodyMatch ? (bodyMatch[1] || '') : '',
+    // If the user omitted <body>, treat everything outside <head>…</head>
+    // as their body content.
     userBody: bodyMatch
       ? bodyMatch[2]
       : (headMatch ? shellInner.replace(headMatch[0], '') : shellInner).trim(),
@@ -273,6 +279,7 @@ export function buildDocumentParts(body, wrapOpts) {
       `\n</head>\n<body${shell.bodyAttrs}>\n`;
     return { prefix, streamBody: hoist.body, closer: `\n</body>\n</html>` };
   }
+  // No user shell: framework owns the wrapper.
   const headHtml = wrapHead(wrapOpts);
   const { head, body: bodyOut } = hoistHeadTags(headHtml, body);
   return { prefix: head, streamBody: bodyOut, closer: `\n</body>\n</html>` };

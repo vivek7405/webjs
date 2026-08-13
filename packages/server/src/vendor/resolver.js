@@ -143,12 +143,27 @@ async function computeLiveIntegrity(imports) {
 
 export async function resolveVendorImports(appDir, getBareImports) {
   const file = await readPinFile(appDir);
+  // A committed pin file IS the import map. The whole-app bare-import scan is
+  // discarded in that case, so it must never run (runtime-first boot: no
+  // static analysis when pinned). The scan is supplied as a thunk and invoked
+  // solely here, only when there is no pin file.
   if (file) {
+    // A pin file is a deterministic disk read: always "ok" (no live CDN call
+    // that could partially fail). This is the recommended prod posture. The
+    // pin's own integrity is used verbatim; the live-hash path below is NOT
+    // taken for a pinned app.
     return { imports: file.imports, integrity: file.integrity || {}, ok: true };
   }
   setLastLiveResolveFailed(false);
   const bareImports = await getBareImports();
   const imports = await vendorImportMapEntries(bareImports, appDir);
+  // Fill the SRI gap for live-resolved (unpinned) apps (#235): hash each
+  // cross-origin bundle and key the integrity by its final URL, the same
+  // shape the pin path uses and `vendorIntegrityFor` looks up. Bounded +
+  // fail-open, so a CDN fetch failure degrades to a missing hash for that
+  // URL (a warning), never a broken resolve. This runs only AFTER a live
+  // resolve produced URLs; if the resolve itself failed there is nothing to
+  // hash.
   const integrity = await computeLiveIntegrity(imports);
   return { imports, integrity, ok: !isLastLiveResolveFailed() };
 }

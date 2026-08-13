@@ -224,6 +224,8 @@ export function collectHoistedHeadTags(bodyHtml) {
  * @returns {{ head: string, body: string }}
  */
 export function hoistHeadTags(headHtml, bodyHtml) {
+  // Shares the leading-run scanner (comment-skipping included) with the
+  // streaming path so both hoist identically. See collectHoistedHeadTags.
   const { tags: hoisted, body: remaining } = collectHoistedHeadTags(bodyHtml);
   if (!hoisted.length) return { head: headHtml, body: bodyHtml };
   const newHead = headHtml.replace('</head>', hoisted.join('\n') + '\n</head>');
@@ -264,8 +266,24 @@ export function serializeViewport(v) {
 }
 
 export function wrapHead(opts) {
+  // CSP nonce: if provided, all inline <script> tags get nonce="…" so they
+  // pass strict Content-Security-Policy headers. The nonce is extracted from
+  // the request's CSP header by the caller.
   const n = opts.nonce ? ` nonce="${escapeAttr(opts.nonce)}"` : '';
+  // Sub-path deployment (issue #256): the boot script's per-route module
+  // specifiers and the dev reload `src` are framework-emitted same-origin
+  // absolute URLs, so prefix them with the base path (a no-op when empty).
+  // The lazy-loader import is a BARE specifier resolved through the importmap
+  // (whose target is already base-path-prefixed in importmap.js), so it is
+  // NOT prefixed here. The base path is the one set at boot via setBasePath
+  // (read from importmap.js's module state), the same value the importmap
+  // targets were prefixed with, so the boot specifiers and the map agree.
   const bp = basePath();
+  // Content-hash asset URLs (issue #243): after base-path-prefixing, append
+  // `?v=<hash>` to a same-origin module specifier for immutable caching. A
+  // no-op in dev (so the boot script is byte-identical) and for a bare/
+  // cross-origin specifier; same compose order as the importmap targets
+  // (basePath then `?v`).
   const fp = (u) => withAssetHash(withBasePath(u, bp), bp);
 
   const moduleUrls = opts.moduleUrls || [];
@@ -276,6 +294,14 @@ export function wrapHead(opts) {
   const rawLazyEntries = opts.lazyComponents && Object.keys(opts.lazyComponents).length
     ? opts.lazyComponents
     : null;
+  // The lazy map's values are same-origin module URLs `observeLazy` will
+  // dynamically import, so prefix them with the base path too (no-op when
+  // empty).
+  // The lazy map's values are same-origin module URLs `observeLazy` will
+  // dynamically import, so base-path-prefix AND content-hash them (#243), the
+  // same as the eager boot specifiers. `fp` is a pure no-op in dev and at the
+  // root mount with fingerprinting off, so the mapped map equals the raw one
+  // byte-for-byte there; only prod fingerprinting / a sub-path mount changes it.
   const lazyEntries = rawLazyEntries
     ? Object.fromEntries(
         Object.entries(rawLazyEntries).map(([tag, u]) => [tag, fp(u)]),
@@ -303,9 +329,17 @@ export function wrapHead(opts) {
 
   const m = opts.metadata || {};
   const metaTags = [];
+  // linkTags is populated by both the metadata emission below (icons,
+  // alternates, archives, etc.) AND by the preload block further down.
+  // Hoist the declaration so the metadata block can push into it.
   const linkTags = [];
+  // scriptTags collects JSON-LD structured-data blocks (see m.jsonLd below).
   const scriptTags = [];
 
+  // Tiny URL resolver against metadataBase. If metadataBase is set and a
+  // value looks like a relative URL (no scheme, no `//` prefix), resolve
+  // it. Otherwise return as-is. Used by og:image, twitter:image,
+  // alternates.canonical / languages / media.
   const base = typeof m.metadataBase === 'string' ? m.metadataBase : '';
   /** @param {unknown} v */
   const absUrl = (v) => {
@@ -321,6 +355,9 @@ export function wrapHead(opts) {
 
   if (m.description) metaTags.push(`<meta name="description" content="${escapeAttr(m.description)}">`);
 
+  // viewport: support string form (legacy), `metadata.viewport` object form,
+  // and the new Next.js 14+ `export const viewport = { … }` shape captured
+  // into `_viewport` by collectMetadata.
   let viewportStr = '';
   if (typeof m.viewport === 'string') {
     viewportStr = m.viewport;
@@ -334,6 +371,7 @@ export function wrapHead(opts) {
   if (m.themeColor) metaTags.push(`<meta name="theme-color" content="${escapeAttr(m.themeColor)}">`);
   if (m.colorScheme) metaTags.push(`<meta name="color-scheme" content="${escapeAttr(m.colorScheme)}">`);
 
+  // robots: { index, follow, googleBot, etc. }
   if (m.robots) {
     if (typeof m.robots === 'string') {
       metaTags.push(`<meta name="robots" content="${escapeAttr(m.robots)}">`);
@@ -355,11 +393,13 @@ export function wrapHead(opts) {
     }
   }
 
+  // keywords: string | string[]
   if (m.keywords) {
     const kws = Array.isArray(m.keywords) ? m.keywords.join(', ') : String(m.keywords);
     if (kws) metaTags.push(`<meta name="keywords" content="${escapeAttr(kws)}">`);
   }
 
+  // authors: Array<{ name, url? }> | { name, url? } | string
   if (m.authors) {
     const list = Array.isArray(m.authors) ? m.authors : [m.authors];
     for (const a of list) {
@@ -373,6 +413,7 @@ export function wrapHead(opts) {
     }
   }
 
+  // Singletons that map 1:1 to <meta name="…">.
   for (const [field, metaName] of [
     ['creator', 'creator'],
     ['publisher', 'publisher'],
@@ -384,7 +425,9 @@ export function wrapHead(opts) {
       metaTags.push(`<meta name="${metaName}" content="${escapeAttr(String(m[field]))}">`);
     }
   }
+// ---- Long-tail metadata (the Next.js "everything else") ----
 
+  // appleWebApp: { capable, title, statusBarStyle, startupImage }
   if (m.appleWebApp && typeof m.appleWebApp === 'object') {
     if (m.appleWebApp.capable !== undefined) {
       metaTags.push(
@@ -399,6 +442,7 @@ export function wrapHead(opts) {
         `<meta name="apple-mobile-web-app-status-bar-style" content="${escapeAttr(m.appleWebApp.statusBarStyle)}">`,
       );
     }
+    // startupImage maps to <link rel="apple-touch-startup-image">.
     if (m.appleWebApp.startupImage) {
       const list = Array.isArray(m.appleWebApp.startupImage)
         ? m.appleWebApp.startupImage
@@ -417,6 +461,8 @@ export function wrapHead(opts) {
     metaTags.push(`<meta name="apple-mobile-web-app-capable" content="yes">`);
   }
 
+  // formatDetection: { telephone, address, email, date, … }. All booleans.
+  // Disabled detection types append "type=no" to the content string.
   if (m.formatDetection && typeof m.formatDetection === 'object') {
     const parts = [];
     for (const [k, v] of Object.entries(m.formatDetection)) {
@@ -428,12 +474,14 @@ export function wrapHead(opts) {
     }
   }
 
+  // itunes: { appId, appArgument? }
   if (m.itunes && typeof m.itunes === 'object' && m.itunes.appId) {
     let content = `app-id=${m.itunes.appId}`;
     if (m.itunes.appArgument) content += `, app-argument=${m.itunes.appArgument}`;
     metaTags.push(`<meta name="apple-itunes-app" content="${escapeAttr(content)}">`);
   }
 
+  // Plain singleton string fields.
   for (const [field, metaName] of [
     ['category', 'category'],
     ['classification', 'classification'],
@@ -442,6 +490,8 @@ export function wrapHead(opts) {
     if (m[field]) metaTags.push(`<meta name="${metaName}" content="${escapeAttr(String(m[field]))}">`);
   }
 
+  // archives / assets / bookmarks: each is string | string[].
+  // Standard registered link relations.
   for (const [field, rel] of [
     ['archives', 'archives'],
     ['assets', 'assets'],
@@ -455,6 +505,9 @@ export function wrapHead(opts) {
     }
   }
 
+  // `other` is the typed escape hatch for any arbitrary <meta name="…">
+  // entries Next.js (or future webjs) doesn't ship as a typed field.
+  // Values can be string, number, or string[] (emits multiple meta tags).
   if (m.other && typeof m.other === 'object') {
     for (const [name, v] of Object.entries(m.other)) {
       const list = Array.isArray(v) ? v : [v];
@@ -465,6 +518,11 @@ export function wrapHead(opts) {
     }
   }
 
+  // verification: { google, yandex, yahoo, me }. Each is string OR string[].
+  // - google     → <meta name="google-site-verification">
+  // - yandex     → <meta name="yandex-verification">
+  // - yahoo      → <meta name="y_key">  (Yahoo's unusual canonical name)
+  // - me         → <meta name="me">     (IndieAuth / personal verification)
   if (m.verification && typeof m.verification === 'object') {
     const verifyKeys = {
       google: 'google-site-verification',
@@ -480,6 +538,7 @@ export function wrapHead(opts) {
         metaTags.push(`<meta name="${metaName}" content="${escapeAttr(String(item))}">`);
       }
     }
+    // `verification.other` allows arbitrary <meta name="…"> entries.
     if (m.verification.other && typeof m.verification.other === 'object') {
       for (const [name, v] of Object.entries(m.verification.other)) {
         const list = Array.isArray(v) ? v : [v];
@@ -497,6 +556,9 @@ export function wrapHead(opts) {
     }
   }
 
+  // Twitter card tags. Twitter falls back to og:* when these are absent
+  // but won't upgrade to summary_large_image without an explicit
+  // twitter:card entry.
   if (m.twitter && typeof m.twitter === 'object') {
     for (const [k, v] of Object.entries(m.twitter)) {
       const out = k === 'image' ? absUrl(v) : String(v);
@@ -504,6 +566,13 @@ export function wrapHead(opts) {
     }
   }
 
+  // preconnect / dns-prefetch hints (issue #243). `metadata.preconnect` and
+  // `metadata.dnsPrefetch` each take a URL string, `{ url, crossorigin? }`, or
+  // an array of those. A preconnect warms DNS + TLS + TCP; dns-prefetch only
+  // resolves DNS (no crossorigin). The framework ALSO auto-emits ONE preconnect
+  // to the resolved vendor CDN origin for an unpinned cross-origin app, so the
+  // browser warms that connection before the importmap resolves. The author's
+  // declared origins are tracked so the auto one is not a duplicate.
   /** @type {Set<string>} the origins the author already declared a preconnect to */
   const declaredPreconnectOrigins = new Set();
   /** @param {unknown} h @returns {{ url: string, crossorigin?: string|boolean } | null} */
@@ -536,13 +605,25 @@ export function wrapHead(opts) {
     linkTags.push(`<link rel="preconnect" href="${escapeAttr(h.url)}"${crossoriginAttr(h.crossorigin)}>`);
   }
   for (const h of toHints(m.dnsPrefetch)) {
+    // dns-prefetch never carries crossorigin (it only resolves DNS).
     linkTags.push(`<link rel="dns-prefetch" href="${escapeAttr(h.url)}">`);
   }
+  // Auto vendor preconnect: warm the cross-origin vendor CDN connection for an
+  // unpinned app. Deduped against an author-declared preconnect to the same
+  // origin; emits none for a same-origin pinned app or one with no cross-origin
+  // vendors (vendorPreconnectOrigins returns []). crossorigin is required (the
+  // importmap fetches the module as a CORS request).
   for (const origin of vendorPreconnectOrigins()) {
     if (declaredPreconnectOrigins.has(origin)) continue;
     linkTags.push(`<link rel="preconnect" href="${escapeAttr(origin)}" crossorigin>`);
   }
 
+  // icons: { icon, apple, shortcut, other }. Each entry can be a string
+  // (URL), an object { url, sizes?, type? }, or an array of those.
+  //   - icon    → <link rel="icon">
+  //   - apple   → <link rel="apple-touch-icon">
+  //   - shortcut→ <link rel="shortcut icon">
+  //   - other   → <link rel="…" href="…"> using the entry's `rel` field
   //
   // With no `icons` declared, an `app/icon.*` / `app/apple-icon.*` metadata
   // ROUTE is linked automatically (Next parity). Those routes served their
@@ -577,6 +658,7 @@ export function wrapHead(opts) {
     pushIcon('icon', buckets.icon);
     pushIcon('apple-touch-icon', buckets.apple);
     pushIcon('shortcut icon', buckets.shortcut);
+    // `other` is the catch-all: array of { rel, url, ...attrs }.
     if (buckets.other) {
       const others = Array.isArray(buckets.other) ? buckets.other : [buckets.other];
       for (const o of others) {
@@ -589,10 +671,14 @@ export function wrapHead(opts) {
     }
   }
 
+  // manifest: a string URL → <link rel="manifest">
   if (typeof m.manifest === 'string') {
     linkTags.push(`<link rel="manifest" href="${escapeAttr(absUrl(m.manifest))}">`);
   }
 
+  // alternates: { canonical, languages: { '<hreflang>': url }, media: { '<media>': url } }
+  // Mirrors Next.js's metadata.alternates surface. Relative values are resolved
+  // against metadataBase.
   if (m.alternates && typeof m.alternates === 'object') {
     if (m.alternates.canonical) {
       linkTags.push(`<link rel="canonical" href="${escapeAttr(absUrl(m.alternates.canonical))}">`);
@@ -612,6 +698,7 @@ export function wrapHead(opts) {
       }
     }
     if (m.alternates.types && typeof m.alternates.types === 'object') {
+      // alternates.types: { 'application/rss+xml': '/rss.xml' }
       for (const [type, href] of Object.entries(m.alternates.types)) {
         linkTags.push(
           `<link rel="alternate" type="${escapeAttr(type)}" href="${escapeAttr(absUrl(href))}">`,

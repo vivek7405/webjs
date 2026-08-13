@@ -21,6 +21,11 @@ import {
  */
 export function render(value, container) {
   const host = /** @type any */ (container);
+  // Open the renderer-write window for the whole commit: every host-receiver
+  // write below (and in createInstance / updateInstance / clearInstance / all
+  // part commits they reach synchronously) then bypasses the slot interception
+  // that is patched onto a light host. This is the single discriminator
+  // between a renderer commit and an author write.
   const prevRendering = host[RENDERING];
   host[RENDERING] = true;
   const prevRenderRoot = currentRenderRoot;
@@ -36,17 +41,29 @@ export function render(value, container) {
       }
       if (prev) clearInstance(prev, container);
 
+      // Light DOM hydration: if container has SSR content (marked by
+      // <!--webjs-hydrate-->), remove the marker and proceed with normal
+      // rendering. The content will be replaced with identical output -
+      // no visible flash because SSR and client render produce the same HTML.
       const firstChild = container.firstChild;
       if (firstChild && firstChild.nodeType === 8 && /** @type {Comment} */ (firstChild).data === 'webjs-hydrate') {
         firstChild.remove();
       }
 
+      // Pre-set the symbol to an explicit null BEFORE the commit,
+      // UNCONDITIONALLY: if createInstance throws after its replaceChildren
+      // (e.g. inside the slot-part apply loop), the finally-drain must see
+      // "rendered, no instance" (discard the commit's records), never
+      // "never rendered" (fold and corrupt) and never a STALE cleared prev
+      // instance on the template-swap path (whose bookends would misclassify
+      // the half-committed new roots as unowned and fold them).
       host[INSTANCE] = null;
       const inst = createInstance(tr, container);
       host[INSTANCE] = inst;
       return;
     }
 
+    // Non-template value: treat as a single text child.
     if (prev) clearInstance(prev, container);
     host[INSTANCE] = null;
     container.replaceChildren();
@@ -62,6 +79,10 @@ export function render(value, container) {
   } finally {
     setCurrentRenderRoot(prevRenderRoot);
     host[RENDERING] = prevRendering;
+    // Outermost window closing: drain this commit's childList records off the
+    // slot backstop (drainRendererBackstop processes them with a renderer-output
+    // skip when an instance exists, else discards), so the backstop never folds
+    // renderer output. Mirrors withRendererWrites, used by the async paths.
     if (!prevRendering) drainRendererBackstop(host);
   }
 }
@@ -282,6 +303,7 @@ function resolveHoleValue(v) {
 function createInstance(tr, container) {
   const { templateEl, parts, formActions } = compile(tr);
   const frag = /** @type DocumentFragment */ (templateEl.content.cloneNode(true));
+  // Bookend markers bound the instance so we can tear it down cleanly.
   const startNode = document.createComment(`${MARKER}s`);
   const endNode = document.createComment(`${MARKER}e`);
 
@@ -329,9 +351,20 @@ function createInstance(tr, container) {
  * @param {Element | DocumentFragment | ShadowRoot} container
  */
 function clearInstance(inst, container) {
+  // Dispose event listeners on event parts, unbind active refs on
+  // element parts, and rescue any projected children sitting inside
+  // slot parts so they survive teardown of a collapsing conditional
+  // fragment.
   for (const p of inst.bound) {
     if (p.kind === 'event') p.el.removeEventListener(p.name, p.dispatcher);
     if (p.kind === 'element') {
+      // Guarded for the same reason as the sibling in `disposeInstance`, and
+      // the stakes are higher here: this is the container-level teardown
+      // `render()` runs before a template swap, so a throw skips the rest of
+      // this loop AND the `replaceChildren()` below, leaving the old DOM in
+      // place with `host[INSTANCE]` never reassigned. Since `lastTarget` is
+      // cleared only after the write, every later swap of that container
+      // then throws at the same part, permanently.
       const prev = /** @type any */ (p).lastTarget;
       if (prev) {
         if (typeof prev === 'function') {

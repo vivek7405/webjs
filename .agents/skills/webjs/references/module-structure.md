@@ -81,18 +81,24 @@ level of import-graph depth.
 
 **A CI guard enforces the ceiling over the trees the #1365 split produced**
 (`test/architecture/module-size.test.mjs`), and nothing else. The objection to a
-line-count gate is real, that it is a proxy metric which fights cohesion and
-needs an exemption list that rots, so the guard is scoped rather than global: it
-binds only those ten trees, and it fails when an exempt file drops back UNDER
-the ceiling, which is what makes a stale exemption get deleted instead of
-inherited. Everywhere else in the repo the ceiling stays a review-time check.
+line-count gate is real, that it is a proxy metric which fights cohesion, so the
+guard is scoped rather than global: it binds only those ten trees. Everywhere
+else in the repo the ceiling stays a review-time check.
 
-Exceeding 1000 is allowed only when splitting further would create an
-artificial seam, and only when the exemption is named in the guard with the
-measured size and the reason. Two are, both confirmed by attempting the split
-rather than assumed: `render-client/parts.js`, whose core dispatches to the
-directive appliers that call back into its commit machinery, and
-`component/lifecycle.js`, which is one class spanning 1332 lines.
+**It counts CODE lines, not raw lines**, and that distinction is load-bearing.
+The ceiling exists to stop a module doing too much, and a comment does not make
+a module do more. Counting comments has an actively harmful incentive, because
+the cheapest way back under a raw ceiling is to delete the explanation. #1365 is
+the proof: its splits dropped roughly 1,800 explanatory comment lines, and
+restoring them pushed two files back over a raw ceiling they had only been under
+because the documentation was missing.
+
+Measured in code, every module in those trees is under 1000, including the two
+that needed an exemption under a raw count (`render-client/parts.js` is 938 code
+lines inside 1986 raw, `component/lifecycle.js` 535 inside 1481), so there is no
+exemption list at all. Exceeding 1000 CODE lines is still allowed only when
+splitting further would create an artificial seam, and only when the exemption
+is named in the guard with the measured size and the reason.
 
 ---
 

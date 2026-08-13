@@ -214,9 +214,14 @@ function startNodeListener(ctx) {
 export async function startServer(opts) {
   const dev = !!opts.dev;
   const port = opts.port ?? 8080;
+  // Compression default: on in prod, off in dev (cheaper to debug raw bytes).
   const compress = opts.compress ?? !dev;
   const logger = opts.logger || defaultLogger({ dev });
 
+  // Runtime-neutral SSE registry + fanout (shared by the node:http and Bun.serve
+  // shells via listener-core.js, so live-reload + the dev error overlay behave
+  // identically on both). Built before the handler so its onReload / onDevError
+  // callbacks can fan out through it.
   const hub = new SseHub();
   let app;
   try {
@@ -224,9 +229,14 @@ export async function startServer(opts) {
       ...opts,
       logger,
       onReload: () => hub.reload(),
+      // Dev error overlay (#264): push a frame to every open tab over the SAME
+      // SSE channel. A distinct `webjs-error` event name (NOT `error`, which is
+      // EventSource's native connection-error event) carries the JSON frame.
       onDevError: (frame) => hub.devError(frame),
     });
   } catch (e) {
+    // The hub starts its keepalive interval in its constructor (before this
+    // await), so a boot failure must clear it rather than leak a live timer.
     hub.closeAll();
     throw e;
   }
@@ -234,6 +244,13 @@ export async function startServer(opts) {
   /** @type {AbortController | null} */
   let watcherAbort = null;
   if (dev) {
+    // Watch the app root recursively via Node's built-in
+    // `fs.promises.watch`. Stable on macOS, Windows, and Linux as of
+    // Node 24. No external dep needed.
+    //
+    // fs.watch returns relative paths in event.filename. `shouldIgnoreWatchPath`
+    // (module-level, exported for tests) skips node_modules, .git, .webjs/, and
+    // the SQLite dev DB (db/dev.db) + db/migrations so a file the dev server itself writes never loops.
     const rebuild = debounce(() => app.rebuild(), 80);
     watcherAbort = new AbortController();
     const watchRoot = async (root) => {
@@ -242,6 +259,11 @@ export async function startServer(opts) {
         for await (const event of events) {
           const filename = event.filename || '';
           if (shouldIgnoreWatchPath(filename)) continue;
+          // A regenerate output (#967) is a build product the server itself
+          // writes on request; ignoring it stops a spurious rebuild + reload
+          // (and a reload -> refetch -> recompile -> reload cycle), same as the
+          // db/dev.db carve-out above. `app` exposes the check because `state`
+          // lives in createRequestHandler's scope, not here.
           if (app.isRegenerateOutput(filename)) continue;
           rebuild();
         }
@@ -252,16 +274,28 @@ export async function startServer(opts) {
       }
     };
     watchRoot(app.appDir);
+    // Extra roots the app reads from OUTSIDE its appDir (#894): repo-root content
+    // dirs (blog markdown, data fixtures) the recursive appDir watch can't see.
+    // Opt-in via `webjs.dev.watch`; each funnels into the same debounced rebuild.
     const extraWatch = (await readDevWatchPathsFromApp(app.appDir)).filter((p) => existsSync(p));
     for (const root of extraWatch) watchRoot(root);
     if (extraWatch.length) logger.info?.(`[webjs] also watching ${extraWatch.length} extra dev path(s): ${extraWatch.join(', ')}`);
   }
 
+  // Inbound server timeouts (issue #237). On node these are the node:http
+  // built-ins; on Bun the node `requestTimeout` maps to Bun's single
+  // `idleTimeout`. Defends against slowloris and hung connections. Overridable
+  // via `webjs.requestTimeoutMs` / `headersTimeoutMs` / `keepAliveTimeoutMs` in
+  // package.json or the matching WEBJS_*_MS env vars; `0` disables that timeout.
   const timeouts = await readServerTimeoutsFromApp(app.appDir);
 
   /** @type {import('../listener-types.js').ListenerContext} */
   const ctx = { app, dev, compress, logger, hub, port, basePathStr: basePath(), timeouts, watcherAbort };
 
+  // Pick the adapter by runtime. Bun is Request/Response-native, so its shell
+  // skips the node:http bridge (toWebRequest/sendWebResponse) for ~1.9x more
+  // req/s on the listening path (#511); the Bun shell is dynamically imported so
+  // the `Bun.*` global is never referenced on Node.
   if (serverRuntime() === 'bun') {
     const { startBunListener } = await import('../listener-bun.js');
     return startBunListener(ctx);

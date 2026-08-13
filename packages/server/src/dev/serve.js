@@ -58,15 +58,44 @@ import { MIME, TS_CACHE_MAX, exists } from './helpers.js';
  * @returns {Promise<Response|null>} a Response, or null when path is not one of these assets
  */
 export async function tryServeFrameworkStatic(path, method, { coreDir, appDir, dev, versioned }) {
+  // Core module: /__webjs/core/*
+  //
+  // ETag + ~1h max-age, NOT immutable. The URL path is un-versioned
+  // (`/__webjs/core/src/render-client.js` etc.), so bumping `@webjsdev/core`
+  // ships different bytes at the same URL. An `immutable` cache-control
+  // directive at an edge CDN (Cloudflare, Vercel, Fly) keeps the prior bytes
+  // pinned for up to a year, which silently bricks the next deploy: browsers
+  // load the old client renderer against a server emitting the new SSR shape,
+  // and any exports added in the bump (e.g., the slot.js entry points landed
+  // for 0.6.0) resolve to undefined in the cached file.
+  // Regression: 2026-05-20, ui.webjs.dev tier-2 components after
+  // @webjsdev/core 0.5.0 -> 0.6.0 republish.
   if (path.startsWith('/__webjs/core/')) {
     const rel = path.slice('/__webjs/core/'.length);
     const abs = resolve(coreDir, rel);
+    // Trailing-separator boundary check, not a raw string prefix: a raw
+    // `startsWith(coreDir)` would admit a sibling like `@webjsdev/core-evil`,
+    // reachable via an encoded slash (`..%2f`, which survives URL normalization
+    // and then decodes to `../`). Match the public-root branch's guard.
     if (abs !== coreDir && !abs.startsWith(coreDir + sep)) {
       return new Response('forbidden', { status: 403 });
     }
+    // A `?v=<hash>` request is content-addressed, so serve it `immutable` (#243):
+    // the hash busts the cache on the next core bump, so the regression the
+    // un-versioned 1h cap guards against (a stale immutable core after a bump)
+    // cannot recur. An un-fingerprinted request keeps the 1h fallback.
     return fileResponse(abs, { dev, immutable: !!versioned });
   }
 
+  // Vendor URL handler for `webjs vendor pin --download` mode only. In default
+  // pin mode (or no-pin mode) the importmap routes bare imports straight to
+  // ga.jspm.io URLs and the browser bypasses this server entirely. When the
+  // user ran `webjs vendor pin --download`, the importmap has local
+  // `/__webjs/vendor/<file>.js` URLs and this serves the committed bundle files
+  // from `.webjs/vendor/`. These are read-only static content: allow GET/HEAD
+  // for the normal fetch, OPTIONS for any cross-origin preflight (204 with the
+  // same Allow header rather than 405, which some intermediaries treat as a
+  // hard failure even for a CORS probe), and 405 everything else.
   if (path.startsWith('/__webjs/vendor/') && path.endsWith('.js')) {
     if (method === 'OPTIONS') {
       return new Response(null, { status: 204, headers: { allow: 'GET, HEAD, OPTIONS' } });
@@ -77,6 +106,7 @@ export async function tryServeFrameworkStatic(path, method, { coreDir, appDir, d
     const filename = path.slice('/__webjs/vendor/'.length);
     const resp = await serveDownloadedBundle(filename, appDir, dev);
     if (method === 'HEAD') {
+      // HEAD must return same headers as GET with no body.
       return new Response(null, { status: resp.status, headers: resp.headers });
     }
     return resp;

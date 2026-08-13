@@ -153,10 +153,28 @@ export async function findOutdated(appDir) {
   const entries = await listPinned(appDir);
   if (!entries.length) return [];
   const grouped = groupPinnedByPackage(entries);
+  // Fetch in parallel. With sequential awaits a 50-package project
+  // could take 50 × 10s = 500s in the worst case (one npm registry
+  // timeout each). Parallel `Promise.all` collapses this to one
+  // round-trip's wall-clock, while staying well below npm registry's
+  // unauthenticated-client soft rate limit (registry-side concern,
+  // not ours to throttle).
+  //
+  // Scoped packages: the `/` between `@scope` and `name` is part of
+  // the URL path, NOT a path separator that should be encoded.
+  // `encodeURIComponent` would emit `%2F`, which the npm registry
+  // accepts but other npm-compatible registries (Verdaccio, JFrog,
+  // GitHub Packages) sometimes reject. The npm-cli uses the literal
+  // form. npm package-name rules disallow URL-unsafe chars so this
+  // is safe.
   const queries = [...grouped].map(async ([pkg, versions]) => {
     const meta = await fetchNpmJson(`${NPM_REGISTRY}/${pkg}`);
     const latest = meta?.['dist-tags']?.latest;
     if (typeof latest !== 'string') return null;
+    // A package can be pinned at multiple versions (subpath imports).
+    // Take the max pinned version as the "current" for the comparison
+    // so we only report it as outdated when EVERY pinned version
+    // trails latest.
     const current = maxSemverVersion([...versions]);
     if (compareSemver(current, latest) >= 0) return null;
     return { pkg, current, latest };
