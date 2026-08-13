@@ -60,6 +60,8 @@ export {
 } from './router-client/dom-parse.js';
 export {
   findAnchorInPath as _findAnchorInPath,
+} from './router-client/anchors.js';
+export {
   onPopState as _onPopState,
   onSubmit as _onSubmit,
 } from './router-client/events.js';

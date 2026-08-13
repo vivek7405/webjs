@@ -11,7 +11,7 @@ import { FALLBACK_MARKER_KEY, FRAME_TOP, LIVE_ATTRS } from './constants.js';
 import { isPreBootNavigation } from './diagnostics.js';
 import { applyOptimisticLoading, blurOutgoingFocus, diffElementInPlace, keyOf, reconcileChildren, restoreOptimistic } from './dom-differ.js';
 import { parseHTML, resetParseProbe } from './dom-parse.js';
-import { findAnchorInPath, onPopState, onSubmit } from './events.js';
+import { onPopState, onSubmit } from './events.js';
 import { buildSubmitFormData, encodeSubmitBody, getSubmitAction, getSubmitEnctype, getSubmitMethod } from './form-encoder.js';
 import { activeFrameId, clearFormBusy, clearFrameBusy, markFormBusy, markFrameBusy, resolveTargetFrameId } from './frames.js';
 import { addNewHeadElements, cloneScriptWithCorrectNonce, mergeHead } from './head-merge.js';
@@ -213,7 +213,6 @@ export {
   isPreBootNavigation as _isPreBootNavigation,
   FALLBACK_MARKER_KEY as _FALLBACK_MARKER_KEY,
   activateSwappedRange as _activateSwappedRange,
-  findAnchorInPath as _findAnchorInPath,
   activeFrameId as _activeFrameId,
   resolveTargetFrameId as _resolveTargetFrameId,
   FRAME_TOP as _FRAME_TOP,

@@ -6,10 +6,10 @@
  *
  * @module
  */
+import { closestAnchor } from './anchors.js';
 import { buildHaveHeader } from './boundaries.js';
 import { NON_HTML_EXTENSIONS } from './constants.js';
 import { enabled } from './state.js';
-import { closestAnchor } from './events.js';
 
 import { cacheKey, snapshotCache } from './snapshot-cache.js';
 
