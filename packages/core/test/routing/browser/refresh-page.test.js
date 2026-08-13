@@ -255,6 +255,33 @@ suite('Client router: refreshPage re-renders the current url in place (#1398)', 
     }
   });
 
+  // The other `'none'` source (#1398). When the incoming boundaries share no
+  // segment with the live ones, `applySwap` degrades to a hard navigation and
+  // returns without committing. That IS a correct recovery, but nothing was
+  // applied in place, and a refresh that reports otherwise would leave the dev
+  // client believing a swap happened.
+  test('a refresh that degrades to a hard navigation reports that it did not apply', async () => {
+    setup();
+    try {
+      // A response whose boundary keys share nothing with the live page.
+      respond = () => '<!doctype html><html><head></head><body>'
+        + '<!--wj:children:/other:/other-different-->'
+        + '<span>UNRELATED</span>'
+        + '<!--/wj:children:/other-->'
+        + '</body></html>';
+
+      assert.equal(await refreshPage(), false, 'it declines, so the caller falls back to a full load');
+      await settle();
+      assert.equal(navGuard.hardNavigations.length, 1, 'and it degraded to a hard navigation');
+      assert.ok(navGuard.fallbacks.some((f) => f.cause === 'no-shared-boundary'),
+        'reported with the cause, not silently');
+      assert.equal(document.getElementById('wj-refresh-inner').textContent, 'INNER_A',
+        'the live page is left exactly as it was');
+    } finally {
+      teardown();
+    }
+  });
+
   // The dev reload client feature-DETECTS the refresh entry on the global
   // rather than assuming it, and the absence covers both no-router cases:
   // `webjs.clientRouter: false`, and a page that ships no component at all so

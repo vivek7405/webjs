@@ -22,7 +22,7 @@
  * `performNavigation`, `fetchAndApply`, and `applySwap` all run exactly
  * as in production.
  */
-import { enableClientRouter } from '../../../src/router-client.js';
+import { enableClientRouter, loadFrame } from '../../../src/router-client.js';
 
 import { assert } from '../../../../../test/browser-assert.js';
 import { installNavGuard } from '../../../../../test/browser-nav-guard.js';
@@ -120,6 +120,54 @@ suite('Client router: <webjs-frame> frame-missing contract (#251)', () => {
       assert.ok(warnings.some((w) => w.includes('frame "main"') && w.includes('frame-missing')),
         'default behaviour warns about the missing frame');
     } finally { teardown(); }
+  });
+
+  // #1398: `applySwap` returns a `'none'` sentinel here, which `fetchAndApply`
+  // maps to `applied: false`. Before that, a frame-missing response reported
+  // `applied: true` having left the frame untouched.
+  test('a frameless response reports applied:false, and a matching one reports true', async () => {
+    setup();
+    try {
+      window.fetch = () => htmlResponse(
+        '<!doctype html><html><head></head><body><h1 id="login">Login</h1></body></html>'
+      );
+      const missing = await loadFrame(document.getElementById('main'), '/no-frame-here');
+      assert.equal(missing.applied, false, 'nothing was applied, so it must not claim otherwise');
+      assert.equal(missing.aborted, false, 'and it is not an abort either');
+
+      // The counterfactual: an implementation that always reported false would
+      // pass the assertion above and fail this one.
+      window.fetch = () => htmlResponse(
+        '<!doctype html><html><head></head><body>' +
+        '<webjs-frame id="main"><span id="frame-content">SWAPPED</span></webjs-frame>' +
+        '</body></html>'
+      );
+      const ok = await loadFrame(document.getElementById('main'), '/has-the-frame');
+      assert.equal(ok.applied, true, 'a real frame swap reports applied');
+      assert.equal(document.getElementById('frame-content').textContent, 'SWAPPED',
+        'and the swap actually happened');
+    } finally { teardown(); }
+  });
+
+  // The `'none'` sentinel is a REPORTING change and must not alter the
+  // pipeline. A click-driven frame nav records history, so an implementation
+  // that returned early on the sentinel would stop advancing the URL here,
+  // which nothing else in the suite would notice.
+  test('a frameless response still advances the URL, because the sentinel only reports', async () => {
+    setup();
+    const before = location.href;
+    try {
+      window.fetch = () => htmlResponse(
+        '<!doctype html><html><head></head><body><h1 id="login">Login</h1></body></html>'
+      );
+      document.getElementById('frame-link').click();
+      await settle();
+      assert.equal(location.pathname, '/no-frame-here',
+        'history still advanced past the frame-missing return');
+    } finally {
+      history.replaceState(null, '', before);
+      teardown();
+    }
   });
 
   test('preventDefault suppresses the warning and still performs no full swap', async () => {
