@@ -205,16 +205,16 @@ export function applyPart(part, value, _prev, allValues, reconcileFormActionsCb)
     case 'attr': {
       if (value == null || value === false) part.el.removeAttribute(part.name);
       else if (isBoundFormAction(value, part.name, part.el.localName)) {
-      // #1155: the ONE supported form-action binding, applied to the live
-      // form exactly as SSR wrote it. A component that ships re-renders its
-      // whole template on hydration, so without this the SSR'd hidden field
-      // would be replaced by an `action` attribute holding a stringified
-      // function, and the form would post to a garbage url.
-      //
-      // Nothing happens here. The whole decision (identity, the submit
-      // attributes, the hidden field) is made at the end of the pass by
-      // `reconcileFormAction`, because it depends on holes that have not
-      // committed yet when this one does.
+        // #1155: the ONE supported form-action binding, applied to the live
+        // form exactly as SSR wrote it. A component that ships re-renders its
+        // whole template on hydration, so without this the SSR'd hidden field
+        // would be replaced by an `action` attribute holding a stringified
+        // function, and the form would post to a garbage url.
+        //
+        // Nothing happens here. The whole decision (identity, the submit
+        // attributes, the hidden field) is made at the end of the pass by
+        // `reconcileFormAction`, because it depends on holes that have not
+        // committed yet when this one does.
       } else {
         // #1154: refuse to stringify a function into action=/formaction=
         // (mirrors the SSR guard, so a client re-render cannot write a
@@ -1420,9 +1420,9 @@ function applyCache(part, inner, reconcileFormActionsCb) {
     cacheMap.set(currentInst.strings, { inst: currentInst, holder });
     part.child = undefined;
   }
-// Now part.child is either undefined or some non-instance shape (rare;
-// happens when prior render had a string / array / etc.). For non-
-// instance shapes, fall through to the generic teardown via applyChild.
+  // Now part.child is either undefined or some non-instance shape (rare;
+  // happens when prior render had a string / array / etc.). For non-
+  // instance shapes, fall through to the generic teardown via applyChild.
 
   // If the new inner is a template AND we've cached an instance for its
   // strings, re-attach it.
@@ -1585,9 +1585,9 @@ function applyUntil(part, args, reconcileFormActionsCb) {
           return;
         }
         state.highestResolved = i;
+      },
       // Swallow rejection. A rejected Promise is treated as "no value";
       // the existing render stays in place.
-      },
       () => {},
     );
   }
@@ -1987,6 +1987,5 @@ function teardownAsyncStream(state) {
   // `finally` blocks. Swallow any rejection so teardown can't throw.
   try {
     state.iterator.return?.()?.catch?.(() => {});
-  } catch {}
-// ignore
+  } catch { /* ignore */ }
 }

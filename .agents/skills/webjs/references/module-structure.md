@@ -94,9 +94,11 @@ restoring them pushed two files back over a raw ceiling they had only been under
 because the documentation was missing.
 
 Measured in code, every module in those trees is under 1000, including the two
-that needed an exemption under a raw count (`render-client/parts.js` is 938 code
-lines inside 1986 raw, `component/lifecycle.js` 535 inside 1481), so there is no
-exemption list at all. Exceeding 1000 CODE lines is still allowed only when
+that needed an exemption under a raw count (`render-client/parts.js` and
+`component/lifecycle.js`, both well over 1000 raw and comfortably under it in
+code), so there is no exemption list at all. The guard asserts that relationship
+for those two files rather than restating their sizes here, because a figure in
+prose goes stale on the next commit that touches them. Exceeding 1000 CODE lines is still allowed only when
 splitting further would create an artificial seam, and only when the exemption
 is named in the guard with the measured size and the reason.
 

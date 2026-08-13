@@ -1023,14 +1023,6 @@ export async function createRequestHandler(opts) {
       // headers, and body. `duplex: 'half'` is required by the spec when
       // a body stream is present on a non-GET/HEAD request.
       //
-      // SECURITY (#756): this is a fresh Request object, so it is NOT in
-      // the listener's out-of-band trusted-IP WeakMap (the Bun shell
-      // stamps the IP there instead of cloning the Request to set the
-      // header). Without carrying it forward, `clientIp` would fall back
-      // to the inbound `x-webjs-remote-ip` header that the copied
-      // `req.headers` still carries, which a client can spoof. So strip
-      // that header on the rebuild and propagate the framework-trusted IP
-      // across the new object, the same pattern form-dispatch.js uses.
       // SECURITY (#756): this is a fresh Request object, so it is NOT in the
       // listener's out-of-band trusted-IP WeakMap (the Bun shell stamps the IP
       // there instead of cloning the Request to set the header). Without

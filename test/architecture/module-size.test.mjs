@@ -16,10 +16,11 @@
  * missing. A gate that reads that as a regression is measuring the wrong thing.
  *
  * Measured in code lines, every module in these trees is under 1000, including
- * the two that needed an exemption under the raw count: `render-client/parts.js`
- * is 938 code lines inside 1986 raw, and `component/lifecycle.js` is 535 inside
- * 1481. So there is no exemption list here at all, which is the outcome the
- * plan wanted and the one a raw count could not reach.
+ * the two that needed an exemption under the raw count. So there is no
+ * exemption list here at all, which is the outcome the plan wanted and the one
+ * a raw count could not reach. The last test below ASSERTS that relationship
+ * for those two files rather than quoting figures in prose, because the figures
+ * quoted here went stale within three commits of being written.
  *
  * A barrel is exempt from the whole check: its length is a function of its
  * export count, and router-client.js alone re-exports 68 names.
@@ -133,6 +134,22 @@ test('D3: every exemption still exists and still needs to be one', () => {
       `${rel} is now ${n} code lines, under the ${CEILING} ceiling. Drop its exemption.`,
     );
     assert.ok(cap >= n, `${rel} is ${n} code lines but its cap is ${cap}`);
+  }
+});
+
+test('D3: the two densest modules are over the raw ceiling and under the code one', () => {
+  // The whole raw-lines-to-code-lines argument rests on these two files being
+  // in exactly that position. Asserted, not quoted: an earlier version of this
+  // header stated their sizes as prose and was wrong three commits later.
+  for (const rel of [
+    'packages/core/src/render-client/parts.js',
+    'packages/core/src/component/lifecycle.js',
+  ]) {
+    const src = readFileSync(join(REPO, rel), 'utf8');
+    const raw = src.split('\n').length;
+    const n = codeLines(src);
+    assert.ok(raw > CEILING, `${rel}: ${raw} raw lines, expected over ${CEILING}`);
+    assert.ok(n <= CEILING, `${rel}: ${n} code lines, expected at most ${CEILING}`);
   }
 });
 

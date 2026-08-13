@@ -115,7 +115,7 @@ fi
 # jq objects would be invalid hook output).
 reminder=""
 
-client_facing=$(printf '%s\n' "$src_touched" | grep -E 'router-client|render-client|component[./]|slot[./]|lazy-loader|websocket-client|client-router|directives' || true)
+client_facing=$(printf '%s\n' "$src_touched" | grep -E 'router-client|render-client|component(/|\.js$)|slot(/|\.js$)|lazy-loader|websocket-client|client-router|directives' || true)
 if [ -n "$client_facing" ]; then
   list=$(printf '%s' "$client_facing" | tr '\n' ' ')
   reminder="${reminder}Client/browser-facing source changed ($list). A unit test alone is not sufficient; confirm browser and/or e2e coverage (network probes, navigation, hydration) asserts the real behaviour. "

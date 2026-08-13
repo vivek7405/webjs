@@ -21,15 +21,6 @@
  * `wrapHead` is the only thing that reads it.
  */
 
-// Client-router opt-out (#629). Default ON (the framework's automatic-nav
-// thesis): the router auto-enables in the browser when `@webjsdev/core` loads.
-// `webjs.clientRouter: false` flips this off app-wide; `dev.js` reads the
-// config at boot / each rebuild and calls `setClientRouterEnabled`, and
-// `wrapHead` then emits a `window.__WEBJS_CLIENT_ROUTER__=false` flag BEFORE
-// the deferred boot module so the bundle's module-end auto-enable skips. A
-// module-level switch (mirrors setBasePath / setElisionFingerprint) so no opt
-// has to thread through every render path; default true keeps every existing
-// app and test byte-identical.
 let _clientRouterEnabled = true;
 
 /**

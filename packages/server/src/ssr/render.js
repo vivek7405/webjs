@@ -179,9 +179,9 @@ async function collectMetadata(route, ctx, dev) {
           if (typeof t.template === 'string') titleTemplate = t.template;
           if (typeof t.absolute === 'string') {
             resolved.title = t.absolute;
-            // `absolute` does NOT clear the template: Next.js propagates
-            // it for deeper segments below, but the *current* segment is
-            // rendered absolute.
+          // `absolute` does NOT clear the template: Next.js propagates
+          // it for deeper segments below, but the *current* segment is
+          // rendered absolute.
           } else if (typeof t.default === 'string') {
             resolved.title = t.default;
           } else {

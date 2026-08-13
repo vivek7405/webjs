@@ -37,15 +37,19 @@ function makeRepo() {
   return { dir, git };
 }
 
-/** Run the hook in `dir` with a commit payload and the given env, return exit code. */
-function runHook(dir, env = {}) {
-  const r = spawnSync('bash', [HOOK], {
+/** Run the hook in `dir` with a commit payload and the given env. */
+function runHookFull(dir, env = {}) {
+  return spawnSync('bash', [HOOK], {
     cwd: dir,
     input: JSON.stringify({ tool_input: { command: 'git commit -m x' } }),
     env: { ...process.env, ...env },
     encoding: 'utf8',
   });
-  return r.status;
+}
+
+/** Just the exit code, for the blocking cases. */
+function runHook(dir, env = {}) {
+  return runHookFull(dir, env).status;
 }
 
 test('framework hook blocks a commit that stages src with no test', () => {
@@ -106,5 +110,52 @@ test('framework hook does not fire on a non-commit git command', () => {
       encoding: 'utf8',
     });
     assert.equal(r.status, 0);
+  } finally { rmSync(dir, { recursive: true, force: true }); }
+});
+
+
+/**
+ * The client-facing reminder has to survive the #1365 split.
+ *
+ * The hook selects browser-facing source by path, and the split moved that code
+ * out of `component.js` and `slot.js` into `component/` and `slot/`. The
+ * pattern matched the old filenames, so a change to the component lifecycle or
+ * to slot projection stopped raising the "a unit test alone is not sufficient"
+ * reminder, silently, for the whole PR that did the moving.
+ */
+test('the client-facing reminder fires for the split component/ and slot/ trees', () => {
+  for (const f of [
+    'packages/core/src/component/lifecycle.js',
+    'packages/core/src/slot/project.js',
+    'packages/core/src/component.js',
+    'packages/core/src/slot.js',
+  ]) {
+    const { dir, git } = makeRepo();
+    try {
+      const abs = join(dir, f);
+      mkdirSync(dirname(abs), { recursive: true });
+      writeFileSync(abs, 'v2\n');
+      // stage a test too, so the gate does not block and we can read the output
+      writeFileSync(join(dir, 'packages/core/test/x.test.js'), 'a\nb\nc\nd\nf\n');
+      git('add', '-A');
+      const r = runHookFull(dir);
+      assert.match(
+        r.stdout, /Client\/browser-facing source changed/,
+        `${f} should raise the browser-coverage reminder`,
+      );
+    } finally { rmSync(dir, { recursive: true, force: true }); }
+  }
+});
+
+test('the client-facing reminder does NOT fire for a type declaration', () => {
+  // `component.d.ts` carries no runtime, so it cannot need browser coverage.
+  // An unanchored `component[./]` matched it.
+  const { dir, git } = makeRepo();
+  try {
+    writeFileSync(join(dir, 'packages/core/src/component.d.ts'), 'export {};\n');
+    writeFileSync(join(dir, 'packages/core/test/x.test.js'), 'a\nb\nc\nd\nf\n');
+    git('add', '-A');
+    const r = runHookFull(dir);
+    assert.doesNotMatch(r.stdout, /Client\/browser-facing source changed/);
   } finally { rmSync(dir, { recursive: true, force: true }); }
 });

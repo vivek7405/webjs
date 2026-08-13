@@ -17,11 +17,6 @@ import { clientRouterEnabled } from './client-router-flag.js';
 // client-router flag does: `wrapHead` is the only reader, and module state
 // belongs with the code that uses and writes it. The flag moved out only
 // because it has a second reader in render.js.
-// Which icon metadata ROUTES the app has (`app/icon.*`, `app/apple-icon.*`).
-// Set at boot and on each route rebuild from the route table, the same shape
-// as setClientRouterEnabled above, so no opt has to thread through every
-// render path. Empty by default, which keeps an app that declares its icons
-// (or has neither route) byte-identical.
 /** @type {{ icon: boolean, apple: boolean }} */
 let _metadataIconRoutes = { icon: false, apple: false };
 
@@ -430,7 +425,7 @@ export function wrapHead(opts) {
       metaTags.push(`<meta name="${metaName}" content="${escapeAttr(String(m[field]))}">`);
     }
   }
-// ---- Long-tail metadata (the Next.js "everything else") ----
+  // ---- Long-tail metadata (the Next.js "everything else") ----
 
   // appleWebApp: { capable, title, statusBarStyle, startupImage }
   if (m.appleWebApp && typeof m.appleWebApp === 'object') {
@@ -628,16 +623,6 @@ export function wrapHead(opts) {
   //   - apple   → <link rel="apple-touch-icon">
   //   - shortcut→ <link rel="shortcut icon">
   //   - other   → <link rel="…" href="…"> using the entry's `rel` field
-  //
-  // With no `icons` declared, an `app/icon.*` / `app/apple-icon.*` metadata
-  // ROUTE is linked automatically (Next parity). Those routes served their
-  // bytes and nothing referenced them before, so writing the file that every
-  // other framework treats as "this is my favicon" produced a blank tab and no
-  // diagnostic. A declared `icons` SUPPRESSES the routes rather than merging
-  // with them, which is also what Next does: it merges static icon files only
-  // when the resolved metadata has no `icons` of its own. Suppressing matters
-  // here because the file is frequently a placeholder an app has outgrown, and
-  // an author who names their icons has said which ones they want.
   //
   // With no `icons` declared, an `app/icon.*` / `app/apple-icon.*` metadata
   // ROUTE is linked automatically (Next parity). Those routes served their

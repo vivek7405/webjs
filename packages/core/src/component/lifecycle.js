@@ -899,9 +899,9 @@ class WebComponentBase extends Base {
           didCommit = true;
         }
       }
-      // shouldUpdate=false: preserve _changedProperties so the next
-      // requestUpdate keeps accumulating on top of the entries that
-      // didn't render this cycle.
+    // shouldUpdate=false: preserve _changedProperties so the next
+    // requestUpdate keeps accumulating on top of the entries that
+    // didn't render this cycle.
     } catch (preCommitError) {
       console.error(`[webjs] lifecycle hook threw during update phase:`, preCommitError);
     } finally {
