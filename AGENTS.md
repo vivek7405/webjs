@@ -244,6 +244,7 @@ The bare `@webjsdev/core` specifier resolves to a BROWSER bundle dropping server
 | `asset(path)` | Content-hash a `public/` asset url so a deploy cannot serve stale bytes: `href=${asset('/public/app.css')}` emits `?v=<hash>` and is served `immutable` for a year (#1194). Prod-only, `public/` paths only. Use it in a PAGE, LAYOUT, or metadata route, not inside a component that ships: hydration re-renders on the client where there is no resolver, so the hashed url is swapped for the bare path and the asset is fetched twice. Call it inside the render function, since a module-scope call is a side effect that ships the module. Mark only files that change with a DEPLOY (the hash is memoized for the process lifetime). Opt-in on purpose: do NOT mark a `rel=preload` hint whose asset is fetched by CSS `url()`, or the preload can never match. |
 | `connectWS(url, handlers)` / `richFetch<T>` | Client WebSocket (auto-reconnect, queued sends); content-negotiated rich-type fetch. |
 | `navigate(url, opts?)` / `revalidate(url?)` | Programmatic client-router nav; evict the BROWSER snapshot cache. |
+| `refreshPage(mode?)` | Re-render the CURRENT url on the server and apply it in place, with no reload (#1398). Records no history entry and never scrolls. `'page'` (default) morphs the deepest shared boundary, so hydrated component state outside it survives; `'shell'` replaces the whole body, which a LAYOUT change needs because its own markup sits outside every children range. It reloads no component module (`customElements.define` is once-per-tag), so a caller whose change touched browser code must reload instead. This is what the dev live-reload client calls for a page or layout edit. |
 | `optimistic(signal, value, action)` / `optimistic(host, { source, update })` | Imperative: set `signal` immediately, run `action`, roll back on error. Declarative (preferred): queue optimistic updates with auto-release via `.add(payload, promise?)`. See `references/client-router-and-streaming.md`. |
 | `renderStream(payload)` / `WebjsFrame` | `<webjs-stream>` element-level updates (#248); `<webjs-frame>` partial-swap regions (#253). See `references/client-router-and-streaming.md`. |
 | `Metadata` / `PageProps<R>` / `LayoutProps<R>` / `RouteHandlerContext<R>` / `WebjsConfig` (type-only) | Types for metadata, page/layout/route args (`R` narrows `params` against the `webjs types` route union), and the `webjs` config block. See `references/routing-and-pages.md` + `references/built-ins.md`. |
@@ -517,7 +518,7 @@ Rules: **always scaffold via `webjs create`** (never hand-roll). **Default to a 
 ## CLI reference
 
 ```sh
-webjs dev    [--port N] [--no-hot] # dev server with live reload (node --watch on Node, bun --hot on Bun). --no-hot runs in-process. Runs webjs.dev.before + webjs.dev.parallel (#550)
+webjs dev    [--port N] [--no-hot] # dev server with live reload (node --watch on Node, bun --hot on Bun). --no-hot runs in-process. Runs webjs.dev.before + webjs.dev.parallel (#550). A page or layout edit REFRESHES IN PLACE where the server process survives it (#1398); a component edit always reloads
 webjs start  [--port N]            # prod server; source IS the runtime, plain HTTP/1.1 (reverse-proxy for TLS + HTTP/2). Runs webjs.start.before first (#550)
 webjs test   [--server] [--browser] [--watch]
 webjs check  [--rules] [--json]    # correctness validator (report-only, no autofix); --json for an agent loop
@@ -636,6 +637,6 @@ Call it from a client component via a normal import (rewritten to an RPC stub). 
 Not in v1. Do not implement as part of other tasks:
 
 - **Bundling and per-route code splitting.** WebJs is **no-build** (the Rails 7 + importmap model); prod perf comes from HTTP/2 multiplex + `<link rel="modulepreload">` hints, not concatenation. **Do not propose a bundler or `webjs build`.**
-- **Vite-grade HMR with state preservation.** Custom elements only `define` once, so full reload is necessary; data reloads are near-instant via `fs.watch` to SSE.
+- **Vite-grade HMR with state preservation.** Custom elements only `define` once, so full reload is necessary; data reloads are near-instant via `fs.watch` to SSE. #1398 does not change this: it re-renders on the SERVER and swaps the result, and hot-swaps no module, so a component edit still reloads and `customElements.define` is still once-per-tag.
 - **React Server Components Flight.** Server actions + `Suspense` streaming cover the need.
 - **Edge-runtime bundling / full portability** (deployment guidance lives in the docs site at `/docs/deployment`), **i18n, image optimization** (layer libraries on top).

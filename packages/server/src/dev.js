@@ -28,6 +28,7 @@ import {
 } from './actions.js';
 import { registerActionHooks } from './action-seed.js';
 import { readRegenerateRules, maybeRegenerate, isRegenerateOutputPath } from './dev-regenerate.js';
+import { classifyChangedPath, strongerVerdict } from './dev-classify.js';
 import { stripTypeScript, ensureStripper } from './ts-strip.js';
 import { defaultLogger } from './logger.js';
 import { assertNodeVersion } from './node-version.js';
@@ -530,7 +531,7 @@ export async function readServerTimeoutsFromApp(appDir) {
  *   dev?: boolean,
  *   logger?: import('./logger.js').Logger,
  *   onError?: (error: unknown, ctx: { request: Request, requestId: string|null, phase: string }) => void,
- *   onReload?: () => void,
+ *   onReload?: (verdict?: import('./dev-classify.js').ReloadVerdict) => void,
  *   onDevError?: (frame: object) => void,
  * }} opts
  */
@@ -833,6 +834,18 @@ export async function createRequestHandler(opts) {
     // entries rather than at the closure.
     browserEntryFiles: new Set(),
     browserBoundFiles: null,
+    // Dev live-reload classification (#1398). `shippedFiles` is the transitive
+    // closure of what the browser can ACTUALLY load (the gate set minus every
+    // module elision drops), `graphFiles` is every app source the graph walked,
+    // and `pageFiles` is the route table's pages. Together they are the whole
+    // input to `classifyChangedPath`, so a watch event can be answered without
+    // reaching into the rest of this state. Dev-only; left empty in prod.
+    /** @type {Set<string>} */
+    shippedFiles: new Set(),
+    /** @type {Set<string>} */
+    graphFiles: new Set(),
+    /** @type {Set<string>} */
+    pageFiles: new Set(),
     // Transformed-source cache (stripped TS + applied elision). Per-handler,
     // NOT module-global: the cached bytes bake in THIS handler's elision
     // verdict, so two handlers for the same app with different elision
@@ -969,6 +982,24 @@ export async function createRequestHandler(opts) {
             state.elidableComponents = r.elidableComponents;
             state.inertRouteModules = r.inertRouteModules;
             state.importOnlyRouteModules = r.importOnlyRouteModules;
+            // Dev live-reload classification (#1398): derive the three sets the
+            // watch-event classifier reads. `browserBoundFiles` above is the
+            // AUTHORIZATION gate (it walks from every entry, elided ones
+            // included, because an elided module's URL must still 404 rather
+            // than leak), so it is the wrong input here: the question is what
+            // the browser actually HOLDS. Re-walk from the entries elision
+            // keeps, and an edit to anything reachable from those is a reload.
+            // An import-only page's substituted components are themselves
+            // entries, so dropping the page loses none of its reach.
+            if (dev) {
+              const shippedEntries = [...state.browserEntryFiles].filter((f) =>
+                !state.elidableComponents.has(f)
+                && !state.inertRouteModules.has(f)
+                && !state.importOnlyRouteModules.has(f));
+              state.shippedFiles = reachableFromEntries(state.moduleGraph, shippedEntries, appDir);
+              state.graphFiles = seenFilesFor(state.moduleGraph);
+              state.pageFiles = new Set((state.routeTable.pages || []).map((p) => p.file).filter(Boolean));
+            }
             // Fold the elision verdict into app-module content hashes (#243): an
             // app module's served body is elision-transformed, so a verdict flip
             // must bust its `?v` even when its source is byte-identical. A stable
@@ -1204,8 +1235,14 @@ export async function createRequestHandler(opts) {
   // stale state until the next rebuild.
   let rebuildInFlight = Promise.resolve();
 
-  async function rebuild() {
-    rebuildInFlight = rebuildInFlight.then(() => doRebuild()).catch((e) => {
+  /**
+   * @param {import('./dev-classify.js').ReloadVerdict} [verdict] the live-reload
+   *   classification of the change that triggered this rebuild (#1398). Absent
+   *   (an embedded host calling `rebuild()`, or any caller with no filename to
+   *   classify) means a full reload, which is the fail-safe default.
+   */
+  async function rebuild(verdict) {
+    rebuildInFlight = rebuildInFlight.then(() => doRebuild(verdict)).catch((e) => {
       logger.error?.(`[webjs] rebuild failed:`, e);
       // Push the failure to the open tab so the overlay appears live after a
       // breaking edit, not only on the next manual navigation (#264).
@@ -1214,7 +1251,8 @@ export async function createRequestHandler(opts) {
     return rebuildInFlight;
   }
 
-  async function doRebuild() {
+  /** @param {import('./dev-classify.js').ReloadVerdict} [verdict] */
+  async function doRebuild(verdict) {
     // The route table is the only eager artifact (cheap directory scan); rebuild
     // it so routing reflects added/removed route files immediately.
     state.routeTable = await buildRouteTable(appDir);
@@ -1259,7 +1297,17 @@ export async function createRequestHandler(opts) {
     // reloaded request re-pushes a fresh frame (a brief dismiss-then-reappear
     // flicker on an unrelated edit, self-correcting to the right end state).
     state.lastDevError = null;
-    opts.onReload?.();
+    // The verdict was computed against the PREVIOUS build's graph, because this
+    // rebuild only INVALIDATES the lazy analysis (`analysisDone = false` above)
+    // and the fresh graph is not built until the next request. Awaiting
+    // `ensureReady()` here to classify against the new one would push the SSE
+    // frame roughly 1900ms later on a large app and stack that in front of the
+    // relay's quiet window, so it is not worth it. The one case that could
+    // exploit the staleness, an edit that adds a brand-new component import to
+    // an otherwise morphable page, is closed on the CLIENT: `addNewHeadElements`
+    // runs on both boundary tiers and swaps in the changed boot script, which
+    // executes and registers the new component.
+    opts.onReload?.(verdict || { v: 'reload', by: '', why: 'no-verdict' });
   }
 
   /** @param {Request} req */
@@ -1682,6 +1730,32 @@ export async function createRequestHandler(opts) {
      * `state`) can skip a build product the server itself writes and avoid a
      * spurious reload. Reads the live, rebuild-refreshed rules. */
     isRegenerateOutput: (filename) => isRegenerateOutputPath(filename, state.regenerateRules),
+    /**
+     * Classify a dev-watcher event into a live-reload verdict (#1398).
+     * `startServer`'s watcher is a different scope with no access to `state`,
+     * exactly like `isRegenerateOutput` above, so the lookup is exposed rather
+     * than the sets.
+     *
+     * `root` is the WATCHED root the event came from, not `appDir`: `fs.watch`
+     * reports a path relative to whatever root it was given, and an extra
+     * `webjs.dev.watch` root (#894) is usually OUTSIDE the app. Resolving those
+     * against `appDir` would manufacture a nonexistent in-app path and lose the
+     * one fact the classifier needs about them.
+     *
+     * Returns the fail-safe `reload` verdict until the first analysis completes.
+     *
+     * @param {string} filename  `event.filename`, relative to `root`
+     * @param {string} [root]  the watched root, defaulting to the app dir
+     * @returns {import('./dev-classify.js').ReloadVerdict}
+     */
+    classifyWatchPath: (filename, root) => classifyChangedPath(resolve(root || appDir, filename), {
+      appDir,
+      shippedFiles: state.shippedFiles,
+      graphFiles: state.graphFiles,
+      pageFiles: state.pageFiles,
+      analysisReady: analysisDone,
+      sep,
+    }),
     appDir,
     dev,
     logger,
@@ -1775,7 +1849,7 @@ export async function startServer(opts) {
     app = await createRequestHandler({
       ...opts,
       logger,
-      onReload: () => hub.reload(),
+      onReload: (verdict) => hub.reload(verdict),
       // Dev error overlay (#264): push a frame to every open tab over the SAME
       // SSE channel. A distinct `webjs-error` event name (NOT `error`, which is
       // EventSource's native connection-error event) carries the JSON frame.
@@ -1798,7 +1872,19 @@ export async function startServer(opts) {
     // fs.watch returns relative paths in event.filename. `shouldIgnoreWatchPath`
     // (module-level, exported for tests) skips node_modules, .git, .webjs/, and
     // the SQLite dev DB (db/dev.db) + db/migrations so a file the dev server itself writes never loops.
-    const rebuild = debounce(() => app.rebuild(), 80);
+    // Live-reload classification (#1398). Several files can change inside one
+    // 80ms debounce window, so hold the STRONGEST verdict of the window and
+    // hand it to the rebuild. Same rule as the browser relay's cross-batch
+    // accumulation, for the same reason: a window mixing a page edit and a
+    // component edit is a component edit, and taking the last one would morph
+    // fresh markup onto the old component class.
+    /** @type {import('./dev-classify.js').ReloadVerdict | null} */
+    let pendingVerdict = null;
+    const rebuild = debounce(() => {
+      const v = pendingVerdict;
+      pendingVerdict = null;
+      app.rebuild(v || undefined);
+    }, 80);
     watcherAbort = new AbortController();
     const watchRoot = async (root) => {
       try {
@@ -1812,6 +1898,7 @@ export async function startServer(opts) {
           // db/dev.db carve-out above. `app` exposes the check because `state`
           // lives in createRequestHandler's scope, not here.
           if (app.isRegenerateOutput(filename)) continue;
+          pendingVerdict = strongerVerdict(pendingVerdict, app.classifyWatchPath(filename, root));
           rebuild();
         }
       } catch (err) {
@@ -3007,15 +3094,37 @@ installDevOverlayNavSync();
 // probes fail until the fresh server is listening, so the old page stays put
 // until the new one is ready. Bounded, so a genuinely-dead server still
 // reloads (and shows the browser's own error) rather than hanging forever.
-function __webjsReloadWhenReady() {
+function __webjsWhenReady(then) {
   var tries = 0;
   function attempt() {
     fetch(${versionUrl}, { cache: 'no-store' }).then(function (r) {
-      if (r && r.ok) location.reload(); else again();
+      if (r && r.ok) then(); else again();
     }).catch(again);
   }
   function again() { if (++tries > 100) location.reload(); else setTimeout(attempt, 100); }
   attempt();
+}
+// Apply a reload signal at the lightest correct weight (#1398). A page or
+// layout edit never changes browser-bound JS, so the server's re-render is the
+// complete truth and the client router can swap it in place: scroll and (for a
+// page edit) the hydrated state of components outside the changed region
+// survive. Anything else, including every signal the server could not classify,
+// is the full reload this always was.
+function __webjsApplyReload(verdict) {
+  __webjsWhenReady(function () {
+    // Runtime feature detection, never an assumption. The refresh entry is
+    // published by enableClientRouter and removed by disableClientRouter, so its
+    // ABSENCE covers both no-router cases at once: an app that opted out with
+    // \`webjs.clientRouter: false\`, and a page that ships no component at all so
+    // @webjsdev/core never loads in the browser and the module never runs.
+    var refresh = globalThis.__webjsRefreshPage;
+    if ((verdict === 'page' || verdict === 'shell') && typeof refresh === 'function') {
+      refresh(verdict).then(function (ok) { if (!ok) location.reload(); },
+                            function () { location.reload(); });
+      return;
+    }
+    location.reload();
+  });
 }
 function __webjsDirectEvents() {
   // No SharedWorker (Chrome for Android has none) or its construction threw (a
@@ -3043,7 +3152,7 @@ function __webjsDirectEvents() {
     // dev-overlay bug leaves no trace, which would be a new behaviour rather
     // than a restored one.
     try {
-      if (m.type === 'reload') __webjsReloadWhenReady();
+      if (m.type === 'reload') __webjsApplyReload(m.verdict);
       else if (m.type === 'webjs-error') __webjsApplyError(m.data);
     } catch (_) {
       console.error('[webjs] dev reload handler threw', _);
@@ -3055,7 +3164,7 @@ try {
     const w = new SharedWorker(${workerUrl});
     w.port.onmessage = (e) => {
       const m = e.data || {};
-      if (m.type === 'reload') __webjsReloadWhenReady();
+      if (m.type === 'reload') __webjsApplyReload(m.verdict);
       else if (m.type === 'webjs-error') __webjsApplyError(m.data);
     };
     w.port.start();

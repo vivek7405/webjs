@@ -2,7 +2,7 @@
 
 ## What This Covers
 
-- The automatic client router (SPA-style partial swaps), how it opts out, and programmatic `navigate()` / `revalidate()`.
+- The automatic client router (SPA-style partial swaps), how it opts out, and programmatic `navigate()` / `revalidate()` / `refreshPage()`.
 - Link prefetch with device-adaptive defaults.
 - `<webjs-frame>` partial-swap regions (WebJs's Turbo Frames).
 - View Transitions opt-in.
@@ -55,6 +55,20 @@ revalidate();                                 // clear the entire snapshot cache
 ```
 
 The router keeps a URL-keyed snapshot cache (LRU, cap 16) so Back/Forward restores instantly, then refetches in the background. Call `revalidate(path)` after a server action mutates data a cached page depends on. Wire bytes are minimized by an `X-Webjs-Have` header, so the server returns only the divergent layout fragment. Concurrent navigations abort the prior in-flight fetch, and scroll is restored on Back/Forward.
+
+**In-place refresh of the page you are on.** `refreshPage(mode)` re-renders the CURRENT url on the server and applies it without a page load.
+
+```js
+import { refreshPage } from '@webjsdev/core';
+await refreshPage();          // 'page': morph the deepest shared boundary
+await refreshPage('shell');   // replace the whole body (the layout's own markup changed)
+```
+
+It records no history entry and never scrolls, so the reader keeps their place and Back still goes to the previous page. `'page'` morphs the deepest shared boundary, so the outer layout's DOM and the hydrated state of its components survive; `'shell'` replaces the whole body, which is what a LAYOUT change needs, since a layout's own header, nav, and footer sit outside every children range and a boundary morph would leave them untouched. Component instances do not survive a `'shell'` refresh.
+
+It sends no `X-Webjs-Have`, deliberately: the server short-circuits at the first layout the client already holds, and a same-url request matches every one of them, so the response would omit the very layout that changed. It resolves `false` when it did not apply (the router is disabled, or the fetch failed), so a caller falls back to a full load.
+
+It does NOT reload changed component modules and cannot: `customElements.define` is once-per-tag and a module url is fetched once per document. A caller whose change touched browser code has to reload. This is exactly why the dev live-reload client calls `refreshPage` for a page or layout edit and `location.reload()` for a component edit (#1398, and see `references/runtime.md` for which dev modes get the refresh).
 
 **Back/Forward scroll restore vs late layout growth.** The router SUPPRESSES the browser's scroll anchoring (`overflow-anchor`) for the duration of a Back/Forward restore, then puts it back. The saved offset was recorded against the page at its SETTLED height, while the DOM the restore swaps in is still shorter until its components upgrade and render. Without the suppression the browser treats that late growth as content appearing above a reader and adds it to the offset the router just replayed, so the reader lands BELOW where they left (the reported case was 763px, exactly the height a page gained after its swap). What follows for an app:
 

@@ -28,8 +28,12 @@ export default function Runtime() {
         <tr><td>Hot reload</td><td><code>node --watch</code></td><td><code>bun --hot</code></td><td>planned</td></tr>
         <tr><td>WebSocket</td><td>the <code>ws</code> library</td><td>native <code>Bun.serve</code> (bridged to the same API)</td><td>planned</td></tr>
         <tr><td>103 Early Hints</td><td>yes</td><td>no (<code>Bun.serve</code> has no informational-response API)</td><td>planned</td></tr>
+        <tr><td>Dev edit to a page / layout</td><td>full reload (the <code>node --watch</code> restart replaces the process)</td><td>refreshes in place, no reload</td><td>planned</td></tr>
       </tbody>
     </table>
+    <p>The in-place dev refresh needs the server process to <strong>survive</strong> the edit, which is the whole of that last row. A page or layout never hydrates, so a freshly rendered page is the complete truth for it and the client router can swap it in without a reload, keeping your scroll position and the hydrated state of components outside the changed region. The server classifies the changed file and puts the verdict on the live-reload event, so it needs a process that is still alive to do the classifying.</p>
+    <p>Bun's <code>bun --hot</code> invalidates modules in place without restarting, so it gets the refresh. On Node, <code>node --watch</code> restarts the process on a change under <code>app</code>, <code>components</code>, <code>modules</code>, <code>lib</code>, or <code>actions</code>, and a fresh process holds no record of what changed, so those edits are a full reload. Two Node cases still refresh in place: an edit outside those five directories (<code>db/schema.server.ts</code>, a <code>webjs.dev.watch</code> content directory), and <code>webjs dev --no-hot</code>, which keeps the server in one process on either runtime. A component edit is a full reload everywhere by design, because <code>customElements.define</code> is once-per-tag and swapping fresh markup onto the old class would be worse than the reload.</p>
+
     <p>Either way the <code>.ts</code> stripping is position-preserving with no sourcemap, and the bytes the browser fetches are identical. The 103 Early Hints gap only costs a small first-load latency edge where your edge forwards 103, never correctness (the modulepreload hints still ship in the document head).</p>
 
     <h2>Node (the default)</h2>

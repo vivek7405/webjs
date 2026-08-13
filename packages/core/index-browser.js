@@ -60,7 +60,7 @@ import './src/router-client.js';
 // it, `import { loadFrame } from '@webjsdev/core/client-router'` type-checks,
 // works in dev (where the subpath maps to `src/router-client.js`) and is
 // `undefined` in production.
-export { enableClientRouter, disableClientRouter, navigate, revalidate, loadFrame } from './src/router-client.js';
+export { enableClientRouter, disableClientRouter, navigate, revalidate, refreshPage, loadFrame } from './src/router-client.js';
 export { WebjsFrame } from './src/webjs-frame.js';
 export { WebjsStream, renderStream } from './src/webjs-stream.js';
 

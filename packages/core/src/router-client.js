@@ -584,6 +584,14 @@ function afterTwoFrames(fn) {
 export function enableClientRouter() {
   if (enabled || typeof document === 'undefined') return;
   enabled = true;
+  // Publish the in-place refresh entry on the global (#1398). The dev
+  // live-reload client is a separate served script with no import of this
+  // module, so a global is the only seam it has, and its PRESENCE is the
+  // feature detection: an app that opted out with `webjs.clientRouter: false`
+  // never calls this, and a page that ships no component never loads
+  // @webjsdev/core at all, so both no-router cases resolve to a full reload
+  // without either side assuming anything about the other.
+  /** @type any */ (globalThis).__webjsRefreshPage = refreshPage;
   // Both `click` and `submit` are BUBBLE phase, not capture. A component's
   // per-element `@click` / `@submit` handler (render-client.js) runs in the
   // at-target phase, BEFORE a document-level bubble listener. So onClick /
@@ -656,6 +664,9 @@ export function disableClientRouter() {
   if (releaseScrollAnchor) releaseScrollAnchor();
   if (cancelScrollCatchUp) cancelScrollCatchUp();
   currentPageUrl = null;
+  // Unpublish the refresh entry (#1398) so the dev reload client's feature
+  // detection sees the router is gone and falls back to a full reload.
+  delete (/** @type any */ (globalThis).__webjsRefreshPage);
 }
 
 /**
@@ -747,6 +758,44 @@ export function revalidate(url) {
   const key = u.pathname + u.search;
   snapshotCache.delete(key);
   prefetchCache.delete(key);
+}
+
+/**
+ * Re-render the CURRENT url on the server and apply it in place, with no page
+ * reload (#1398).
+ *
+ * Dev-facing today, since the live-reload client calls it for a page or layout
+ * edit, but it is a plain capability with no dev-only code in it.
+ *
+ * It records no history entry and never scrolls, so the reader keeps their
+ * place and Back still goes to the previous page. `mode` picks the swap tier:
+ *
+ * - `'page'` morphs the deepest shared boundary, so the outer layout's DOM and
+ *   the hydrated state of its components survive. This is the light tier and
+ *   the default.
+ * - `'shell'` replaces the whole body. Needed when the LAYOUT's own markup
+ *   changed, because that markup lives outside every children range and a
+ *   boundary morph would leave it untouched. Component instances do not survive
+ *   it.
+ *
+ * It does NOT reload changed component modules, and cannot: `customElements
+ * .define` is once-per-tag and a module URL is fetched once per document. A
+ * caller whose change touched browser code must reload instead.
+ *
+ * @param {'page' | 'shell'} [mode]
+ * @returns {Promise<boolean>} whether the refresh applied. `false` means the
+ *   caller should fall back to a full load.
+ */
+export async function refreshPage(mode) {
+  if (!enabled || typeof location === 'undefined') return false;
+  // Every cached copy predates the change, so drop both caches before fetching.
+  revalidate();
+  try {
+    await performNavigation(location.href, false, null, { refresh: mode === 'shell' ? 'shell' : 'page' });
+    return true;
+  } catch (_) {
+    return false;
+  }
 }
 
 // Auto-enable on import: deferred to the END of this module (see the
@@ -1784,8 +1833,13 @@ function cacheKey(url) {
  * @param {string} href
  * @param {boolean} isPopState
  * @param {string | null} frameId  Active <webjs-frame> id, or null.
+ * @param {{ refresh?: 'page' | 'shell' }} [opts]  `refresh` marks a same-URL
+ *   in-place re-render (#1398). It suppresses three things a forward navigation
+ *   does and a refresh must not: the outgoing snapshot, the optimistic loading
+ *   skeleton, and history plus scroll. See `refreshPage`.
  */
-async function performNavigation(href, isPopState, frameId) {
+async function performNavigation(href, isPopState, frameId, opts) {
+  const refresh = (opts && opts.refresh) || undefined;
   // #1008 / #936: a forward, main-document nav fired while the document is
   // still parsing (`readyState === 'loading'`) races the DOM. The leaving
   // page's closing layout markers at the bottom of the body may not exist yet,
@@ -1842,7 +1896,11 @@ async function performNavigation(href, isPopState, frameId) {
   // the browser has already updated `location.href` to the destination
   // URL: using it as the key would clobber the cached snapshot we're
   // about to read in the popstate-restore branch below.
-  if (currentPageUrl) snapshotCurrent(currentPageUrl);
+  //
+  // A refresh (#1398) skips it: it navigates to the URL it is already on, so
+  // snapshotting first would write the PRE-EDIT page into `snapshotCache` under
+  // that exact key and a later Back would restore the stale render.
+  if (!refresh && currentPageUrl) snapshotCurrent(currentPageUrl);
 
   // Expose the opt-in `data-navigating` loading-indicator hook (see
   // setNavigating), but only if the nav takes long enough to be worth showing
@@ -1856,8 +1914,13 @@ async function performNavigation(href, isPopState, frameId) {
   // any) into the deepest current children-slot so the user sees an
   // instant skeleton instead of stale content. Saved so we can restore
   // it if the fetch fails.
+  //
+  // A refresh (#1398) shows none: flashing a `loading.ts` skeleton over content
+  // that is already correct is strictly worse than showing the old content for
+  // one round trip. Turbo's `MorphingPageRenderer` suppresses its own
+  // equivalents for the same reason.
   let optimisticState = null;
-  if (!isPopState) optimisticState = applyOptimisticLoading();
+  if (!isPopState && !refresh) optimisticState = applyOptimisticLoading();
 
   try {
     // popstate: try cache first, then refetch in background. Instant restore.
@@ -1974,7 +2037,11 @@ async function performNavigation(href, isPopState, frameId) {
       if (typeof window !== 'undefined') window.scrollTo({ left: 0, top: 0, behavior: 'instant' });
     }
 
-    await fetchAndApply(href, frameId, !isPopState, optimisticState, 'GET', null, signal, myToken);
+    // `recordHistory: false` on a refresh (#1398) is what suppresses BOTH the
+    // duplicate `history.pushState` and the whole scroll block in one flag,
+    // which is exactly what the comment above that block already says it means.
+    // So Back still goes to the previous page and the reader keeps their place.
+    await fetchAndApply(href, frameId, !isPopState && !refresh, optimisticState, 'GET', null, signal, myToken, /* revalidating */ false, refresh);
   } finally {
     if (navigatingFlagTimer) clearTimeout(navigatingFlagTimer);
     // Only clear the navigating flag if WE are still the active nav.
@@ -2841,6 +2908,9 @@ function handleNavigationError(href, status, error) {
  * @param {boolean} [revalidating]  True for the BACKGROUND refresh after a
  *   snapshot restore: the user is already viewing a page, so a boundary
  *   mismatch must degrade in place (never a jarring `location.href` load).
+ * @param {'page' | 'shell'} [refresh]  Same-URL in-place refresh (#1398). It
+ *   suppresses the `X-Webjs-Have` header and picks the swap tier; see
+ *   `refreshPage`.
  * @returns {Promise<{ ok: boolean, status: number | null, aborted: boolean }>}
  *   The fetch outcome, so a caller (the form-submission busy/event lifecycle)
  *   can report whether the submission settled as a success, an error, or an
@@ -2849,7 +2919,7 @@ function handleNavigationError(href, status, error) {
  *   for an abort (which also sets `aborted:true`). `status` is the HTTP status
  *   or `null` when the request never produced one.
  */
-async function fetchAndApply(href, frameId, recordHistory, optimisticState, method, body, signal, token, revalidating) {
+async function fetchAndApply(href, frameId, recordHistory, optimisticState, method, body, signal, token, revalidating, refresh) {
   method = method || 'GET';
   const myToken = typeof token === 'number' ? token : currentNavigationToken;
   let html;
@@ -2884,7 +2954,11 @@ async function fetchAndApply(href, frameId, recordHistory, optimisticState, meth
     // navigation between the prefetch and this click does not disqualify it.
     // The optimistic skeleton has already deleted nested boundaries by now, so
     // pass the view captured before it ran.
-    const prefetched = (method === 'GET' && !body && !frameId)
+    // A refresh must never consume a prefetch (#1398): every cached copy
+    // predates the change that triggered it. `refreshPage` clears both caches
+    // before it fetches, so this only closes the window where a prefetch lands
+    // between that clear and this read.
+    const prefetched = (method === 'GET' && !body && !frameId && !refresh)
       ? prefetchTake(href, optimisticState ? optimisticState.haveKeys : undefined)
       : null;
     if (prefetched) {
@@ -2897,7 +2971,13 @@ async function fetchAndApply(href, frameId, recordHistory, optimisticState, meth
       respOk = true;
     } else {
     const headers = { 'x-webjs-router': '1' };
-    const have = buildHaveHeader();
+    // A same-URL refresh sends NO have-header (#1398). This is required, not an
+    // optimisation: the server short-circuits at the first layout whose segment
+    // path AND route key the client already holds, and a same-URL request
+    // matches every one of them, so the response would omit the layouts and a
+    // layout edit would be invisible. Sending nothing forces the full chain to
+    // render.
+    const have = refresh ? '' : buildHaveHeader();
     if (have) headers['x-webjs-have'] = have;
     if (frameId) headers['x-webjs-frame'] = frameId;
     // Content-negotiate a stream-action response on a write submission (a
@@ -3030,7 +3110,7 @@ async function fetchAndApply(href, frameId, recordHistory, optimisticState, meth
   // recover in place rather than a destructive full reload.
   if (!doc) { restoreOptimistic(optimisticState); handleNavigationError(href, null, new Error('navigation response did not parse as HTML')); return { ok: false, status: respStatus, aborted: false }; }
 
-  const disposition = applySwap(doc, frameId, !!revalidating, finalUrl, incomingBuild, incomingSrc);
+  const disposition = applySwap(doc, frameId, !!revalidating, finalUrl, incomingBuild, incomingSrc, refresh);
   // A discarded revalidation must be discarded OUTRIGHT: a streamed response's
   // boundary templates must not splice into the restored snapshot afterward
   // (boundary ids are per-render sequential, so a reduced render's numbering
@@ -3555,7 +3635,20 @@ function upgradeCustomElementsInRange(range) {
  */
 let _swapCommit = Promise.resolve();
 
-function applySwap(doc, frameId, revalidating, href, incomingBuild, incomingSrc) {
+/**
+ * @param {Document} doc
+ * @param {string | null} frameId
+ * @param {boolean} revalidating
+ * @param {string | null} href
+ * @param {string | null} [incomingBuild]
+ * @param {string | null} [incomingSrc]
+ * @param {'page' | 'shell' | undefined} [refresh]  same-URL in-place refresh
+ *   mode (#1398). `'shell'` takes the full-body tier directly, because the
+ *   layout's OWN markup changed and that lives outside every children range.
+ *   `'page'` falls through to the normal two-tier logic, which morphs the
+ *   deepest shared boundary and so preserves outer-layout component state.
+ */
+function applySwap(doc, frameId, revalidating, href, incomingBuild, incomingSrc, refresh) {
   // SSR action seeding (#472): ingest the incoming page's seed payload BEFORE
   // its components are grafted into the live DOM and upgrade, so a
   // soft-navigated async component resolves from the seed instead of
@@ -3783,6 +3876,20 @@ function applySwap(doc, frameId, revalidating, href, incomingBuild, incomingSrc)
     return;
   }
 
+  // 1b. Same-URL refresh in `shell` mode (#1398). A boundary morph can only
+  // rewrite what sits INSIDE a `<!--wj:children:...-->` range, and a layout's
+  // own header, nav, and footer sit outside every one of them, so a layout edit
+  // applied through the boundary tiers would silently do nothing, which is
+  // strictly worse than the reload it replaced. Take the full-body tier
+  // directly instead. Component instances do not survive it, which is the
+  // honest cost of a layout edit and still beats a page reload: scroll is kept
+  // and no history entry is written.
+  if (refresh === 'shell') {
+    ingestSeeds();
+    swapFullBody(doc);
+    return;
+  }
+
   // 2. Two-tier keyed boundary swap (#1015). Scan both trees STRICTLY: a
   // poisoned side (malformed, truncated, or mispaired boundaries) yields null
   // and falls through to the integrity degradation below. A valid pair of
@@ -3857,10 +3964,32 @@ function applySwap(doc, frameId, revalidating, href, incomingBuild, incomingSrc)
 
   // 4. In-place full-body swap: the background paths only (a snapshot
   // restore or its revalidation, where a full load is not an option
-  // because the user is already viewing the page). Full head merge;
-  // `mergeHead` PRESERVES stylesheets and `<style>` unconditionally
-  // (#936) so the swap can never leave the page unstyled.
+  // because the user is already viewing the page).
   ingestSeeds();   // committed: past both discard branches above
+  swapFullBody(doc);
+}
+
+/**
+ * In-place FULL-BODY swap: merge the head, then replace every body child.
+ *
+ * `mergeHead` PRESERVES stylesheets and `<style>` unconditionally (#936), so
+ * this can never leave the page unstyled, and `regraftPermanentElements` adopts
+ * each live `[data-webjs-permanent][id]` node by identity so a running widget
+ * survives. Component INSTANCES do not: every element is re-created and
+ * re-upgraded, which is the difference between this and a boundary morph.
+ *
+ * Two callers. The background snapshot-restore path in `applySwap`, where a full
+ * load is not an option because the user is already viewing the page. And the
+ * `shell` mode of `refreshPage` (#1398), which needs the LAYOUT's own markup
+ * replaced and cannot get that from a boundary-range swap, since a layout's own
+ * header, nav, and footer sit outside every `<!--wj:children:...-->` range.
+ *
+ * The caller ingests seeds first: this is a commit point, and both callers reach
+ * it only past their own discard branches.
+ *
+ * @param {Document} doc
+ */
+function swapFullBody(doc) {
   mergeHead(doc.head);
   // Persist permanent elements by node identity across the full-body
   // swap: move each live [data-webjs-permanent][id] node into the matching
