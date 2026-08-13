@@ -6,6 +6,7 @@
  *
  * @module
  */
+import { findAnchorInPath } from './anchors.js';
 import { NON_HTML_EXTENSIONS } from './constants.js';
 import { enabled } from './state.js';
 import { warnIfActionSubmissionCannotDeliver } from './diagnostics.js';
