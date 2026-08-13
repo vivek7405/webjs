@@ -655,7 +655,7 @@ export default function LandingPage() {
                means typed at author time, which is right for a reference doc
                and misleading in a sentence whose subject is what ships. -->
 
-          <p class="text-fg-muted text-base leading-[1.6] m-0">The file in your editor and the file in the browser network tab are the same file. Here is a server action and the page that calls it. The page ships as you see it, because there is no build step. The action never ships at all, and its import becomes an RPC call. Rails has shipped its default frontend without a bundler since Rails 7 in 2021, so the approach has production miles behind it.</p>
+          <p class="text-fg-muted text-base leading-[1.6] m-0">The file in your editor and the file in the browser network tab are the same file. Here is a server action and the page that calls it. The page ships as you see it, because there is no build step. TypeScript is stripped to whitespace rather than compiled, so a stack trace points at the line you wrote. The action becomes an RPC call. Rails has shipped its default frontend without a bundler since Rails 7 in 2021, so the approach has production miles behind it.</p>
         </div>
         <div class="grid gap-6 grid-cols-1 md:grid-cols-2 max-w-5xl mx-auto">
           <div class="flex flex-col min-w-0">

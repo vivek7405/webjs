@@ -64,7 +64,7 @@ const REASONS = [
   },
   {
     title: 'No training data required',
-    body: 'An agent does not need to have seen WebJs before. It fits the framework source into its context window, learns the real API from the code, and starts producing correct output. New model, same result, because the source is the documentation.',
+    body: 'An agent does not need to have seen WebJs before. It opens the file it is calling in node_modules, learns the real API from the code, and starts producing correct output. New model, same result, because the source is the documentation.',
   },
   {
     title: 'Standard HTML and JavaScript',
@@ -116,10 +116,10 @@ export default function Why() {
       <p class="text-lede leading-[1.6] text-fg-muted max-w-[56ch] mx-auto mb-8 text-pretty">
         WebJs is a full-stack JavaScript framework with no build step, so
         nothing is hidden from your agent. The framework ships in node_modules as
-        plain JavaScript it can read end to end, and your app code is served to
-        the browser exactly as written. Any model reasons about the whole stack
-        and debugs it, with no training data required and no single blessed
-        model, on the web components and standard HTML every model already knows.
+        plain JavaScript, so an agent opens the file it is calling instead of
+        recalling an API from training data, and your app code is served to the
+        browser exactly as written. Any model debugs the running app against the
+        real source, on the web components and standard HTML it already knows.
       </p>
       <div class="flex gap-3 justify-center flex-wrap mb-8">
         <a class=${BTN_PRIMARY} href=${DOCS_START_PATH}>
@@ -140,7 +140,8 @@ export default function Why() {
           <p class="text-fg-muted text-base leading-[1.6] m-0">
             No build step means two things, and both help your agent. The
             framework itself sits in node_modules as plain JavaScript with JSDoc,
-            so an agent reads it end to end and fits it into context. And your own
+            so an agent opens the file it needs at the version you installed,
+            rather than recalling an API from training data. And your own
             app code is served to the browser exactly as written, so the agent
             debugs the running app against the real source, never a bundled or
             minified artifact.
