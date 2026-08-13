@@ -156,14 +156,22 @@ suite('Client router: <webjs-frame> frame-missing contract (#251)', () => {
   test('a frameless response still advances the URL, because the sentinel only reports', async () => {
     setup();
     const before = location.href;
-    // Park the URL somewhere this click cannot reach FIRST. The earlier case in
-    // this suite clicks the same link and leaves the URL at its target (web-test
-    // -runner isolates per file, not per test), so without this the assertion
-    // below is satisfied by that case's history push and would pass with this
-    // one's removed. It has to observe its OWN click.
-    history.replaceState(null, '', '/wj-parked-1398');
-    assert.equal(location.pathname, '/wj-parked-1398', 'parked, so the assertion starts from a known place');
     try {
+      // Park the URL somewhere this click cannot reach FIRST. The earlier case
+      // in this suite clicks the same link and leaves the URL at its target
+      // (web-test-runner isolates per file, not per test), so without this the
+      // assertion below is satisfied by that case's history push and would pass
+      // with this one's removed. It has to observe its OWN click.
+      //
+      // Inside the `try`, like every other post-setup step in this file. A
+      // throw out here (a failed park, or WebKit rate-limiting history
+      // mutations) would otherwise skip the `finally` and leak the parked URL,
+      // the patched console, the nav guard, and this case's container into the
+      // three cases below, which would then fail against the wrong container
+      // for reasons naming nothing about the cause. That is the cross-case
+      // state leak this very test exists to close.
+      history.replaceState(null, '', '/wj-parked-1398');
+      assert.equal(location.pathname, '/wj-parked-1398', 'parked, so the assertion starts from a known place');
       window.fetch = () => htmlResponse(
         '<!doctype html><html><head></head><body><h1 id="login">Login</h1></body></html>'
       );
