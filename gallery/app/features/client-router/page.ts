@@ -26,7 +26,14 @@ export default function ClientRouterExample() {
       <a href="/features/client-router/second" class="${buttonClass()} no-underline">Go to page two</a>
       <a href="/" class="text-muted-foreground no-underline font-medium text-sm hover:text-foreground transition-colors">Home</a>
     </div>
-    <p class="text-muted-foreground text-sm mt-6">Or drive it from JS with <code class="font-mono">navigate()</code> / <code class="font-mono">revalidate()</code>:</p>
+    <p class="text-muted-foreground text-sm mt-6">
+      Rendered on the server at
+      <code class="font-mono">${new Date().toISOString().slice(11, 19)}</code> UTC.
+      This page function runs only on the server, so this stamp changes on every
+      render, which is what makes <code class="font-mono">refreshPage()</code>
+      below visible.
+    </p>
+    <p class="text-muted-foreground text-sm mt-6">Or drive it from JS with <code class="font-mono">navigate()</code> / <code class="font-mono">revalidate()</code> / <code class="font-mono">refreshPage()</code>:</p>
     <router-controls></router-controls>
     <p class="text-muted-foreground text-sm mt-6">
       Opt out app-wide with <code class="font-mono">{ "webjs": { "clientRouter": false } }</code>,
