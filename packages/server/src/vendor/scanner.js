@@ -113,7 +113,7 @@ export async function scanBareImports(appDir) {
  * and (on the runtime path) the elision skip set. Used by the dev server so a
  * vendor resolve does not rebuild analysis it just built.
  *
- * @param {import('./module-graph.js').ModuleGraph} graph
+ * @param {import('../module-graph.js').ModuleGraph} graph
  * @param {string[]} entryFiles
  * @param {string} appDir
  * @param {Set<string>} [skip]  elided / inert / import-only modules

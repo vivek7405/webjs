@@ -10,20 +10,6 @@ const NPM_REGISTRY = 'https://registry.npmjs.org';
 // fetch does rather than the server's. importmap-rails makes these same two
 // calls with Ruby's 60s Net::HTTP default.
 const NPM_TIMEOUT_MS = 60_000;
-// Bounds a single bundle GET made by the pin command, which either writes the
-// bytes to disk (`downloadBundle`) or fetches them to hash
-// (`fetchIntegrity`). Deliberately six times the warmup budget, because the
-// two are not the same situation: a pin is a one-shot command a person ran and
-// is waiting on, with a whole multi-megabyte package to transfer, while the
-// warmup is a server holding a request. Ten seconds is generous for the
-// latter and tight for the former on a slow link.
-//
-// 60s matches what importmap-rails effectively allows. It sets no timeout at
-// all, but Ruby's Net::HTTP defaults open_timeout and read_timeout to 60s, so
-// a Rails pin is bounded at a minute without asking. JavaScript's fetch() has
-// no default whatsoever, which is why this has to be explicit: without it a
-// CDN that accepts the connection and then stalls hangs the pin forever, with
-// no ambient deadline on a CLI run to cut it short.
 
 /**
  * Fetch one URL from registry.npmjs.org with a small timeout. Returns
@@ -178,7 +164,6 @@ export async function findOutdated(appDir) {
   const results = await Promise.all(queries);
   return results.filter((x) => x !== null);
 }
-
 
 /**
  * Re-pin every package returned by findOutdated to its latest version.

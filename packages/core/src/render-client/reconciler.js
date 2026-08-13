@@ -8,7 +8,7 @@ import {
 } from '../form-action.js';
 import { isLive } from '../directives.js';
 import { RENDERING, SLOT_OWNER, SLOT_STATE, drainRendererBackstop, rescueAssignedNodes } from '../slot.js';
-import { compile, templateCache, submitterActionBindings, INSTANCE } from './template-compiler.js';
+import { compile, submitterActionBindings, INSTANCE } from './template-compiler.js';
 import {
   applyPart, bindPart, currentRenderRoot, findSlotHost, setCurrentRenderRoot, updateInstance,
 } from './parts.js';

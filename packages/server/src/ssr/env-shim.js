@@ -1,4 +1,5 @@
 import { jsonForScriptTag } from '../script-tag-json.js';
+import { escapeAttr } from './escape.js';
 
 /**
  * The `window.process.env` shim, kept in its own module because BOTH the head
@@ -48,11 +49,3 @@ export function publicEnvShim(opts) {
     + `</script>`;
 }
 
-/** @param {string} s */
-function escapeAttr(s) {
-  return String(s ?? '')
-    .replace(/&/g, '&amp;')
-    .replace(/"/g, '&quot;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;');
-}

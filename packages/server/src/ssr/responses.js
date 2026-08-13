@@ -1,24 +1,15 @@
 import { cspNonce, renderToString } from '@webjsdev/core';
 import { BUFFERED_MARKER, STREAM_MARKER } from '../conditional-get.js';
 import { publishedBuildId, appSourceId } from '../importmap.js';
+import { escapeAttr, escapeHtml } from './escape.js';
 
 /**
- * Turning rendered HTML into a Response: the escaping helpers, the per-request
- * CSP nonce read, and the four builders (cached, buffered, streaming, and the
- * private client-router fragment).
+ * Turning rendered HTML into a Response: the per-request CSP nonce read and
+ * the three builders (cached, buffered and streaming).
  *
  * Split off render.js, which owns the RENDER. Nothing here renders anything;
  * it decides status, headers and framing for bytes it is handed.
  */
-
-export function escapeAttr(s) {
-  return String(s).replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;');
-}
-
-/** @param {string} s */
-export function escapeHtml(s) {
-  return String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;');
-}
 
 /**
  * The CSP nonce for the in-flight request, or undefined if none is in

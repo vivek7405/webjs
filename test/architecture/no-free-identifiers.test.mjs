@@ -183,11 +183,14 @@ test('no split module calls a function it neither declares nor imports', () => {
         // A lost import is the one shape where a name appears only ever as a
         // call, so this keeps the check sound in the safe direction, at the
         // cost of missing a name that is also, say, a property somewhere.
+        // NOT `NAME,` or `,NAME`: a call ARGUMENT satisfies both, so accepting
+        // them made this blind to exactly the defect it exists for. A lost
+        // `publishedBuildId` import, called as
+        // `headers.set('x-webjs-build', publishedBuildId())`, passed.
         const bindsHere = new RegExp(
           `(?:function|class|const|let|var)\\s+${name}\\b`
-          + `|\\b${name}\\s*[:=]`
-          + `|\\b${name}\\s*\\([^()]*\\)\\s*\\{`
-          + `|\\b${name}\\s*,|,\\s*${name}\\b`,
+          + `|\\b${name}\\s*[:=][^=]`
+          + `|\\b${name}\\s*\\([^()]*\\)\\s*\\{`,
         );
         if (bindsHere.test(raw)) continue;
         // A nested template literal inside an interpolation defeats the

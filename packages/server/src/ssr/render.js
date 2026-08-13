@@ -14,8 +14,9 @@ import {
 import { requestedFrameId, extractFrameSubtree } from '../frame-render.js';
 import { makeThenable } from '../thenable-params.js';
 import { buildDocumentParts, wrapInDocument, layoutSegmentPath, pageSegmentPath, regionRouteKey, wrapWithChildrenMarker } from './document.js';
+import { escapeHtml } from './escape.js';
 import {
-  cachedHtmlResponse, escapeHtml, getNonce, htmlResponse, streamingHtmlResponse,
+  cachedHtmlResponse, getNonce, htmlResponse, streamingHtmlResponse,
 } from './responses.js';
 
 
@@ -121,8 +122,6 @@ async function loadModule(file, dev) {
 function nearest(arr) {
   return arr && arr.length ? arr[arr.length - 1] : null;
 }
-
-/** @param {string} s */
 
 /**
  * @param {import('./router.js').PageRoute} route

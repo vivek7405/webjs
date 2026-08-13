@@ -10,20 +10,6 @@ import { jspmGenerate } from './jspm.js';
 
 const PIN_DIR_REL = ['.webjs', 'vendor'];
 const PIN_FILE = 'importmap.json';
-// Bounds a single bundle GET made by the pin command, which either writes the
-// bytes to disk (`downloadBundle`) or fetches them to hash
-// (`fetchIntegrity`). Deliberately six times the warmup budget, because the
-// two are not the same situation: a pin is a one-shot command a person ran and
-// is waiting on, with a whole multi-megabyte package to transfer, while the
-// warmup is a server holding a request. Ten seconds is generous for the
-// latter and tight for the former on a slow link.
-//
-// 60s matches what importmap-rails effectively allows. It sets no timeout at
-// all, but Ruby's Net::HTTP defaults open_timeout and read_timeout to 60s, so
-// a Rails pin is bounded at a minute without asking. JavaScript's fetch() has
-// no default whatsoever, which is why this has to be explicit: without it a
-// CDN that accepts the connection and then stalls hangs the pin forever, with
-// no ambient deadline on a CLI run to cut it short.
 
 /** Compute the absolute path of the pin directory for an app. */
 function pinDir(appDir) {
@@ -410,7 +396,6 @@ async function downloadBundle(url, appDir, filename) {
     clearTimeout(timer);
   }
 }
-
 
 /**
  * After writing the new pin output, delete any file in the pin

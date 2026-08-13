@@ -1,5 +1,6 @@
 import { basePath, buildImportMap, importMapTag, vendorPreconnectOrigins } from '../importmap.js';
 import { withBasePath } from '../base-path.js';
+import { escapeAttr, escapeHtml } from './escape.js';
 import { withAssetHash } from '../asset-hash.js';
 import { jsonForScriptTag } from '../script-tag-json.js';
 import { vendorIntegrityFor } from '../importmap.js';
@@ -149,22 +150,6 @@ export function integrityAttr(url) {
   // as everything else in the SSR pipeline so a future regression in
   // the validator doesn't bypass it.
   return hash ? ` integrity="${escapeAttr(hash)}"` : '';
-}
-
-function escapeAttr(s) {
-  return String(s ?? '')
-    .replace(/&/g, '&amp;')
-    .replace(/"/g, '&quot;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;');
-}
-
-/** @param {string} s */
-function escapeHtml(s) {
-  return String(s ?? '')
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;');
 }
 
 /**
