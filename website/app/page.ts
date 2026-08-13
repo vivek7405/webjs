@@ -600,7 +600,7 @@ export default function LandingPage() {
               <pre class="col-start-1 row-start-1 min-w-0 invisible group-has-[:checked]/stage:visible m-0 p-5 overflow-x-auto font-mono text-xs leading-[1.72] text-left" role="region" tabindex="0" aria-label="like-button usage"><code>${highlight(USAGE_SAMPLE)}</code></pre>
             </div>
             <div class="px-4 py-3 border-t border-border text-center font-mono text-xs leading-[1.5] text-fg-subtle">
-              Server-rendered first, then upgraded. Click it.
+              Server-rendered, then upgraded. Click it.
             </div>
           </div>
         </div>
