@@ -3138,6 +3138,26 @@ function __webjsApplyReload(verdict) {
     // @webjsdev/core never loads in the browser and the module never runs.
     var refresh = globalThis.__webjsRefreshPage;
     if ((verdict === 'page' || verdict === 'shell') && typeof refresh === 'function') {
+      // Take any error overlay down BEFORE re-rendering. DEFENSIVE, and the
+      // reasoning is worth recording because the obvious scenario for it does
+      // NOT hold. The overlay's own teardown is keyed on the URL CHANGING,
+      // which a same-url refresh never does, so a refresh has no exit for a
+      // live overlay the way a full reload did (it replaced the document).
+      //
+      // The scenario that looks like it needs this, a page-render error, is not
+      // reachable: the dev 500 page carries no children boundaries and no
+      // layout, so applying it shares no boundary with the live page and
+      // degrades to a hard navigation, in BOTH directions. Breaking a page
+      // reloads, and so does fixing it, and the reload clears the overlay. What
+      // is left is the narrow case of an UNSCOPED frame (a \`rebuild\` or
+      // \`ts-strip\` failure), which the nav sync deliberately never clears and
+      // which can coexist with a page that still renders and so still refreshes.
+      //
+      // Before rather than after, so the ordering is self-correcting: if this
+      // render also fails, the server pushes a fresh frame DURING it and the
+      // overlay comes back describing the CURRENT error. Dismissing afterwards
+      // would race that push and wipe a legitimately new overlay.
+      dismissDevOverlay();
       refresh(verdict).then(function (ok) {
         if (!ok) { location.reload(); return; }
         refreshStyles();

@@ -177,6 +177,16 @@ test('the reload client probes the server is up before reloading (no restart fla
   // `test/dev/browser/refresh-styles.test.js`, which imports the same source
   // this inlines. A source-shape regex here could not tell a correct handler
   // from one that removes the wrong node.
+  // A refresh has no exit for a live error overlay (the overlay's teardown is
+  // keyed on the URL changing, and a same-url refresh never changes it), so the
+  // client takes one down before re-rendering. BEFORE, not after: a render that
+  // fails again pushes a fresh frame DURING it, and dismissing afterwards would
+  // wipe that legitimately-new overlay.
+  const dismissAt = clientSrc.indexOf('dismissDevOverlay();');
+  const refreshAt = clientSrc.indexOf('refresh(verdict).then');
+  assert.notEqual(dismissAt, -1, 'the refresh path dismisses a live error overlay');
+  assert.notEqual(refreshAt, -1, 'and the refresh call is present at all');
+  assert.ok(dismissAt < refreshAt, 'the dismiss happens BEFORE the re-render, not after it');
   assert.match(clientSrc, /function refreshStyles/, 'the stylesheet re-request ships in the client (#967 regenerate runs ON REQUEST)');
   assert.match(clientSrc, /^\s*refreshStyles\(\);$/m, 'and an applied refresh actually calls it');
   // The verdict parser ships too, so an unparseable frame resolves to reload
