@@ -198,11 +198,17 @@ jobs:
       # replays the retained dev error frame with its own code (node writes into
       # a node:http res, Bun enqueues into a ReadableStream controller), so the
       # frame's new url field has to be proven on both (#1047).
-      - name: webjs dev extra-watch + reload-retry + overlay-scope on Bun
+      # dev-public-before-warm rides here too: the #1397 hoist serves /public/*
+      # ahead of ensureReady() in dev, and the two listener shells reach
+      # handle() differently (the Bun shell may rebuild the Request and
+      # classifies the body through readBufferedOrStream), so the ordering has
+      # to be proven on both.
+      - name: webjs dev extra-watch + reload-retry + overlay-scope + public-before-warm on Bun
         run: |
           bun test/bun/dev-extra-watch.mjs
           bun test/bun/dev-reload-retry.mjs
           bun test/bun/dev-overlay-scope.mjs
+          bun test/bun/dev-public-before-warm.mjs
       # The app-source deploy signal (#899) is derived from an fs source walk +
       # a node:crypto digest, so it must be byte-identical on the Bun.serve path.
       - name: App-source deploy signal on Bun
@@ -295,6 +301,14 @@ jobs:
       # path under `npm test`.
       - name: webjs SQLite busy_timeout on Bun
         run: bun test/bun/sqlite-busy-timeout.mjs
+      # Vendor specifier scan on Bun (#1399): the importmap is now derived by
+      # walking the module graph from the browser-bound entries, so an app
+      # scaffolded with `--runtime bun` runs the whole analysis under Bun. A set
+      # that drifted between runtimes would serve a Bun author a different
+      # importmap from the same source. Also asserts the runtime set stays a
+      # subset of the pin set, the relation pinned/unpinned parity rests on.
+      - name: Vendor specifier scan on Bun
+        run: bun test/bun/vendor-scan.mjs
       # The Bun test MATRIX (#509): run the runtime-sensitive node:test suite
       # (core + server + cross-package test/) under Bun, file by file, classifying
       # each result. Documented Node-only files + Bun-test-runner-quirk files are

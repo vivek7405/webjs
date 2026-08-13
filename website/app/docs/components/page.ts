@@ -19,6 +19,21 @@ export default function Components() {
       <li><strong>Talk to an ancestor with a bubbling event, and to a stranger with a module-scope signal.</strong> A made-up event name on <code>document</code> is a global variable with extra steps.</li>
     </ul>
 
+    <h2>How big should a component be?</h2>
+    <p>The rules above say what must not be split apart. They do not say how much to pull in, and read alone they push one way only, since there is always more surrounding markup a component could render. The stopping rule: <strong>a component owns the markup its own behaviour reads or writes.</strong> Static markup that no handler touches, no state change re-renders, and no template hole depends on belongs to the page.</p>
+    <p>This is a byte-cost rule rather than a taste one. A page never hydrates, so markup it renders is free in the browser. Markup a component renders is not: the module is fetched, <code>@webjsdev/core</code> comes with it, and on upgrade the component re-renders that subtree. Moving static markup across the boundary turns free HTML into shipped JavaScript that rebuilds what the server already sent.</p>
+    <code-block>&lt;!-- app/products/[id]/page.ts: the page keeps the static markup --&gt;
+&lt;article&gt;
+  &lt;h1&gt;\${product.name}&lt;/h1&gt;
+  &lt;spec-table .rows=\${product.specs}&gt;&lt;/spec-table&gt;
+
+  &lt;add-to-cart product-id=\${product.id}&gt;&lt;/add-to-cart&gt;
+
+  &lt;review-list .reviews=\${product.reviews}&gt;&lt;/review-list&gt;
+&lt;/article&gt;</code-block>
+    <p>Only <code>&lt;add-to-cart&gt;</code> ships. <code>&lt;spec-table&gt;</code> and <code>&lt;review-list&gt;</code> are display-only, so the framework elides them and the browser fetches neither. Wrapping the whole article in a <code>&lt;product-page&gt;</code> component would ship all three, because a component rendered by a component that ships can no longer be elided. The cost of an oversized island is therefore not linear in what you moved.</p>
+    <p>To check a component you are about to write, walk its template and ask of each element whether a handler touches it, a state change alters it, or it sits in a template hole. If all three are no, that element is a passenger. A template that is mostly passengers wants splitting. The exception is markup that is static today but is what a near-term behaviour will read, since the alternative is a component that reaches outward for it later. When ownership and bytes genuinely collide, ownership wins.</p>
+
     <h2>The WebComponent Base Class</h2>
     <p>Every interactive component extends <code>WebComponent</code>, declares its <strong>property map</strong> by passing a shape into the base-class factory (<code>extends WebComponent({ ... })</code>, and optionally <code>static styles</code> for shadow-DOM components), implements <code>render()</code>, and registers itself by passing a hyphenated tag name to <code>ClassName.register('tag-name')</code>. The tag name is an argument to <code>.register()</code>, not a static field.</p>
 

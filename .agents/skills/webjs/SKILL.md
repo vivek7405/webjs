@@ -24,6 +24,8 @@ WebJs is an AI-first, web-components-first framework with **no build step**: sou
 
 **Progressive enhancement is the default architecture.** With JS off, content reads, `<a>` navigates, and a `<form action=${importedAction}>` submits to its server action. JS is opt-in per interactive behaviour. Never write a first paint that depends on hydration.
 
+**Islands, and why their size is a decision.** A WebJs page is server-rendered HTML with small interactive components embedded in it, each hydrating on its own when the browser upgrades its tag. That is the islands model, and what makes it pay is that the sea is free: static markup a page renders costs the browser nothing, because a page never hydrates. So an island is not a unit of code organisation, it is a unit of shipped JavaScript, and it should wrap the interactive part and stop. Absorbing a page's static markup into a component to keep things tidy converts free HTML into shipped JavaScript, and it takes every display-only child down with it, because a component rendered by a component that ships can no longer be elided. Size the island to the behaviour, not to the section of the design it happens to sit in. `references/components.md` has the stopping rule and a worked before/after.
+
 ## When To Use This Skill
 
 - New features or refactors touching pages, routes, actions, components, data, auth, sessions, styling, or tests
@@ -67,7 +69,7 @@ Common bundles:
 2. **Start from the server.** Add the page/route and its server action or query before wiring interactive UI. A page render or a `<form>` POST should already return correct HTML before any component hydrates.
 3. **Put code in the narrowest owner.** Route-local first (`modules/<feature>/`), promote to `lib/` or `components/` only when reuse is real.
 4. **Keep server-only code behind `.server.ts`.** The DB driver, secrets, and `node:*` never belong in a page, layout, or component.
-5. **Add interactivity per behaviour.** Reach for a component (and a signal or `@event`) only where the UI is genuinely interactive. A display-only component is elided from the browser.
+5. **Add interactivity per behaviour.** Reach for a component (and a signal or `@event`) only where the UI is genuinely interactive. A display-only component is elided from the browser. Then wrap the interactive part and STOP: the static markup around it stays in the page, where it costs nothing.
 6. **Validate input at the boundary.** Declare `export const validate` on an action; the RPC and `route()` boundaries run it.
 7. **Default mutations to optimistic UI** where the client can predict the result (`optimistic()` from `@webjsdev/core`).
 8. **Type every boundary from its source, never `unknown` or `any`.** The row type comes from the schema (`typeof todos.$inferSelect`), the action's input from a named `interface` and its result from `ActionResult<T>`, the routing files from `PageProps` / `LayoutProps` / `RouteHandlerContext`. `unknown` belongs on a payload nothing has vouched for yet that the next line narrows, and on a parameter of your own helper that forwards into an `html` template hole. Everywhere else, including a layout's `children`, it is a missing type. See `references/typescript.md`.
@@ -232,6 +234,7 @@ Success is a 303 (PRG); failure re-renders the page at 422 with the result on `a
 ## Common Mistakes To Avoid
 
 - Treating a page or layout like a React component and expecting its markup to hydrate. It runs server-only; put interactivity in a component.
+- Promoting a whole page section to a component so that one control inside it can be interactive. The island should wrap the control and the state it reads. An oversized island ships its own JS AND un-elides every display-only component inside it, so the cost is not linear in what you moved.
 - Importing a `.server.ts` utility (no `'use server'`) directly into a shipping component. Its browser stub throws at load; reach it through a `'use server'` action.
 - Using a `static properties` block or a class-field initializer for reactive props instead of the `WebComponent({ ... })` factory.
 - Quoting an event / property / boolean hole (`@click="${fn}"`).

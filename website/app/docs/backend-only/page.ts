@@ -90,7 +90,7 @@ export async function DELETE(req: Request, { params }: { params: { id: string } 
 
     <h2>Middleware for Auth, CORS, Rate Limiting</h2>
     <p>Middleware works identically in backend-only mode. Place <code>middleware.ts</code> files at the root or in any segment directory:</p>
-    <code-block>// middleware.ts (root): logging for every request
+    <code-block>// middleware.ts (root): logging for every app request
 export default async function logger(
   req: Request,
   next: () =&gt; Promise&lt;Response&gt;,

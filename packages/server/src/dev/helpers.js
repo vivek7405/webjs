@@ -4,7 +4,6 @@ import { stat } from 'node:fs/promises';
 import { fileURLToPath } from 'node:url';
 import { createRequire } from 'node:module';
 import { withBasePath } from '../base-path.js';
-import { reachableFromEntries } from '../module-graph.js';
 import { isCompressible, negotiateEncoding, createCompressor, varyWithAcceptEncoding } from '../listener-core.js';
 
 /** @param {import('node:http').IncomingMessage} req @param {URL} url */
@@ -276,34 +275,6 @@ export function collectRouteModules(routeTable) {
   return [...mods];
 }
 
-export function computeBrowserBoundFiles(routeTable, moduleGraph, components, appDir) {
-  /** @type {Set<string>} */
-  const entries = new Set();
-  for (const page of routeTable.pages) {
-    if (page.file) entries.add(page.file);
-    for (const f of page.layouts || []) entries.add(f);
-    for (const f of page.errors || []) entries.add(f);
-    for (const f of page.loadings || []) entries.add(f);
-    for (const f of page.forbiddens || []) entries.add(f);
-    for (const f of page.unauthorizeds || []) entries.add(f);
-  }
-  if (routeTable.notFound) entries.add(routeTable.notFound);
-  if (routeTable.notFounds) {
-    for (const f of routeTable.notFounds.values()) entries.add(f);
-  }
-  if (routeTable.globalError) entries.add(routeTable.globalError);
-  if (routeTable.globalNotFound) entries.add(routeTable.globalNotFound);
-  // instrumentation-client is browser-bound (imported first in the boot), so it
-  // must be servable through the gate.
-  if (routeTable.instrumentationClient) entries.add(routeTable.instrumentationClient);
-  // Lazy components live in the registry but no page imports their
-  // class directly; the lazy-loader fetches their module URLs on
-  // viewport entry. Add every discovered component file as an entry so
-  // the graph walk covers both eager and lazy paths.
-  for (const c of components) entries.add(c.file);
-  return reachableFromEntries(moduleGraph, [...entries], appDir);
-}
-
 /**
  * List the app's top-level source directory names, for expanding a `#*`
  * catch-all import alias into one browser importmap prefix scope per dir (#555).
@@ -405,6 +376,7 @@ export function reloadClientJs(bp) {
   const versionUrl = JSON.stringify(withBasePath('/__webjs/version', bp));
   return `// webjs dev reload client
 ${DEV_OVERLAY_SRC}
+${RELOAD_WORKER_SRC}
 function __webjsApplyError(data) {
   let f; try { f = JSON.parse(data); } catch (_) { return; }
   renderDevOverlay(f);
@@ -433,18 +405,37 @@ function __webjsReloadWhenReady() {
   attempt();
 }
 function __webjsDirectEvents() {
-  // Same restart-reload as the SharedWorker relay (#893), for the per-tab
-  // fallback: the hello frame carries the server's per-process boot id, so a
-  // CHANGED id on reconnect means a real restart (reload), while a transient
-  // reconnect to the same process keeps the id (no spurious reload).
-  var lastBoot = null;
-  const es = new EventSource(${eventsUrl});
-  es.addEventListener('hello', (e) => {
-    if (lastBoot !== null && e.data !== lastBoot) __webjsReloadWhenReady();
-    lastBoot = e.data;
-  });
-  es.addEventListener('reload', () => __webjsReloadWhenReady());
-  es.addEventListener('webjs-error', (e) => __webjsApplyError(e.data));
+  // No SharedWorker (Chrome for Android has none) or its construction threw (a
+  // strict dev CSP with no worker-src). Run the SAME relay here in the tab over
+  // a shim port instead of a second copy of the boot-id rule (#887, #893) and
+  // the reload debounce (#1397). The shim scope has no setTimeout, so the relay
+  // picks up the tab's own timers.
+  const scope = {};
+  startReloadWorker(scope, EventSource, ${eventsUrl});
+  scope.onconnect({ ports: [{ start() {}, postMessage(m) {
+    // Nothing may throw out of here, and nothing may be silently dropped.
+    //
+    // The relay's fanout deletes a port whose postMessage throws, which is the
+    // right read for a REAL MessagePort (a throw there means the tab is gone)
+    // and the wrong one for this shim, whose postMessage runs application code
+    // synchronously: an overlay render that threw would permanently
+    // unsubscribe this tab and silently kill live reload for the rest of the
+    // page's life. So the throw is contained here.
+    //
+    // Contained, NOT swallowed, and the difference matters. The old fallback
+    // attached to the EventSource directly, where a handler throw detached
+    // nothing but still reached the console, and so does a throw out of the
+    // SharedWorker path's onmessage below. Only the DETACHMENT is being
+    // prevented; discarding the error would make this the one path where a
+    // dev-overlay bug leaves no trace, which would be a new behaviour rather
+    // than a restored one.
+    try {
+      if (m.type === 'reload') __webjsReloadWhenReady();
+      else if (m.type === 'webjs-error') __webjsApplyError(m.data);
+    } catch (_) {
+      console.error('[webjs] dev reload handler threw', _);
+    }
+  } }] });
 }
 try {
   if (typeof SharedWorker !== 'undefined') {

@@ -53,10 +53,13 @@ if (!existsSync(join(root, 'app/features'))) {
 
 // 1) Gallery route trees + example metadata routes. `app/api/auth` is the auth
 // card's createAuth handler (it lives at the app root, not under app/features/,
-// because createAuth hardcodes /api/auth/*), and `test/auth` is the auth card's
-// request-pipeline test, so both are removed here alongside the card.
+// because createAuth hardcodes /api/auth/*), and `test/auth` + `test/rate-limit`
+// are card-owned request-pipeline tests, so they are removed alongside their
+// cards. A card that ships a test under test/ MUST be listed here: the prune
+// below only removes test/ once it is EMPTY, so a missed entry silently leaves
+// the reset app with a test suite for a card it no longer has.
 const galleryPaths = [
-  'app/features', 'app/examples', 'app/sitemaps', 'app/api/auth', 'test/auth',
+  'app/features', 'app/examples', 'app/sitemaps', 'app/api/auth', 'test/auth', 'test/rate-limit',
   'app/icon.ts', 'app/apple-icon.ts', 'app/manifest.ts', 'app/opengraph-image.ts',
   'app/twitter-image.ts', 'app/robots.ts', 'app/sitemap.ts',
   'app/global-error.ts', 'app/global-not-found.ts',

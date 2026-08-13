@@ -1,5 +1,5 @@
 /**
- * Global middleware. Runs on every request before webjs routes it.
+ * Global middleware. Runs on every app request before WebJs routes it.
  * Return a Response to short-circuit; call next() to continue.
  *
  * To add framework sessions:

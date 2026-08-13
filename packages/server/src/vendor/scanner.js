@@ -1,4 +1,8 @@
 import { readFile, readdir } from 'node:fs/promises';
+import { buildModuleGraph, reachableBareSpecifiers } from '../module-graph.js';
+import { browserEntryFiles } from '../browser-entries.js';
+import { scanComponents } from '../component-scanner.js';
+import { buildRouteTable } from '../router.js';
 import { join } from 'node:path';
 
 /**
@@ -149,34 +153,75 @@ async function walk(dir, found, skipFiles) {
 }
 
 /**
- * Scan source files under `dir` for bare import specifiers reachable
- * from the browser. Returns a Set of package names.
+ * Bare npm specifiers that could reach the browser, filtered of the framework
+ * packages that must never be vendored.
  *
- * Excludes:
- *   - `node_modules`, `.webjs`, `public` directories
- *   - Any directory starting with `_` (webjs `_private/` convention)
- *   - `test/` and `tests/` (server-only by WebJs convention)
- *   - Files whose name marks them as server-only:
- *       * `*.server.{js,ts,mjs,mts}` (path-level boundary)
- *       * `route.{js,ts,mjs,mts}` (file-router HTTP handler)
- *       * `middleware.{js,ts,mjs,mts}` (file-router middleware)
- *   - Any file whose first non-whitespace content is `'use server'`
- *   - `import type` statements (TypeScript erases them at compile time)
- *   - `import` strings inside `/* … *​/` block comments or `//` line comments
+ * The scan is ROOTED IN THE MODULE GRAPH, not in a filesystem walk. Only files
+ * reachable from a browser-bound entry (page / layout / error / loading /
+ * not-found / forbidden / unauthorized / instrumentation-client / any
+ * component) contribute, which is the same authorization gate the dev server
+ * uses to decide what it will serve at all. A file nothing imports contributes
+ * nothing, so a build script under `scripts/`, a tooling config, a test helper
+ * and an unreferenced module all drop out by reachability rather than by name
+ * (there is no exclusion LIST any more, which is the point: the old one was
+ * open-ended and went stale).
  *
- * @param {string} dir
+ * Excluded on top of unreachability:
+ *   - `.server.{js,ts,mjs,mts}` files. They are REACHED (the browser fetches an
+ *     RPC or throw-at-load stub at that URL) but their source never ships, so
+ *     their bare imports must not enter the importmap.
+ *   - `@webjsdev/core` and its subpaths (BUILTIN, served locally).
+ *   - `@webjsdev/cli` / `@webjsdev/server` / `@webjsdev/mcp` (#713).
+ *   - `import type` statements and any `import` written inside a comment,
+ *     string, template literal or regex body. Both come free from the module
+ *     graph's blanked-mask scanner (#753 / #805); this function no longer has
+ *     a scanner of its own.
+ *
+ * This is the OUT-OF-PROCESS entry point (`pinAll`, `webjs doctor`). It builds
+ * its own graph, route table and component scan, roughly 70-200ms on the
+ * in-repo apps, and applies NO elision pruning, so the result is a SUPERSET of
+ * what the running server serves. That superset relation is what lets
+ * `prunePinToReachable` intersect a committed pin down to the runtime answer
+ * (#197). The dev server calls `reachedBareImports` instead, with the graph it
+ * already has and its elision skip set.
+ *
+ * @param {string} appDir
  * @returns {Promise<Set<string>>}
  */
-export async function scanBareImports(dir, skipFiles) {
-  /** @type {Set<string>} */
-  const found = new Set();
-  await walk(dir, found, skipFiles);
+export async function scanBareImports(appDir) {
+  let graph, components, routeTable;
+  try {
+    graph = await buildModuleGraph(appDir);
+    components = await scanComponents(appDir);
+    routeTable = await buildRouteTable(appDir);
+  } catch {
+    // An app the analysis cannot process yields no vendor specifiers rather
+    // than a throw, matching how check.js and elision-report.js degrade. The
+    // dev server surfaces the real problem.
+    return new Set();
+  }
+  return reachedBareImports(graph, [...browserEntryFiles(routeTable, components)], appDir);
+}
+
+/**
+ * The in-process form: the caller already has a module graph, the entry set,
+ * and (on the runtime path) the elision skip set. Used by the dev server so a
+ * vendor resolve does not rebuild analysis it just built.
+ *
+ * @param {import('./module-graph.js').ModuleGraph} graph
+ * @param {string[]} entryFiles
+ * @param {string} appDir
+ * @param {Set<string>} [skip]  elided / inert / import-only modules
+ * @returns {Set<string>}
+ */
+export function reachedBareImports(graph, entryFiles, appDir, skip) {
+  const found = reachableBareSpecifiers(graph, entryFiles, appDir, skip);
   for (const b of BUILTIN) found.delete(b);
-  // Drop server-only framework packages (and their subpaths) so they never
-  // reach the importmap / jspm path (#713).
+  // Drop core subpaths (served locally via `/__webjs/core/*`) and server-only
+  // framework packages (#713) so neither reaches the importmap / jspm path.
   for (const spec of found) {
     const p = extractPackageName(spec);
-    if (p && FRAMEWORK_SERVER_ONLY.has(p)) found.delete(spec);
+    if (p && (BUILTIN.has(p) || FRAMEWORK_SERVER_ONLY.has(p))) found.delete(spec);
   }
   return found;
 }

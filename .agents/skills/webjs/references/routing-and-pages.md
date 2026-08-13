@@ -18,6 +18,30 @@ Pages and layouts run **only on the server** to produce HTML. They do NOT hydrat
 
 `route.ts` is the one routing file that is NOT isomorphic: a server-only HTTP handler, never shipped to the client.
 
+### How much of the page belongs in the component
+
+"Put every interactive behaviour in a component" is not "put the section containing it in a component". Because a page never hydrates, the markup it renders costs the browser nothing, so a page that keeps its static content and delegates only the interactive fragment is both the cheapest and the conventional shape:
+
+```ts
+// app/products/[id]/page.ts
+export default async function Product({ params }: PageProps<'/products/[id]'>) {
+  const product = await getProduct(params.id);
+  return html`
+    <article>
+      <h1>${product.name}</h1>
+      <p>${product.description}</p>
+      <spec-table .rows=${product.specs}></spec-table>
+
+      <add-to-cart product-id=${product.id}></add-to-cart>
+
+      <review-list .reviews=${product.reviews}></review-list>
+    </article>
+  `;
+}
+```
+
+Only `<add-to-cart>` ships. `<spec-table>` and `<review-list>` are display-only, so the framework elides them and the browser fetches neither. Wrapping the whole article in a `<product-page>` component to "own the page" would ship all three, because a component rendered by a component that ships can no longer be elided. The sizing rule and a before/after are in `components.md` under "Sizing an island".
+
 ## Pages (`app/**/page.ts`)
 
 The default export is a possibly-async function receiving `{ params, searchParams, url, actionData }`. It returns a `TemplateResult`; it never calls `render()` itself.

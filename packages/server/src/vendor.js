@@ -44,7 +44,7 @@
  * @module vendor
  */
 
-export { scanBareImports, extractPackageName } from './vendor/scanner.js';
+export { scanBareImports, reachedBareImports, extractPackageName } from './vendor/scanner.js';
 export { getPackageVersion, getPackageManifest } from './vendor/manifest.js';
 export { SUPPORTED_PROVIDERS, normalizeProvider } from './vendor/providers.js';
 export { sha384Integrity, satisfiesSemverRange } from './vendor/integrity.js';

@@ -64,7 +64,7 @@ const REASONS = [
   },
   {
     title: 'No training data required',
-    body: 'An agent does not need to have seen WebJs before. It fits the framework source into its context window, learns the real API from the code, and starts producing correct output. New model, same result, because the source is the documentation.',
+    body: 'An agent does not need to have seen WebJs before. It opens the file it is calling in node_modules, learns the real API from the code, and starts producing correct output. New model, same result, because the source is the documentation.',
   },
   {
     title: 'Standard HTML and JavaScript',
@@ -72,10 +72,12 @@ const REASONS = [
   },
 ];
 
-// What comes back from the one-sentence prompt. These are the four things the
+// What comes back from the one-sentence prompt. These are the things the
 // prompt would otherwise have had to specify, so each must stay a genuine
 // DEFAULT of the framework or of what `webjs create` scaffolds. If one ever
 // becomes something the prompt has to request, the section's claim is gone.
+// Keep the count EVEN: the grid is two columns at xs and up, so an odd entry
+// leaves an empty cell painted in the grid's border colour.
 const ARRIVES = [
   {
     title: 'Architecture',
@@ -83,7 +85,11 @@ const ARRIVES = [
   },
   {
     title: 'Code',
-    body: 'Server-rendered pages that work before any script loads, and no build step in between. Types run the whole way through, so a server function keeps its argument and return types at the call site and an agent has no reason to reach for any. Running webjs check catches what is outright wrong before it ships.',
+    body: 'Server-rendered pages that work before any script loads, and no build step in between. Running webjs check catches what is outright wrong before it ships, so a mistake surfaces as a failing command rather than as a bug a reader has to find.',
+  },
+  {
+    title: 'Type safety, end to end',
+    body: 'Types run the whole way through. A component importing a server function keeps that function\'s argument and return types at the call site, and a database row carries its schema type into the markup that renders it, with no code generation anywhere in between. An agent has no reason to reach for any.',
   },
   {
     title: 'Database',
@@ -92,6 +98,10 @@ const ARRIVES = [
   {
     title: 'Design system',
     body: 'A palette and a type scale ship as design tokens rather than values scattered through components, so every screen the app grows shares them and restyling the whole thing means editing the tokens, not hunting through the markup.',
+  },
+  {
+    title: 'Agent skills',
+    body: 'A scaffolded app ships a skill its coding agent reads on demand, covering the design system, the modules architecture, and the rest of the conventions. One source, understood by Claude Code, Cursor, Copilot, and opencode alike, so the agent looks up how this app is meant to be built instead of importing habits from another framework.',
   },
 ];
 
@@ -106,10 +116,10 @@ export default function Why() {
       <p class="text-lede leading-[1.6] text-fg-muted max-w-[56ch] mx-auto mb-8 text-pretty">
         WebJs is a full-stack JavaScript framework with no build step, so
         nothing is hidden from your agent. The framework ships in node_modules as
-        plain JavaScript it can read end to end, and your app code is served to
-        the browser exactly as written. Any model reasons about the whole stack
-        and debugs it, with no training data required and no single blessed
-        model, on the web components and standard HTML every model already knows.
+        plain JavaScript, so an agent opens the file it is calling instead of
+        recalling an API from training data, and your app code is served to the
+        browser exactly as written. Any model debugs the running app against the
+        real source, on the web components and standard HTML it already knows.
       </p>
       <div class="flex gap-3 justify-center flex-wrap mb-8">
         <a class=${BTN_PRIMARY} href=${DOCS_START_PATH}>
@@ -130,7 +140,8 @@ export default function Why() {
           <p class="text-fg-muted text-base leading-[1.6] m-0">
             No build step means two things, and both help your agent. The
             framework itself sits in node_modules as plain JavaScript with JSDoc,
-            so an agent reads it end to end and fits it into context. And your own
+            so an agent opens the file it needs at the version you installed,
+            rather than recalling an API from training data. And your own
             app code is served to the browser exactly as written, so the agent
             debugs the running app against the real source, never a bundled or
             minified artifact.
@@ -240,6 +251,17 @@ Counter.register('counter');
               <p class="m-0 text-sm leading-[1.65] text-fg-muted">${a.body}</p>
             </div>
           `)}
+        </div>
+        <div class="max-w-3xl mx-auto mt-8 text-center">
+          <p class="text-fg-muted text-base leading-[1.6] m-0">
+            Opinionated is the point, and none of it is a cage. Light DOM
+            components, Tailwind, and Drizzle on SQLite are what a scaffolded app
+            starts with, because something has to be chosen and leaving it open
+            is what pushed the decision into your prompt. Reach for a different
+            ORM, a different database, or a different way of styling and the
+            framework does not object. What you are opting out of is a default,
+            never a dependency the rest of it is built on.
+          </p>
         </div>
       </div>
     </section>

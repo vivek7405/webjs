@@ -91,6 +91,16 @@ const FAQ = [
       'Full-stack web applications with server-rendered pages, file-based routing, server actions, sessions, authentication, caching, rate limiting, WebSockets, and a database layer. It also runs backend-only as an HTTP and JSON API framework if you skip pages entirely.',
   },
   {
+    question: 'Is WebJs tied to Tailwind and Drizzle?',
+    answer:
+      'No. A scaffolded app arrives wired to Tailwind for styling, Drizzle with SQLite for data, light DOM components, and design tokens, because an agent building your app should not have to stop and ask. Those are defaults rather than requirements. Bring a different ORM, a different database, or a different way of styling and the framework does not object, since none of the routing, rendering, or server-action machinery depends on any of them.',
+  },
+  {
+    question: 'Does WebJs give you full-stack type safety?',
+    answer:
+      'Yes, and without a code generation step. A component imports a server action through an ordinary import, so the call site keeps that function\'s real argument and return types, and a database row carries its schema type from Drizzle through the action into the markup that renders it. Because types are stripped at request time rather than compiled, the types you read in the editor describe the code that actually runs.',
+  },
+  {
     question: 'How do you install WebJs?',
     answer:
       'Run npm create webjs@latest my-app to scaffold a full-stack application, then npm run dev to start it. The scaffold includes routing, a database layer, and a styled layout, so the app is production-shaped from the first command.',
@@ -168,7 +178,7 @@ const PROSE = 'text-fg-muted text-base leading-[1.7] m-0';
 // "and what does it actually give me", in concrete nouns rather than adjectives.
 const CAPABILITIES = [
   {
-    title: 'AI-first, readable end to end',
+    title: 'AI-first, one route at a time',
     body: 'Predictable file conventions and an explicit .server.ts boundary decide the shape of an app, so an agent edits one route without reading the whole app, and Build me an app is the whole prompt. Every app ships an AGENTS.md contract that Claude Code, Cursor, Copilot, Gemini, and opencode read from one source, and the framework itself is plain JavaScript with JSDoc in node_modules rather than a compiled bundle.',
   },
   {
@@ -181,7 +191,7 @@ const CAPABILITIES = [
   },
   {
     title: 'Server actions with real types',
-    body: 'Export an async function from a .server.ts file and import it straight into a component. The import becomes a typed RPC call, and the wire preserves Date, Map, Set, BigInt, Blob, File, FormData, and reference cycles. The server source never reaches the browser.',
+    body: 'Export an async function from a .server.ts file and import it straight into a component. The import becomes a typed RPC call, so the argument and return types cross the boundary with it and a database row keeps its schema type the whole way into the markup, with nothing generated in between. The wire preserves Date, Map, Set, BigInt, Blob, File, FormData, and reference cycles, and the server source never reaches the browser.',
   },
   {
     title: 'Batteries included',
@@ -235,11 +245,11 @@ export default function WhatIsWebJs() {
         </p>
         <p class="text-base leading-[1.7] text-fg-muted max-w-[56ch] mx-auto mb-8 text-pretty">
           Nothing is hidden from your agent. The framework ships in node_modules as plain
-          JavaScript it can read end to end, and your app code is served to the browser
-          exactly as written. Any model
-          reasons about the whole stack and debugs it, with no training data required and no
-          single blessed model, on the web components and standard HTML every model already
-          knows.
+          JavaScript, so an agent opens the router or the renderer it is calling instead of
+          recalling an API from training data, and your app code is served to the browser
+          exactly as written. Any model debugs the running app against the real source, with
+          no single blessed model, on the web components and standard HTML every model
+          already knows.
         </p>
         <div class="flex gap-3 justify-center flex-wrap mb-8">
           <a class=${BTN_PRIMARY} href=${DOCS_START_PATH}>

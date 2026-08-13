@@ -15,12 +15,13 @@ import { ensureStripper } from '../ts-strip.js';
 import { defaultLogger } from '../logger.js';
 import { assertNodeVersion } from '../node-version.js';
 import { applyEnvValidation } from '../env-schema.js';
-import { runInstrumentation, findInstrumentationClient } from '../instrumentation.js';
+import { runInstrumentation } from '../instrumentation.js';
 import { withRequest, setCspNonce, setBodyLimits, setRequestId, requestId as getRequestId } from '../context.js';
 import { buildInfoResponse } from '../build-info.js';
 import { mintNonce, buildCspHeader, cspHeaderName } from '../csp.js';
 import { propagateTrustedRemoteIp } from '../rate-limit.js';
-import { scanBareImports, resolveVendorImports, clearVendorCache, hasVendorPin, readPinFile, prunePinToReachable } from '../vendor.js';
+import { reachedBareImports, resolveVendorImports, clearVendorCache, hasVendorPin, readPinFile, prunePinToReachable } from '../vendor.js';
+import { browserEntryFiles } from '../browser-entries.js';
 import { buildModuleGraph, seenFilesFor, appImportsMap } from '../module-graph.js';
 import { primeComponentRegistry, findOrphanComponents, scanComponents } from '../component-scanner.js';
 import { analyzeElision } from '../component-elision.js';
@@ -54,10 +55,10 @@ import {
 } from './config.js';
 import {
   exists, kebab, resolveRequestId, shouldAccessLog, loadAppEnv, collectRouteModules,
-  computeBrowserBoundFiles, appTopLevelDirs, locateCoreDir, reloadClientJs, reloadWorkerJs,
+  appTopLevelDirs, locateCoreDir, reloadClientJs, reloadWorkerJs,
 } from './helpers.js';
 import {
-  handleCore, loadMiddleware, tryServeFrameworkStatic,
+  handleCore, loadMiddleware, tryServeFrameworkStatic, tryServePublicAsset,
 } from './serve.js';
 
 /**
@@ -180,7 +181,6 @@ export async function createRequestHandler(opts) {
   }
 
   const routeTable = await buildRouteTable(appDir);
-  routeTable.instrumentationClient = await findInstrumentationClient(appDir);
   // Auto-linked favicons: tell the head builder which icon metadata routes
   // exist, so `app/icon.*` is linked when the app declares no metadata.icons.
   // Bound here rather than threaded through ssrOpts, matching
@@ -222,6 +222,10 @@ export async function createRequestHandler(opts) {
     elidableComponents: new Set(),
     inertRouteModules: new Set(),
     importOnlyRouteModules: new Map(),
+    // The browser-bound ENTRY files (pages / layouts / boundaries / components),
+    // kept alongside the expanded gate set because the vendor scan roots at the
+    // entries rather than at the closure.
+    browserEntryFiles: new Set(),
     browserBoundFiles: null,
     tsCache: new Map(),
     lastDevError: null,
@@ -284,7 +288,8 @@ export async function createRequestHandler(opts) {
             const components = await scanComponents(appDir);
             await primeComponentRegistry(appDir, components);
             t.scan = now() - m; m = now();
-            state.browserBoundFiles = computeBrowserBoundFiles(state.routeTable, state.moduleGraph, components, appDir);
+            state.browserEntryFiles = browserEntryFiles(state.routeTable, components);
+            state.browserBoundFiles = reachableFromEntries(state.moduleGraph, [...state.browserEntryFiles], appDir);
             t.gate = now() - m; m = now();
             state.actionIndex = await buildActionIndex(appDir, dev);
             t.actions = now() - m; m = now();
@@ -390,7 +395,10 @@ export async function createRequestHandler(opts) {
     if (vendorResolveInFlight) return vendorResolveInFlight;
     vendorResolveInFlight = (async () => {
       try {
-        const scan = () => scanBareImports(appDir, new Set([...state.elidableComponents, ...state.inertRouteModules, ...state.importOnlyRouteModules.keys()]));
+        const scan = async () => {
+          const skip = new Set([...state.elidableComponents, ...state.inertRouteModules, ...state.importOnlyRouteModules.keys()]);
+          return reachedBareImports(state.moduleGraph, [...state.browserEntryFiles], appDir, skip);
+        };
         const v = await resolveVendorImports(appDir, scan);
         let { imports, integrity } = v;
         if (bootVendorPinned) {
@@ -440,7 +448,6 @@ export async function createRequestHandler(opts) {
 
   async function doRebuild() {
     state.routeTable = await buildRouteTable(appDir);
-    state.routeTable.instrumentationClient = await findInstrumentationClient(appDir);
     // Adding or deleting app/icon.* changes whether the head auto-links it.
     setMetadataIconRoutes(state.routeTable.metadataRoutes);
     if (dev) void emitRouteTypes();
@@ -660,6 +667,26 @@ export async function createRequestHandler(opts) {
 
     const earlyStatic = await tryServeFrameworkStatic(path, req.method.toUpperCase(), { coreDir, appDir, dev, versioned: url.searchParams.has('v') });
     if (earlyStatic) return earlyStatic;
+
+    // `/public/*` needs neither the module graph nor the vendor importmap, so
+    // in DEV serve it here rather than behind the analysis (#1397). A cold
+    // `/public/tailwind.css` measured 1907ms at 4a335549, of which 1900ms was
+    // `ensureReady()`, which is why the stylesheet is the request most exposed
+    // to the next `node --watch` restart. DEV ONLY on purpose: in prod
+    // `/__webjs/ready` already holds traffic off a cold instance until the
+    // analysis and the first vendor attempt have both completed, and hoisting
+    // there would silently un-gate a `/public/*` file that an app middleware
+    // protects. The consequence in dev is that root middleware does not run
+    // for these paths, the same trade the framework statics above already make
+    // in both modes. `state.regenerateRules` is loaded at boot inside
+    // createRequestHandler, so the #967 on-request rebuild is available here,
+    // ahead of ensureReady.
+    if (dev) {
+      const publicResp = await tryServePublicAsset(path, {
+        appDir, dev, versioned: url.searchParams.has('v'), regenerateRules: state.regenerateRules,
+      });
+      if (publicResp) return publicResp;
+    }
 
     // Build all whole-app analysis on the first request (memoized), before
     // any SSR, module serve, gate check, action dispatch, or middleware runs.

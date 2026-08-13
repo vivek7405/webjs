@@ -1,6 +1,6 @@
 {
   "name": "@webjsdev/server",
-  "version": "0.8.61",
+  "version": "0.8.63",
   "type": "module",
   "description": "The server for WebJs, a full-stack JavaScript framework built on web components with server-side rendering and no build step. Provides the file-based router, SSR, server actions, route handlers, middleware, and live reload on Node 24+ or Bun.",
   "main": "index.js",
@@ -28,7 +28,7 @@
     "README.md"
   ],
   "dependencies": {
-    "@webjsdev/core": "^0.7.49",
+    "@webjsdev/core": "^0.7.50",
     "ws": "^8.20.0"
   },
   "publishConfig": {

@@ -101,6 +101,44 @@ NavDrawer.register('nav-drawer');
 
 This repo's own website is the worked example. Before commit `b80de906` the docs drawer and the header menu were exactly the first shape, and every accessibility bug their tests now pin came out of the split. `website/components/docs-drawer.ts` and `website/components/site-nav-menu.ts` are the second shape, and `website/AGENTS.md` records the app-level version of these rules under "What stays inline script in the root layout".
 
+## Sizing an island: own the behaviour, not the section
+
+The ownership rules above answer "what must not be split apart". They do NOT answer "how much to pull in", and read alone they push in one direction only: rule 1 says that if you are reaching for a selector, write the component that renders that markup instead. Applied without a stopping rule, that argument never terminates, because there is always more surrounding markup a component could render.
+
+Here is the stopping rule. **A component owns the markup its own behaviour reads or writes.** Static markup that no handler touches, no state change re-renders, and no template hole depends on belongs to the page, not to the island.
+
+This is a byte-cost rule, not a taste one. A page never hydrates, so markup it renders is free in the browser. Markup an island renders is not: the island's module is fetched, `@webjsdev/core` comes with it, and on upgrade the component re-renders, replacing the server's DOM for that subtree. Moving static markup across that boundary converts free HTML into shipped JavaScript that reproduces markup the server already sent.
+
+```ts
+// TOO BIG. One button's worth of behaviour, a whole page's worth of markup.
+class ProductPage extends WebComponent({ product: prop<Product>(Object) }) {
+  render() {
+    return html`
+      <h1>${this.product.name}</h1>
+      <p>${this.product.description}</p>
+      <spec-table .rows=${this.product.specs}></spec-table>
+      <button @click=${() => addToCart(this.product.id)}>Add to cart</button>
+      <review-list .reviews=${this.product.reviews}></review-list>
+    `;
+  }
+}
+```
+
+```ts
+// RIGHT SIZE. The page renders the static markup. The island is the button.
+class AddToCart extends WebComponent({ productId: String }) {
+  render() {
+    return html`<button @click=${() => addToCart(this.productId)}>Add to cart</button>`;
+  }
+}
+```
+
+The first version ships three modules instead of one: itself, plus `<spec-table>` and `<review-list>`, which were display-only and elidable until a shipping component rendered them (see "Display-only elision" below). The second ships one small module, and the heading, description, spec table, and reviews stay HTML the browser never pays for.
+
+**How to tell, on a component you are about to write.** Walk its template and ask of each element: does a handler in this class touch it, does a state or property change alter it, or does it sit in a template hole? If the answer is no for all three, that element is a passenger. A template that is mostly passengers is an island that wants splitting, and the split is usually "hoist the static markup back to the page and keep the interactive fragment".
+
+**The exception, and it is a real one.** Markup that is static *today* but is the thing a near-term behaviour will read is fine to keep, because the alternative is a component that reaches outward for it later, which is what rule 1 forbids. Judge the behaviour you are building, not one you are speculating about. When those genuinely collide, ownership wins over bytes: a coherent component that ships a little extra markup beats a split feature that a selector holds together.
+
 ## Reactive properties: the base-class factory
 
 Reactive properties are declared by passing their shape into `WebComponent({ ... })`. The types flow automatically to `this.<prop>`, so there is NO `static properties` block and NO `declare` line (a `static properties` block throws at runtime, caught by `no-static-properties`).
@@ -355,6 +393,8 @@ A component that does no client-side work renders the same SSR'd HTML with or wi
 - code that runs at module load (a top-level call, non-data `new`, dynamic `import(...)`, top-level `await`); only declarations and `X.register(...)` are allowed
 - the dynamic slot READ surface (`slotchange`, `assignedNodes` / `assignedElements` / `assignedSlot`); merely RENDERING a `<slot>` does not ship (the SSR output carries the placed children, so a display-only slotted wrapper is byte-identical without its JS; native-write liveness is consumer-driven and the consumer's tag reference forces the ship)
 - being rendered by a component that itself ships
+
+That last blocker is the one to DESIGN around rather than merely inspect, because it is the only one that is not about the component you are looking at. Elision propagates downward from whatever ships, so the size of your islands decides how much of the tree stays elidable. Ten display-only components rendered by a page are ten modules the browser never fetches. The same ten rendered by one oversized interactive wrapper all ship, and nothing about any of them changed. This is why "Sizing an island" above is a byte-cost rule and not a tidiness preference.
 
 A bare `async render()` (no other signal, light DOM) is elided too: the SSR'd data is the complete first paint. Force shipping with `static interactive = true` when interactivity is invisible to static analysis. `static shadow = true` always ships (Declarative Shadow DOM re-attaches only during parsing). Turn elision off app-wide with `{ "webjs": { "elide": false } }` or `WEBJS_ELIDE=0`.
 

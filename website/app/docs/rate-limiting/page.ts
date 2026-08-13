@@ -36,6 +36,7 @@ export default rateLimit({ window: '1m', max: 10 });</code-block>
       <li><code>max</code>: maximum requests per window. Default: <code>60</code>.</li>
       <li><code>key</code>: a string prefix or a function <code>(req) => string</code> that returns a unique key per client. Default: the framework-stamped socket IP, see <strong>Behind a proxy</strong> below.</li>
       <li><code>trustProxy</code>: when <code>true</code>, the default key resolution honours the leftmost <code>X-Forwarded-For</code> entry, then <code>CF-Connecting-IP</code>, then <code>X-Real-IP</code>, before falling back to the socket IP. Default: <code>false</code>. Inert while <code>WEBJS_NO_TRUST_PROXY=1</code> is set, which outranks it. See <strong>Behind a proxy</strong> below for the threat model.</li>
+      <li><code>clientIpHeader</code>: name the ONE forwarded header carrying the visitor, e.g. <code>'cf-connecting-ip'</code>. Requires <code>trustProxy: true</code>, and replaces the chain above rather than extending it. Usually required behind a CDN, see <strong>Behind a CDN, name the header</strong>.</li>
       <li><code>message</code>: error message in the 429 response body. Default: <code>'Too Many Requests'</code>.</li>
       <li><code>store</code>: override the cache store (e.g. a dedicated Redis instance for rate limits).</li>
     </ul>
@@ -45,12 +46,29 @@ export default rateLimit({ window: '1m', max: 10 });</code-block>
 
     <p><strong>When you're fronted by a reverse proxy or CDN</strong> (Cloudflare, nginx, Caddy, Railway, Fly, Render, Vercel, Heroku), the socket IP is the proxy, not the user. Every request shares the same IP and the limiter buckets everyone together. Opt in to forwarded-header parsing:</p>
 
+    <p>A proxy POOL fails the other way, and it is the failure you are more likely to hit, because it does not look like a failure at all. Each proxy in the pool is a separate peer, so each gets its own full allowance and your effective limit is the configured one multiplied by the pool size. The headers stay plausible throughout: every response carries a <code>X-RateLimit-Remaining</code> that counts down correctly for its own bucket, so the limiter reads as working while no visitor is ever refused. The tell is that a fresh connection restarts the count while requests sharing one keep-alive connection do count down. This is what shipped in the feature gallery's rate-limit demo, which is why that demo now sets <code>trustProxy: true</code> and names its header.</p>
+
     <code-block>// app/api/auth/middleware.ts
 import { rateLimit } from '@webjsdev/server';
 
 export default rateLimit({ window: '1m', max: 10, trustProxy: true });</code-block>
 
-    <p>With <code>trustProxy: true</code>, the limiter reads the leftmost <code>X-Forwarded-For</code> entry, then <code>CF-Connecting-IP</code>, then <code>X-Real-IP</code>, then the stamped socket IP, then <code>'_anon_'</code>. Your reverse proxy MUST strip any inbound <code>X-Forwarded-For</code> from the wire before adding its own; otherwise <code>trustProxy</code> re-introduces the spoofability it exists to defend against. Cloudflare, Fly, Railway, Render, and Vercel all strip by default. Nginx and Caddy strip only if explicitly configured (<code>proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for</code> in nginx).</p>
+    <h2>Behind a CDN, name the header</h2>
+
+    <p><code>trustProxy: true</code> alone is often NOT enough, and this is the part that costs people a debugging session. The default chain starts at the leftmost <code>X-Forwarded-For</code> entry, which behind Cloudflare is Cloudflare's own EGRESS address, not the visitor. Those are pinned per connection, so you get one bucket per connection: a page that pings on a button click counts down correctly and looks fixed, while every fresh connection starts a new window and nobody is ever refused. Name the header that actually carries the visitor:</p>
+
+    <code-block>export default rateLimit({
+  window: '1m',
+  max: 10,
+  trustProxy: true,
+  clientIpHeader: 'cf-connecting-ip',
+});</code-block>
+
+    <p>When <code>clientIpHeader</code> is set it is the ONLY wire header read, falling back to the stamped socket IP and then <code>'_anon_'</code>. A blank value falls through rather than becoming a bucket key every visitor shares, and a comma chain is split, so a proxy that appends to the header cannot mint a bucket per hop. It requires <code>trustProxy: true</code>, because naming a header to trust IS the trust decision.</p>
+
+    <p>WebJs does not prefer <code>CF-Connecting-IP</code> for you, and the reason is worth stating: Cloudflare OVERWRITES that header, which makes it unforgeable behind Cloudflare and forgeable everywhere else. Preferring it globally would let a client on an nginx or bare-platform deploy send <code>CF-Connecting-IP</code> and outrank the <code>X-Forwarded-For</code> the real proxy set. Which header is trustworthy is a fact about your topology, so your app states it. Name the one YOUR edge sets and overwrites: <code>cf-connecting-ip</code> for Cloudflare, <code>x-real-ip</code> for a typical nginx setup, and the leftmost <code>X-Forwarded-For</code> entry (the default, no option needed) when a single trusted proxy sets that chain.</p>
+
+    <p>With <code>trustProxy: true</code> and no <code>clientIpHeader</code>, the limiter reads the leftmost <code>X-Forwarded-For</code> entry, then <code>CF-Connecting-IP</code>, then <code>X-Real-IP</code>, then the stamped socket IP, then <code>'_anon_'</code>. Your reverse proxy MUST strip any inbound <code>X-Forwarded-For</code> from the wire before adding its own; otherwise <code>trustProxy</code> re-introduces the spoofability it exists to defend against. Cloudflare, Fly, Railway, Render, and Vercel all strip by default. Nginx and Caddy strip only if explicitly configured (<code>proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for</code> in nginx).</p>
 
     <p><code>WEBJS_NO_TRUST_PROXY=1</code> OUTRANKS this option. That env var is the operator's statement that nothing trusted sits in front of the container, and it governs every forwarded-header read in the framework, so while it is set <code>trustProxy: true</code> is ignored and the limiter keys on the stamped socket IP (or <code>'_anon_'</code> when there is none), logging one warning per process. The switch can only ever subtract trust, never grant it. Setting both is a misconfiguration, and it costs you: every visitor behind the proxy shares one bucket, because the proxy is the only peer the socket ever sees. Unset the env var on a genuinely proxied deploy.</p>
 
