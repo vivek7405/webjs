@@ -1,5 +1,6 @@
 import { readFile } from 'node:fs/promises';
-import { existsSync } from 'node:fs';
+import { existsSync, readFileSync } from 'node:fs';
+import { createHash } from 'node:crypto';
 import { join, resolve, sep } from 'node:path';
 import { pathToFileURL } from 'node:url';
 
@@ -71,17 +72,13 @@ import {
  * @param {string} abs
  * @returns {string}
  */
-async function fileByteHash(abs) {
-  try {
-    const data = await readFile(abs);
-    return crypto.createHash('sha256').update(data).digest('hex').slice(0, 12);
-  } catch {
-    return '000000000000';
-  }
+function fileByteHash(abs) {
+  try { return createHash('sha256').update(readFileSync(abs)).digest('hex').slice(0, 16); }
+  catch { return ''; }
 }
 
-/** @type {string | null} memoized `@webjsdev/server` version, folded into the app-source signal (#899). */
-let cachedServerVersion = null;
+/** @type {string | undefined} memoized `@webjsdev/server` version, folded into the app-source signal (#899). */
+let cachedServerVersion;
 /**
  * The installed `@webjsdev/server` version (this package). Folded into the
  * app-source deploy signal so a server-framework release (which alters SSR
@@ -89,12 +86,12 @@ let cachedServerVersion = null;
  * @returns {string}
  */
 function frameworkServerVersion() {
-  if (cachedServerVersion) return cachedServerVersion;
+  if (cachedServerVersion !== undefined) return cachedServerVersion;
   try {
-    const pkg = JSON.parse(readFileSync(new URL('../../package.json', import.meta.url), 'utf8'));
-    cachedServerVersion = pkg.version || '0.0.0';
+    const v = JSON.parse(readFileSync(new URL('../../package.json', import.meta.url), 'utf8')).version;
+    cachedServerVersion = typeof v === 'string' ? v.replace(/[^\w.-]/g, '').slice(0, 32) : '';
   } catch {
-    cachedServerVersion = '0.0.0';
+    cachedServerVersion = '';
   }
   return cachedServerVersion;
 }

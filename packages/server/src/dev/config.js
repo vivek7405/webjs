@@ -336,16 +336,3 @@ export async function readServerTimeoutsFromApp(appDir) {
   return computeServerTimeouts(pkg);
 }
 
-export function shouldIgnoreWatchPath(absPath, appDir) {
-  const relPath = relative(appDir, absPath);
-  if (
-    relPath.includes('node_modules' + sep) ||
-    relPath.startsWith('.git' + sep) ||
-    relPath.startsWith('.webjs' + sep) ||
-    relPath.startsWith('dist' + sep) ||
-    relPath.startsWith('build' + sep)
-  ) {
-    return true;
-  }
-  return false;
-}
