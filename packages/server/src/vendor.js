@@ -59,6 +59,12 @@ import { clearLiveIntegrityCache } from './vendor/resolver.js';
 export function clearVendorCache() {
   clearJspmCache();
   clearLiveIntegrityCache();
+  // Deliberately does NOT touch `lastLiveResolveFailed`, which looks like an
+  // omission and is not. `resolveVendorImports` is the flag's only reader and
+  // it resets the flag on entry, while the pinned short-circuit above that
+  // returns `ok: true` outright, so a value left behind by an earlier
+  // `pinAll` or `vendorImportMapEntries` can never be observed. Clearing it
+  // here would be a change nothing could write a failing test for (#1150).
 }
 
 export { jspmGenerate, vendorImportMapEntries } from './vendor/jspm.js';

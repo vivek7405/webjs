@@ -303,6 +303,7 @@ function resolveHoleValue(v) {
 function createInstance(tr, container) {
   const { templateEl, parts, formActions } = compile(tr);
   const frag = /** @type DocumentFragment */ (templateEl.content.cloneNode(true));
+  // Bookend markers bound the instance so we can tear it down cleanly.
   const startNode = document.createComment(`${MARKER}s`);
   const endNode = document.createComment(`${MARKER}e`);
 
@@ -350,6 +351,10 @@ function createInstance(tr, container) {
  * @param {Element | DocumentFragment | ShadowRoot} container
  */
 function clearInstance(inst, container) {
+  // Dispose event listeners on event parts, unbind active refs on
+  // element parts, and rescue any projected children sitting inside
+  // slot parts so they survive teardown of a collapsing conditional
+  // fragment.
   for (const p of inst.bound) {
     if (p.kind === 'event') p.el.removeEventListener(p.name, p.dispatcher);
     if (p.kind === 'element') {

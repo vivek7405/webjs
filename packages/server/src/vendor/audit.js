@@ -180,6 +180,10 @@ export async function findOutdated(appDir) {
     return { pkg, current, latest };
   });
   const results = await Promise.all(queries);
+  // `return` followed by a newline triggers ASI: `return; (expr);`
+  // returns undefined and drops the value. Keep the filter on the
+  // same line as `return` (or pull the result into a variable
+  // first) to avoid the trap.
   return results.filter((x) => x !== null);
 }
 

@@ -17,6 +17,11 @@ import { clientRouterEnabled } from './client-router-flag.js';
 // client-router flag does: `wrapHead` is the only reader, and module state
 // belongs with the code that uses and writes it. The flag moved out only
 // because it has a second reader in render.js.
+// Which icon metadata ROUTES the app has (`app/icon.*`, `app/apple-icon.*`).
+// Set at boot and on each route rebuild from the route table, the same shape
+// as setClientRouterEnabled above, so no opt has to thread through every
+// render path. Empty by default, which keeps an app that declares its icons
+// (or has neither route) byte-identical.
 /** @type {{ icon: boolean, apple: boolean }} */
 let _metadataIconRoutes = { icon: false, apple: false };
 
@@ -329,7 +334,11 @@ export function wrapHead(opts) {
 
   const m = opts.metadata || {};
   const metaTags = [];
+  // linkTags is populated by both the metadata emission below (icons,
+  // alternates, archives, etc.) AND by the preload block further down.
+  // Hoist the declaration so the metadata block can push into it.
   const linkTags = [];
+  // scriptTags collects JSON-LD structured-data blocks (see m.jsonLd below).
   const scriptTags = [];
 
   // Tiny URL resolver against metadataBase. If metadataBase is set and a
@@ -367,6 +376,7 @@ export function wrapHead(opts) {
   if (m.themeColor) metaTags.push(`<meta name="theme-color" content="${escapeAttr(m.themeColor)}">`);
   if (m.colorScheme) metaTags.push(`<meta name="color-scheme" content="${escapeAttr(m.colorScheme)}">`);
 
+  // robots: { index, follow, googleBot, etc. }
   if (m.robots) {
     if (typeof m.robots === 'string') {
       metaTags.push(`<meta name="robots" content="${escapeAttr(m.robots)}">`);
@@ -388,11 +398,13 @@ export function wrapHead(opts) {
     }
   }
 
+  // keywords: string | string[]
   if (m.keywords) {
     const kws = Array.isArray(m.keywords) ? m.keywords.join(', ') : String(m.keywords);
     if (kws) metaTags.push(`<meta name="keywords" content="${escapeAttr(kws)}">`);
   }
 
+  // authors: Array<{ name, url? }> | { name, url? } | string
   if (m.authors) {
     const list = Array.isArray(m.authors) ? m.authors : [m.authors];
     for (const a of list) {
@@ -420,6 +432,7 @@ export function wrapHead(opts) {
   }
 // ---- Long-tail metadata (the Next.js "everything else") ----
 
+  // appleWebApp: { capable, title, statusBarStyle, startupImage }
   if (m.appleWebApp && typeof m.appleWebApp === 'object') {
     if (m.appleWebApp.capable !== undefined) {
       metaTags.push(
@@ -466,6 +479,7 @@ export function wrapHead(opts) {
     }
   }
 
+  // itunes: { appId, appArgument? }
   if (m.itunes && typeof m.itunes === 'object' && m.itunes.appId) {
     let content = `app-id=${m.itunes.appId}`;
     if (m.itunes.appArgument) content += `, app-argument=${m.itunes.appArgument}`;
@@ -480,6 +494,8 @@ export function wrapHead(opts) {
     if (m[field]) metaTags.push(`<meta name="${metaName}" content="${escapeAttr(String(m[field]))}">`);
   }
 
+  // archives / assets / bookmarks: each is string | string[].
+  // Standard registered link relations.
   for (const [field, rel] of [
     ['archives', 'archives'],
     ['assets', 'assets'],
@@ -593,8 +609,14 @@ export function wrapHead(opts) {
     linkTags.push(`<link rel="preconnect" href="${escapeAttr(h.url)}"${crossoriginAttr(h.crossorigin)}>`);
   }
   for (const h of toHints(m.dnsPrefetch)) {
+    // dns-prefetch never carries crossorigin (it only resolves DNS).
     linkTags.push(`<link rel="dns-prefetch" href="${escapeAttr(h.url)}">`);
   }
+  // Auto vendor preconnect: warm the cross-origin vendor CDN connection for an
+  // unpinned app. Deduped against an author-declared preconnect to the same
+  // origin; emits none for a same-origin pinned app or one with no cross-origin
+  // vendors (vendorPreconnectOrigins returns []). crossorigin is required (the
+  // importmap fetches the module as a CORS request).
   for (const origin of vendorPreconnectOrigins()) {
     if (declaredPreconnectOrigins.has(origin)) continue;
     linkTags.push(`<link rel="preconnect" href="${escapeAttr(origin)}" crossorigin>`);

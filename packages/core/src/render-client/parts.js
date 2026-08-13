@@ -742,6 +742,9 @@ export function updateInstance(inst, values, reconcileFormActionsCb) {
     }
     inst.lastValues[i] = next;
   }
+  // Unconditional, and NOT inside the loop above: a form's correctness depends
+  // on holes other than its own, and the `Object.is` skip means the action hole
+  // may not have been re-applied at all this pass.
   if (reconcileFormActionsCb) reconcileFormActionsCb(templateCache.get(inst.strings)?.formActions ?? null, inst.bound, values);
 }
 
@@ -1437,6 +1440,7 @@ function applyCache(part, inner, reconcileFormActionsCb) {
       }
       // Move the cached nodes back before the marker.
       moveRange(cached.inst.startNode, cached.inst.endNode, /** @type Node */ (marker.parentNode), marker);
+      // Reconcile values so any state changes since detachment apply.
       updateInstance(cached.inst, tr.values, reconcileFormActionsCb);
       part.child = cached.inst;
       // A re-attached instance may carry ALREADY-APPLIED slot parts, whose

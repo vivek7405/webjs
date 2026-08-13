@@ -4,6 +4,11 @@ import { createHash } from 'node:crypto';
 import { join, resolve, sep } from 'node:path';
 import { pathToFileURL } from 'node:url';
 
+// Server-side `.ts` imports are handled natively by Node 24+'s default
+// type-stripping (`process.features.typescript === 'strip'`) or by Bun. The
+// BROWSER-bound `.ts` request handler erases types via the pluggable stripper in
+// `./ts-strip.js` (Node's built-in `module.stripTypeScriptTypes`, or `amaro` on
+// Bun), so SSR and hydration produce identical JS on either runtime (#508).
 import { buildRouteTable, matchPage } from '../router.js';
 import { generateRouteTypes } from '../route-types.js';
 import { setClientRouterEnabled, setMetadataIconRoutes } from '../ssr.js';
@@ -112,13 +117,30 @@ function frameworkServerVersion() {
  * }} opts
  */
 export async function createRequestHandler(opts) {
+  // Preflight: WebJs needs Node 24+ (built-in TS strip + recursive fs.watch).
+  // Throw a clear Error here so an embedded host (Express/Fastify/Bun/Deno)
+  // gets the actionable message at boot, not a cryptic API failure mid-request.
   assertNodeVersion({ onFail: 'throw' });
   // Resolve the TS stripper backend at boot (#508): the Node built-in, or amaro
   // on Bun. Doing it here pays the (one-time) amaro import up front and surfaces
   // a missing-amaro error at boot rather than on the first `.ts` request.
   await ensureStripper();
   const appDir = resolve(opts.appDir);
+  // Load <appDir>/.env into process.env BEFORE anything else.
+  // buildActionIndex below imports server-only files (lib/*.server.ts,
+  // modules/**/*.server.ts), some of which read process.env at module
+  // init (e.g. createAuth reads AUTH_SECRET). Without this call,
+  // scaffolded apps with a committed .env.example + .env would fail
+  // to boot until the user discovered the missing env-load. See
+  // tracker #37.
   loadAppEnv(appDir);
+  // Optional boot-time env validation (#236). If <appDir>/env.{js,ts} exists it
+  // default-exports a typed schema or a custom validator function; we run it
+  // against process.env (now populated by loadAppEnv) BEFORE buildActionIndex
+  // imports any server-only module. A failure throws a clear aggregated Error
+  // here, so an embedded host rejects at boot and the CLI exits non-zero,
+  // failing fast instead of crashing cryptically mid-request. Absent file is a
+  // no-op (opt-in). Coerced + defaulted values are written back to process.env.
   await applyEnvValidation(appDir, { dev: !!opts.dev });
   const dev = !!opts.dev;
   const logger = opts.logger || defaultLogger({ dev });
@@ -133,6 +155,12 @@ export async function createRequestHandler(opts) {
   // A missing / unreadable / unparseable package.json is a silent no-op, like
   // every other `webjs.*` reader in this file.
   await warnOnInvalidWebjsConfig(appDir, logger);
+  // Boot-time instrumentation hook (#848): run the optional app-root
+  // instrumentation.{js,ts} register() ONCE, after env validation and before
+  // the route table / action index are built, so observability plumbing starts
+  // before traffic. Any error sink it registers via setOnError composes with
+  // the programmatic opts.onError (both fire). Fail-open (a throwing hook is
+  // logged, not fatal).
   const { onError: instrumentationOnError } = await runInstrumentation(appDir, { dev, logger });
   // APM / Sentry integration point (issue #239). Called whenever the request
   // pipeline catches an unhandled error: the top-level handle() catch (the
@@ -175,6 +203,7 @@ export async function createRequestHandler(opts) {
   const basePathValue = await readBasePathFromApp(appDir);
   await setBasePath(basePathValue);
 
+  // Cross-origin allowlist for the action CSRF check (#659), read once.
   const allowedOriginsValue = await readAllowedOriginsFromApp(appDir);
 
   // Client-router opt-out (#629): bind it eagerly at handler construction (the
@@ -278,6 +307,9 @@ export async function createRequestHandler(opts) {
       publishBuildId();
       bootVendorPinned = true;
     } catch (e) {
+      // An unexpected failure applying a VALID pin (e.g. setVendorEntries
+      // throwing) is non-fatal: leave bootVendorPinned false so the deferred
+      // resolve re-attempts on the first request. Boot stays resilient.
       logger.error?.(`[webjs] applying the committed vendor pin at boot failed (will retry on the first request):`, e);
     }
   }
@@ -309,6 +341,10 @@ export async function createRequestHandler(opts) {
       const text = await generateRouteTypes(appDir);
       const outDir = join(appDir, '.webjs');
       await mkdir(outDir, { recursive: true });
+      // Write to a temp sibling then rename, so tsserver (which reads this
+      // file) never observes a half-written body if two rebuilds race. rename
+      // is atomic within the same dir. Both paths sit under the watcher-ignored
+      // .webjs/, so neither the temp write nor the rename re-triggers a rebuild.
       const dest = join(outDir, 'routes.d.ts');
       const tmp = join(outDir, `routes.d.ts.${process.pid}.tmp`);
       await writeFile(tmp, text);
@@ -381,6 +417,9 @@ export async function createRequestHandler(opts) {
     // settings (a multi-tenant embedder, or the differential elision test)
     // must not share it, or the second would serve the first's elided source.
     tsCache: new Map(),
+    // The most recent unresolved dev error frame (#264), or null. Pushed to the
+    // SSE channel for the live overlay and replayed to a freshly-connected tab.
+    // Dev-only (never populated when !dev); cleared on a successful rebuild.
     lastDevError: null,
     // On-request regeneration rules (#967): `webjs.dev.regenerate` from the app's
     // package.json. Dev-only (prod builds its outputs via `start.before`). Loaded
@@ -433,6 +472,12 @@ export async function createRequestHandler(opts) {
   // platform's traffic and probes are the retry loop. `readyError` holds a
   // propagating analysis failure so /__webjs/ready can report it.
   let analysisDone = false;
+  // A pinned app applied its FULL vendor map and published the build id at boot
+  // (above). The deferred vendor stage still runs once (and after every rebuild)
+  // to PRUNE that map to the elision-reachable specifiers, so a pinned app serves
+  // the same map an unpinned one does (#197); it does not re-publish the build id
+  // (the boot hash stays the deploy fingerprint). An unpinned app starts false and
+  // resolves live on the first request.
   let vendorResolved = false;
   let vendorAttemptedOnce = false;
   let vendorGen = 0;
@@ -443,6 +488,7 @@ export async function createRequestHandler(opts) {
   let readyInFlight = null;
 
   async function ensureReady() {
+    // Fully warm: analysis done and vendor resolved. Nothing to do.
     if (analysisDone && vendorResolved) return;
     // A warm pass is in flight (the analysis and/or the FIRST vendor attempt).
     // Await it rather than serving past it: a concurrent early request must get
@@ -455,11 +501,18 @@ export async function createRequestHandler(opts) {
     // empty-then-changing build id, the exact warmup drift that hard-reloads
     // and wipes a half-filled form.
     if (readyInFlight) { await readyInFlight; return; }
+    // Analysis warm but the first vendor attempt already completed and failed:
+    // re-attempt WITHOUT blocking this request. The single-flight dedupes
+    // concurrent attempts; success flips the flag AND publishes the build id.
+    // This is the request/probe-driven retry (no timer). Until it succeeds the
+    // served build id stays empty (reload-safe), so no navigation hard-reloads.
     if (analysisDone && vendorAttemptedOnce) {
       const gen = vendorGen;
       resolveAndApplyVendor().then((ok) => { if (ok && gen === vendorGen) { vendorResolved = true; if (!bootVendorPinned) publishBuildId(); } }).catch(() => {});
       return;
     }
+    // Otherwise run the (single-flighted) full warm: the analysis, then the
+    // first vendor attempt, awaited so the first response carries the import map.
     if (!readyInFlight) {
       readyInFlight = (async () => {
         /** @type {Record<string, number>} */
@@ -484,6 +537,8 @@ export async function createRequestHandler(opts) {
             // Client-router opt-out (#629): re-read each pass so toggling
             // `webjs.clientRouter` takes effect on rebuild without a restart.
             setClientRouterEnabled(await readClientRouterEnabled(appDir));
+            // Read the switch ONCE: the dev summary below reports it too, and
+            // calling readElideEnabled twice per warm re-reads package.json.
             const elideOn = await readElideEnabled(appDir);
             const r = elideOn
               ? await analyzeElision(components, collectRouteModules(state.routeTable),
@@ -618,6 +673,21 @@ export async function createRequestHandler(opts) {
             // now-final live map here.
             if (ok && gen === vendorGen) { vendorResolved = true; if (!bootVendorPinned) publishBuildId(); }
           }
+          // Readiness reflects a FULLY warm instance: the deterministic analysis
+          // AND the first vendor attempt have both completed (note: completed,
+          // not necessarily succeeded). A readiness-gated platform (Railway
+          // healthcheckPath, k8s readinessProbe) therefore admits traffic only
+          // AFTER the build id is published (vendor resolved) or definitively
+          // empty (a bounded vendor failure), never DURING the vendor-resolution
+          // window. This is what makes warm-up actually protect users: the prior
+          // instance keeps serving until the new one is fully warm, so a real
+          // request lands on a warm instance with a stable build id instead of
+          // racing the resolve. The first vendor attempt is bounded (the jspm
+          // fetch timeout in vendor.js), so an offline / CDN-degraded app still
+          // becomes ready shortly after that timeout, degraded but reload-safe,
+          // which preserves the boot resilience #143 introduced. The gate is the
+          // FIRST attempt only: a transient failure still flips readyDone here,
+          // so a later non-blocking retry never has to re-open the readiness gate.
           readyDone = true;
           if (ranAnalysis) {
             const ms = (x) => Math.round(x || 0);
@@ -659,6 +729,12 @@ export async function createRequestHandler(opts) {
         const v = await resolveVendorImports(appDir, scan);
         let { imports, integrity } = v;
         if (bootVendorPinned) {
+          // resolveVendorImports returns a committed pin VERBATIM (it never runs
+          // the scan for a pinned app). Prune it to the elision-reachable
+          // specifiers so a pinned app serves the same map an unpinned one does
+          // (#197): an elided-only dep like dayjs is dropped. One scan; the pin
+          // path skipped it. This runs on the first warm AND after every rebuild,
+          // so the pruned map is the single source of truth.
           const reachable = await scan();
           ({ imports, integrity } = prunePinToReachable(imports, integrity, reachable));
         }
@@ -710,12 +786,16 @@ export async function createRequestHandler(opts) {
   async function rebuild() {
     rebuildInFlight = rebuildInFlight.then(() => doRebuild()).catch((e) => {
       logger.error?.(`[webjs] rebuild failed:`, e);
+      // Push the failure to the open tab so the overlay appears live after a
+      // breaking edit, not only on the next manual navigation (#264).
       reportDevError(e, { kind: 'rebuild' });
     });
     return rebuildInFlight;
   }
 
   async function doRebuild() {
+    // The route table is the only eager artifact (cheap directory scan); rebuild
+    // it so routing reflects added/removed route files immediately.
     state.routeTable = await buildRouteTable(appDir);
     // Adding or deleting app/icon.* changes whether the head auto-links it.
     setMetadataIconRoutes(state.routeTable.metadataRoutes);
@@ -736,6 +816,8 @@ export async function createRequestHandler(opts) {
     // after the reset. A dependency edit can flip an elision verdict without
     // changing an importer's mtime, hence the state.tsCache.clear above.
     if (readyInFlight) { try { await readyInFlight; } catch {} }
+    // Bump the vendor generation so a vendor resolve still in flight from the
+    // previous build cannot flip vendorResolved against the fresh state.
     vendorGen++;
     analysisDone = false;
     vendorResolved = false;
@@ -762,6 +844,11 @@ export async function createRequestHandler(opts) {
   /** @param {Request} req */
   function handle(req) {
     return withRequest(req, async () => {
+      // Correlation id (issue #239): honor an inbound X-Request-Id from a
+      // trusted upstream proxy, else mint a fresh UUID. Stored on the request
+      // scope FIRST so everything downstream (the SSR, server actions, the
+      // access / error log, the onError sink, the response header) reads the
+      // same id, threading one trace id across services.
       const reqId = resolveRequestId(req);
       setRequestId(reqId);
 
@@ -800,6 +887,10 @@ export async function createRequestHandler(opts) {
       try {
         res = await produce(req);
       } catch (e) {
+        // A throw escaping produce() is the last-resort 500 (every interior
+        // path catches its own errors, but a surprise still must not crash the
+        // host). Fire the onError sink (best-effort) and emit a sanitized 500,
+        // preserving the prior behavior plus the new APM hook.
         reportError(e, req, 'handle');
         logger.error?.('[webjs] request pipeline threw', {
           requestId: reqId,
@@ -822,6 +913,9 @@ export async function createRequestHandler(opts) {
         rules: headerRules,
       });
 
+      // Expose the correlation id on the response (issue #239) so a client /
+      // proxy can read it from the X-Request-Id header. Never clobber an id an
+      // upstream / the app already set on the response.
       if (!merged.headers.has('x-request-id')) merged.headers.set('x-request-id', reqId);
 
       // Emit the Content-Security-Policy header carrying the SAME minted
@@ -881,6 +975,10 @@ export async function createRequestHandler(opts) {
       // root-mounted `/__webjs/*`. The logged `path` stays the RAW client URL.
       if (shouldAccessLog(headerPathname)) {
         try {
+          // #1309: fold the dev-only seeding counters into the ONE access-log
+          // line rather than adding a second one. Present only on a response
+          // that carried the header, so only page renders gain the field and
+          // production is unchanged.
           const seed = dev ? conditioned.headers.get('x-webjs-seed') : null;
           logger.info?.('request', {
             requestId: reqId,
@@ -1018,6 +1116,7 @@ export async function createRequestHandler(opts) {
       return Response.json({ status: 'ok' }, { headers: noStore });
     }
 
+    // Dev live-reload client.
     if (dev && path === '/__webjs/reload.js') {
       const script = reloadClientJs(basePathValue);
       return new Response(script, {
@@ -1025,6 +1124,7 @@ export async function createRequestHandler(opts) {
       });
     }
 
+    // Dev live-reload SharedWorker: one shared connection for all tabs (#887).
     if (dev && path === '/__webjs/reload-worker.js') {
       const script = reloadWorkerJs(basePathValue);
       return new Response(script, {

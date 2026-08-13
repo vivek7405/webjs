@@ -165,6 +165,9 @@ export async function resolveVendorImports(appDir, getBareImports) {
   // resolve produced URLs; if the resolve itself failed there is nothing to
   // hash.
   const integrity = await computeLiveIntegrity(imports);
+  // ok=false means at least one install could not be resolved (CDN unreachable
+  // / timeout / non-ok), so `imports` is partial. The caller must not memoize
+  // this as done; it should retry once the CDN recovers.
   return { imports, integrity, ok: !isLastLiveResolveFailed() };
 }
 
