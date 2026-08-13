@@ -3,8 +3,8 @@ import { withBasePath } from '../base-path.js';
 import { withAssetHash } from '../asset-hash.js';
 import { jsonForScriptTag } from '../script-tag-json.js';
 import { vendorIntegrityFor } from '../importmap.js';
-import { publicEnvShim } from './document.js';
-import { clientRouterEnabled } from './render.js';
+import { publicEnvShim } from './env-shim.js';
+import { clientRouterEnabled } from './client-router-flag.js';
 
 // Which icon metadata ROUTES the app has (`app/icon.*`, `app/apple-icon.*`).
 // Set at boot and on each route rebuild from the route table, the same shape
@@ -12,9 +12,10 @@ import { clientRouterEnabled } from './render.js';
 // path. Empty by default, which keeps an app that declares its icons (or has
 // neither route) byte-identical.
 //
-// This sits in head.js rather than beside `_clientRouterEnabled` in render.js,
-// where the pre-split file happened to put it: `wrapHead` is the only reader,
-// and module state belongs with the code that uses and writes it.
+// This sits in head.js rather than in a module of its own the way the
+// client-router flag does: `wrapHead` is the only reader, and module state
+// belongs with the code that uses and writes it. The flag moved out only
+// because it has a second reader in render.js.
 /** @type {{ icon: boolean, apple: boolean }} */
 let _metadataIconRoutes = { icon: false, apple: false };
 

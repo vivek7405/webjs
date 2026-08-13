@@ -9,8 +9,11 @@ export {
   ssrForbidden,
   ssrUnauthorized,
   privateFragment,
-  setClientRouterEnabled,
 } from './ssr/render.js';
+
+export { setClientRouterEnabled } from './ssr/client-router-flag.js';
+
+export { publicEnvShim } from './ssr/env-shim.js';
 
 export {
   _layoutSegmentPath,
@@ -19,7 +22,6 @@ export {
   _wrapWithChildrenMarker,
   _extractUserShell,
   _buildDocumentParts,
-  publicEnvShim,
 } from './ssr/document.js';
 
 export {
