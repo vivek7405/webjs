@@ -178,7 +178,7 @@ const PROSE = 'text-fg-muted text-base leading-[1.7] m-0';
 // "and what does it actually give me", in concrete nouns rather than adjectives.
 const CAPABILITIES = [
   {
-    title: 'AI-first, in the file conventions',
+    title: 'AI-first, readable end to end',
     body: 'Predictable file conventions and an explicit .server.ts boundary decide the shape of an app, so an agent edits one route without reading the whole app, and Build me an app is the whole prompt. Every app ships an AGENTS.md contract that Claude Code, Cursor, Copilot, Gemini, and opencode read from one source, and the framework itself is plain JavaScript with JSDoc in node_modules rather than a compiled bundle.',
   },
   {
