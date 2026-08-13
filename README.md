@@ -9,10 +9,11 @@ components.** It server-renders every page and component to real HTML,
 needs no build step or bundler, and runs on Node 24+ or Bun.
 
 Nothing is hidden from your agent. The framework ships in `node_modules` as
-plain JavaScript it can read end to end, and your app code is served to the
-browser exactly as written. Any model reasons about the whole stack and debugs it,
-with no training data required and no single blessed model, on the web
-components and standard HTML every model already knows.
+plain JavaScript, so an agent opens the router or the renderer it is calling
+instead of recalling an API from training data, and your app code is served to
+the browser exactly as written. Any model debugs the running app against the
+real source, with no single blessed model, on the web components and standard
+HTML every model already knows.
 
 **AI-first is a design constraint here, not a marketing tag.** File
 conventions are predictable, each server function lives in its own file, and

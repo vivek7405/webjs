@@ -21,8 +21,29 @@ import { brandLockup } from '#lib/design/brand.ts';
  * lib/links.ts, imported here and by app/page.ts.
  */
 
-const TITLE = 'WebJs - The Web Framework for AI Agents';
-const DESCRIPTION = 'An AI-first full-stack web framework built on web components, SSR, and progressive enhancement, with zero build step. Lean enough for AI agents to read end to end. File-based routing, server actions, and streaming SSR on web standards. Runs on Node 24+ or Bun.';
+// The title carries the CATEGORY, because that is what people type. The old
+// one named neither "web components" nor "build step", so the phrase this
+// whole site is built around matched nothing in the strongest on-page signal
+// there is. The H1 stays the positioning claim: it is a minor ranking signal
+// and the only line that differentiates us, and the definition sentence sits
+// in bold directly beneath it either way. 56 characters, inside the SERP
+// truncation limit, brand first. The separator is a colon rather than the
+// spaced hyphen the old title used, per invariant 11.
+const TITLE = 'WebJs: Full-stack web components framework, no build step';
+// 155 characters, against 256 before. Google renders about 160, so a third of
+// the old one was never shown to anyone.
+//
+// It also carried a false claim: "Lean enough for AI agents to read end to
+// end". packages/core/src alone is 23,465 lines and core plus server is
+// 50,511, so nothing reads it end to end and none of it "fits in context".
+// That sentence outlived the "Light enough for AI" section it was written for,
+// because a section gets reviewed and metadata does not, and it was live in
+// every search result.
+//
+// The true version of that idea is about LOCATION, not volume: the source sits
+// in the app's own node_modules at the installed version, so an agent opens
+// the file it needs instead of recalling an API from training data.
+const DESCRIPTION = 'A full-stack web components framework with no build step, built for AI agents. Server-rendered pages, server actions, and file-based routing. Node 24+ or Bun.';
 
 const NAV = [
   { label: 'Docs', href: DOCS_START_PATH, ext: false },

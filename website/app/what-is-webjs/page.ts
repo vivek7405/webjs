@@ -178,7 +178,7 @@ const PROSE = 'text-fg-muted text-base leading-[1.7] m-0';
 // "and what does it actually give me", in concrete nouns rather than adjectives.
 const CAPABILITIES = [
   {
-    title: 'AI-first, readable end to end',
+    title: 'AI-first, in the file conventions',
     body: 'Predictable file conventions and an explicit .server.ts boundary decide the shape of an app, so an agent edits one route without reading the whole app, and Build me an app is the whole prompt. Every app ships an AGENTS.md contract that Claude Code, Cursor, Copilot, Gemini, and opencode read from one source, and the framework itself is plain JavaScript with JSDoc in node_modules rather than a compiled bundle.',
   },
   {
@@ -245,11 +245,11 @@ export default function WhatIsWebJs() {
         </p>
         <p class="text-base leading-[1.7] text-fg-muted max-w-[56ch] mx-auto mb-8 text-pretty">
           Nothing is hidden from your agent. The framework ships in node_modules as plain
-          JavaScript it can read end to end, and your app code is served to the browser
-          exactly as written. Any model
-          reasons about the whole stack and debugs it, with no training data required and no
-          single blessed model, on the web components and standard HTML every model already
-          knows.
+          JavaScript, so an agent opens the router or the renderer it is calling instead of
+          recalling an API from training data, and your app code is served to the browser
+          exactly as written. Any model debugs the running app against the real source, with
+          no single blessed model, on the web components and standard HTML every model
+          already knows.
         </p>
         <div class="flex gap-3 justify-center flex-wrap mb-8">
           <a class=${BTN_PRIMARY} href=${DOCS_START_PATH}>

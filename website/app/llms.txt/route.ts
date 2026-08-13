@@ -56,7 +56,7 @@ export async function GET(): Promise<Response> {
     '',
     '> An AI-first, web-components-first full-stack web framework with no build step. Pages are server-rendered and progressively enhanced; components are native custom elements that hydrate as islands. Server actions give typed client-to-server RPC. Runs on Node 24+ or Bun.',
     '',
-    'WebJs is inspired by Next.js, Lit, and Rails, but ships its own no-build runtime: TypeScript is stripped at load, ES modules are served directly, and the view layer is web components rather than React. It is designed to be read end to end by AI coding agents: because it is no-build and self-contained, its own readable source is the context a model needs, with no training data required. It works with any assistant through one cross-agent contract, and scaffolds a production-shaped app from the first command.',
+    'WebJs is inspired by Next.js, Lit, and Rails, but ships its own no-build runtime: TypeScript is stripped at load, ES modules are served directly, and the view layer is web components rather than React. Its own source ships uncompiled in node_modules, so a coding agent opens the file it is calling at the version installed, rather than recalling an API from training data. It works with any assistant through one cross-agent contract, and scaffolds a production-shaped app from the first command.',
     '',
     'Key facts:',
     "- Agent-agnostic: a single cross-agent `AGENTS.md` contract drives Claude, Cursor, Copilot, Gemini, and others, not one vendor's assistant.",
