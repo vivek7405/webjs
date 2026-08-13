@@ -203,12 +203,18 @@ jobs:
       # handle() differently (the Bun shell may rebuild the Request and
       # classifies the body through readBufferedOrStream), so the ordering has
       # to be proven on both.
-      - name: webjs dev extra-watch + reload-retry + overlay-scope + public-before-warm on Bun
+      # dev-morph-verdict rides here too: the live-reload frame's `data:` line is
+      # now a JSON verdict payload rather than a bare token (#1398), and the two
+      # listener shells drive `SseHub._raw` over different transports (node
+      # `res.write` versus a Bun ReadableStream controller), so the frame has to
+      # be proven byte-identical on both.
+      - name: webjs dev extra-watch + reload-retry + overlay-scope + public-before-warm + morph-verdict on Bun
         run: |
           bun test/bun/dev-extra-watch.mjs
           bun test/bun/dev-reload-retry.mjs
           bun test/bun/dev-overlay-scope.mjs
           bun test/bun/dev-public-before-warm.mjs
+          bun test/bun/dev-morph-verdict.mjs
       # The app-source deploy signal (#899) is derived from an fs source walk +
       # a node:crypto digest, so it must be byte-identical on the Bun.serve path.
       - name: App-source deploy signal on Bun
@@ -420,6 +426,18 @@ jobs:
         env:
           WEBJS_E2E: '1'
         run: node --test test/e2e/dev-seed-observability.test.mjs
+      # The in-place dev refresh (#1398): spawns `webjs dev` against a fixture app
+      # and drives a real browser, because every criterion is a browser fact. A
+      # page or layout edit updating WITHOUT a reload is not observable from the
+      # DOM (the fixture stamps a per-document token to tell the two apart), and
+      # a hydrated component surviving the swap needs a real element upgrade.
+      # This is also the only layer that exercises the whole loop end to end:
+      # the watcher classifies, the SSE frame carries the verdict, the relay
+      # coalesces it, and the tab applies it.
+      - name: Run dev-morph e2e (#1398)
+        env:
+          WEBJS_E2E: '1'
+        run: node --test test/e2e/dev-morph.test.mjs
       # Form-submission, concurrent-nav and scroll-restoration e2e (#1310). This
       # one runs against the WEBSITE rather than the blog, because the scroll
       # case needs a page whose content settles taller after the swap, which is

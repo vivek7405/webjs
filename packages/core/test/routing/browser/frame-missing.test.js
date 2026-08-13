@@ -22,7 +22,7 @@
  * `performNavigation`, `fetchAndApply`, and `applySwap` all run exactly
  * as in production.
  */
-import { enableClientRouter } from '../../../src/router-client.js';
+import { enableClientRouter, loadFrame } from '../../../src/router-client.js';
 
 import { assert } from '../../../../../test/browser-assert.js';
 import { installNavGuard } from '../../../../../test/browser-nav-guard.js';
@@ -120,6 +120,69 @@ suite('Client router: <webjs-frame> frame-missing contract (#251)', () => {
       assert.ok(warnings.some((w) => w.includes('frame "main"') && w.includes('frame-missing')),
         'default behaviour warns about the missing frame');
     } finally { teardown(); }
+  });
+
+  // #1398: `applySwap` returns a `'none'` sentinel here, which `fetchAndApply`
+  // maps to `applied: false`. Before that, a frame-missing response reported
+  // `applied: true` having left the frame untouched.
+  test('a frameless response reports applied:false, and a matching one reports true', async () => {
+    setup();
+    try {
+      window.fetch = () => htmlResponse(
+        '<!doctype html><html><head></head><body><h1 id="login">Login</h1></body></html>'
+      );
+      const missing = await loadFrame(document.getElementById('main'), '/no-frame-here');
+      assert.equal(missing.applied, false, 'nothing was applied, so it must not claim otherwise');
+      assert.equal(missing.aborted, false, 'and it is not an abort either');
+
+      // The counterfactual: an implementation that always reported false would
+      // pass the assertion above and fail this one.
+      window.fetch = () => htmlResponse(
+        '<!doctype html><html><head></head><body>' +
+        '<webjs-frame id="main"><span id="frame-content">SWAPPED</span></webjs-frame>' +
+        '</body></html>'
+      );
+      const ok = await loadFrame(document.getElementById('main'), '/has-the-frame');
+      assert.equal(ok.applied, true, 'a real frame swap reports applied');
+      assert.equal(document.getElementById('frame-content').textContent, 'SWAPPED',
+        'and the swap actually happened');
+    } finally { teardown(); }
+  });
+
+  // The `'none'` sentinel is a REPORTING change and must not alter the
+  // pipeline. A click-driven frame nav records history, so an implementation
+  // that returned early on the sentinel would stop advancing the URL here,
+  // which nothing else in the suite would notice.
+  test('a frameless response still advances the URL, because the sentinel only reports', async () => {
+    setup();
+    // Observe the history CALL rather than reading `location` afterwards.
+    //
+    // Reading `location` cannot work here without two history mutations of its
+    // own, a park before and a restore after, because an earlier case in this
+    // suite clicks the same link and leaves the URL at its target (web-test
+    // -runner isolates per file, not per test) so the assertion would otherwise
+    // be satisfied by that case's push. Both of those mutations are hazards in
+    // their own right: this file's only cross-case leaks have come from exactly
+    // those two lines, and WebKit rate-limits history mutations, so either can
+    // throw and strand the shared page state on the cases below.
+    //
+    // A spy needs neither, depends on no sibling case, and asserts the thing
+    // directly instead of inferring it from a global the whole file shares.
+    const pushed = [];
+    const origPush = history.pushState;
+    history.pushState = function (...args) { pushed.push(String(args[2])); };
+    try {
+      window.fetch = () => htmlResponse(
+        '<!doctype html><html><head></head><body><h1 id="login">Login</h1></body></html>'
+      );
+      document.getElementById('frame-link').click();
+      await settle();
+      assert.equal(pushed.length, 1, 'the frame-missing return still records history');
+      assert.match(pushed[0], /\/no-frame-here$/, 'and it advanced to the navigation target');
+    } finally {
+      history.pushState = origPush;
+      teardown();
+    }
   });
 
   test('preventDefault suppresses the warning and still performs no full swap', async () => {

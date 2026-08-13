@@ -29,7 +29,7 @@ import { enableClientRouter } from './router-client/navigator.js';
 
 export { _isNonHtmlPath } from './router-client/constants.js';
 export { _resetWarnOnce, _shouldFullLoadDuringParse } from './router-client/diagnostics.js';
-export { _currentPageUrl, _setCurrentPageUrl, disableClientRouter, enableClientRouter, loadFrame, navigate, revalidate } from './router-client/navigator.js';
+export { _currentPageUrl, _setCurrentPageUrl, disableClientRouter, enableClientRouter, loadFrame, navigate, refreshPage, revalidate } from './router-client/navigator.js';
 export { _prefetchInflightSize, _prefetchPeek, _resetPrefetch } from './router-client/prefetch.js';
 export { _bumpNavToken, _navToken, _setHardNavigate } from './router-client/state.js';
 

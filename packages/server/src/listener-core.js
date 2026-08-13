@@ -365,8 +365,22 @@ export class SseHub {
     }
   }
 
-  /** Push a live-reload event to every open tab. */
-  reload() { this._raw('event: reload\ndata: now\n\n'); }
+  /**
+   * Push a live-reload event to every open tab.
+   *
+   * The frame carries the change's `{ v, by, why }` classification (#1398) as a
+   * single-line JSON payload, matching `devError` below. The browser relay
+   * resolves ANY payload it cannot read to `reload`, and an absent or malformed
+   * verdict is emitted as `reload` here too, so the fail-safe holds on both ends
+   * of the wire and a tab running against a restarted server can never be
+   * skewed into a lighter response than the change deserves.
+   *
+   * @param {{ v?: string, by?: string, why?: string } | null} [verdict]
+   */
+  reload(verdict) {
+    const v = verdict && typeof verdict.v === 'string' ? verdict : { v: 'reload' };
+    this._raw(`event: reload\ndata: ${JSON.stringify(v)}\n\n`);
+  }
 
   /** Push a dev-error overlay frame (#264) to every open tab. @param {object} frame */
   devError(frame) { this._raw(`event: webjs-error\ndata: ${JSON.stringify(frame)}\n\n`); }

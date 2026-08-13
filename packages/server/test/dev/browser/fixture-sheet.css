@@ -1,0 +1,4 @@
+/* A real, servable stylesheet for refresh-styles.test.js. Its rules do not
+   matter; what matters is that requesting it produces a genuine `load` event,
+   so the test drives the real thing rather than a stubbed one. */
+.wj-refresh-styles-fixture { color: rgb(1, 2, 3); }

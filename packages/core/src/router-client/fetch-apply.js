@@ -35,15 +35,30 @@ import { _swapCommit, applySwap } from './swap.js';
  * @param {boolean} [revalidating]  True for the BACKGROUND refresh after a
  *   snapshot restore: the user is already viewing a page, so a boundary
  *   mismatch must degrade in place (never a jarring `location.href` load).
- * @returns {Promise<{ ok: boolean, status: number | null, aborted: boolean }>}
+ * @param {'page' | 'shell'} [refresh]  Same-URL in-place refresh (#1398). It
+ *   suppresses the `X-Webjs-Have` header and picks the swap tier; see
+ *   `refreshPage`.
+ * @returns {Promise<{ ok: boolean, status: number | null, aborted: boolean, applied: boolean }>}
  *   The fetch outcome, so a caller (the form-submission busy/event lifecycle)
  *   can report whether the submission settled as a success, an error, or an
  *   abort. `ok` mirrors `response.ok` for an HTTP response (a 422 validation
  *   re-render is `ok:false`), `false` for a transport/parse error, and `false`
  *   for an abort (which also sets `aborted:true`). `status` is the HTTP status
  *   or `null` when the request never produced one.
+ *
+ *   `applied` is a DIFFERENT question from `ok` and the two must not be
+ *   conflated (#1398). An HTML body of ANY status is parsed and swapped in
+ *   place, which is the whole point of the 422-revalidation and error-boundary
+ *   behaviour, so a page rendered through `notFound()`, `forbidden()`, or an
+ *   `error.ts` boundary has `ok:false` and `applied:true`. It is `false`
+ *   wherever no swap committed: a transport failure, a non-HTML body, an
+ *   unparseable one, a 204/205, a discarded revalidation, an abort, and every
+ *   `applySwap` path that returns without committing (a missing frame, or a
+ *   degradation to a hard navigation from an importmap mismatch or a poisoned
+ *   boundary scan). A caller deciding whether to fall back to a full page load
+ *   wants `applied`; one reporting the submission's success wants `ok`.
  */
-export async function fetchAndApply(href, frameId, recordHistory, optimisticState, method, body, signal, token, revalidating) {
+export async function fetchAndApply(href, frameId, recordHistory, optimisticState, method, body, signal, token, revalidating, refresh) {
   method = method || 'GET';
   const myToken = typeof token === 'number' ? token : currentNavigationToken;
   let html;
@@ -78,7 +93,11 @@ export async function fetchAndApply(href, frameId, recordHistory, optimisticStat
     // navigation between the prefetch and this click does not disqualify it.
     // The optimistic skeleton has already deleted nested boundaries by now, so
     // pass the view captured before it ran.
-    const prefetched = (method === 'GET' && !body && !frameId)
+    // A refresh must never consume a prefetch (#1398): every cached copy
+    // predates the change that triggered it. `refreshPage` clears both caches
+    // before it fetches, so this only closes the window where a prefetch lands
+    // between that clear and this read.
+    const prefetched = (method === 'GET' && !body && !frameId && !refresh)
       ? prefetchTake(href, optimisticState ? optimisticState.haveKeys : undefined)
       : null;
     if (prefetched) {
@@ -91,7 +110,13 @@ export async function fetchAndApply(href, frameId, recordHistory, optimisticStat
       respOk = true;
     } else {
     const headers = { 'x-webjs-router': '1' };
-    const have = buildHaveHeader();
+    // A same-URL refresh sends NO have-header (#1398). This is required, not an
+    // optimisation: the server short-circuits at the first layout whose segment
+    // path AND route key the client already holds, and a same-URL request
+    // matches every one of them, so the response would omit the layouts and a
+    // layout edit would be invisible. Sending nothing forces the full chain to
+    // render.
+    const have = refresh ? '' : buildHaveHeader();
     if (have) headers['x-webjs-have'] = have;
     if (frameId) headers['x-webjs-frame'] = frameId;
     // Content-negotiate a stream-action response on a write submission (a
@@ -128,13 +153,22 @@ export async function fetchAndApply(href, frameId, recordHistory, optimisticStat
     // so the non-text/html stream MIME is not treated as a navigation error.
     if (isStream) {
       const text = await resp.text();
-      if (myToken === currentNavigationToken) {
+      // A newer navigation owns the page, so nothing is applied and `applied`
+      // has to say so: it reports whether this response reached the DOM, and a
+      // superseded one did not.
+      const fresh = myToken === currentNavigationToken;
+      if (fresh) {
         // Roll back any optimistic loading skeleton: a stream response patches
         // the page in place, it does not swap the region the skeleton covered.
         restoreOptimistic(optimisticState);
         renderStream(text);
       }
-      return { ok: respOk, status: respStatus, aborted: false };
+      // `ok` is forced false alongside `aborted`, matching every other abort
+      // return in this function. A caller reading `ok` as "this response was
+      // not superseded" would otherwise be wrong here and nowhere else, and one
+      // path disagreeing with the contract is worse than a slightly lossy
+      // value: the HTTP status is still on `status` for anyone who wants it.
+      return { ok: fresh && respOk, status: respStatus, aborted: !fresh, applied: fresh };
     }
     // Server-side redirect (PRG, auth-gate, etc.): fetch followed it
     // automatically. Record the FINAL URL in history, not the
@@ -150,7 +184,7 @@ export async function fetchAndApply(href, frameId, recordHistory, optimisticStat
       if (myToken === currentNavigationToken && recordHistory) {
         history.pushState(null, '', finalUrl);
       }
-      return { ok: respOk, status: respStatus, aborted: false };
+      return { ok: respOk, status: respStatus, aborted: false, applied: false };
     }
 
     // Non-HTML response (JSON error, file download, opaque): can't be
@@ -170,7 +204,7 @@ export async function fetchAndApply(href, frameId, recordHistory, optimisticStat
         restoreOptimistic(optimisticState);
         handleNavigationError(href, resp.status, null);
       }
-      return { ok: false, status: respStatus, aborted: false };
+      return { ok: false, status: respStatus, aborted: false, applied: false };
     }
 
     // HTML body of ANY status: 2xx, 4xx validation errors, 5xx error
@@ -199,39 +233,52 @@ export async function fetchAndApply(href, frameId, recordHistory, optimisticStat
     // AbortError is a normal supersede, NOT a navigation error, so it must
     // NEVER dispatch webjs:navigation-error (the key no-false-positive
     // line).
-    if (err && /** @type any */ (err).name === 'AbortError') return { ok: false, status: null, aborted: true };
+    if (err && /** @type any */ (err).name === 'AbortError') return { ok: false, status: null, aborted: true, applied: false };
     // Stale (a newer nav started before we got the network error): the
     // newer nav owns the page now, so don't clobber it.
-    if (myToken !== currentNavigationToken) return { ok: false, status: null, aborted: true };
+    if (myToken !== currentNavigationToken) return { ok: false, status: null, aborted: true, applied: false };
     restoreOptimistic(optimisticState);
     // Transport/parse failure (fetch rejected, e.g. offline / DNS / TLS).
     // Surface a navigation-error so the app can recover in place instead
     // of a destructive full reload.
     handleNavigationError(href, null, err instanceof Error ? err : new Error(String(err)));
-    return { ok: false, status: null, aborted: false };
+    return { ok: false, status: null, aborted: false, applied: false };
   }
 
   // A newer navigation started while we awaited the response body -
   // bail before we overwrite its work.
   if (myToken !== currentNavigationToken) {
     if (streamCtx && streamCtx.reader) { try { streamCtx.reader.cancel(); } catch { /* ignore */ } }
-    return { ok: false, status: respStatus, aborted: true };
+    return { ok: false, status: respStatus, aborted: true, applied: false };
   }
 
   const doc = parseHTML(html);
   // The body claimed text/html but didn't parse into a document (a
   // malformed/empty HTML body). Surface a navigation-error so the app can
   // recover in place rather than a destructive full reload.
-  if (!doc) { restoreOptimistic(optimisticState); handleNavigationError(href, null, new Error('navigation response did not parse as HTML')); return { ok: false, status: respStatus, aborted: false }; }
+  if (!doc) { restoreOptimistic(optimisticState); handleNavigationError(href, null, new Error('navigation response did not parse as HTML')); return { ok: false, status: respStatus, aborted: false, applied: false }; }
 
-  const disposition = applySwap(doc, frameId, !!revalidating, finalUrl, incomingBuild, incomingSrc);
+  const disposition = applySwap(doc, frameId, !!revalidating, finalUrl, incomingBuild, incomingSrc, refresh);
+  // `'none'` means applySwap returned WITHOUT committing anything: the frame the
+  // response was for is missing, or it degraded to a hard navigation (an
+  // importmap/build mismatch, a poisoned boundary scan). The page is not left
+  // in a bad state either way, but nothing was applied IN PLACE, and `applied`
+  // has to say so or it repeats the hole it exists to close.
+  //
+  // Recorded as a FLAG rather than returned early on purpose. These paths used
+  // to fall through to the history push, the scroll block, and the streaming
+  // tail, and an early return would silently change all three (a click-driven
+  // frame nav records history, so a frame-missing response would stop advancing
+  // the URL). This commit is about what the outcome REPORTS, not about what the
+  // pipeline does, so the fall-through is left exactly as it was.
+  const applied = disposition !== 'none';
   // A discarded revalidation must be discarded OUTRIGHT: a streamed response's
   // boundary templates must not splice into the restored snapshot afterward
   // (boundary ids are per-render sequential, so a reduced render's numbering
   // need not line up with the snapshot's). Cancel the reader and stop here.
   if (disposition === 'discard') {
     if (streamCtx && streamCtx.reader) { try { streamCtx.reader.cancel(); } catch { /* ignore */ } }
-    return { ok: respOk, status: respStatus, aborted: false };
+    return { ok: respOk, status: respStatus, aborted: false, applied: false };
   }
 
   if (recordHistory) history.pushState(null, '', finalUrl);
@@ -282,7 +329,7 @@ export async function fetchAndApply(href, frameId, recordHistory, optimisticStat
   }
 
   document.dispatchEvent(new CustomEvent('webjs:navigate', { detail: { url: finalUrl, frameId, from: 'navigate' } }));
-  return { ok: respOk, status: respStatus, aborted: false };
+  return { ok: respOk, status: respStatus, aborted: false, applied };
   } finally {
     // Clear the frame's busy state on every exit path (the early returns
     // above all unwind through here). No-op when this was not a frame nav.

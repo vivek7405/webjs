@@ -29,7 +29,25 @@ import { regraftPermanentElements, runWithTransition } from './view-transition.j
  */
 export let _swapCommit = Promise.resolve();
 
-export function applySwap(doc, frameId, revalidating, href, incomingBuild, incomingSrc) {
+/**
+ * @param {Document} doc
+ * @param {string | null} frameId
+ * @param {boolean} revalidating
+ * @param {string | null} href
+ * @param {string | null} [incomingBuild]
+ * @param {string | null} [incomingSrc]
+ * @returns {'discard' | 'none' | undefined} `'discard'` when a background
+ *   revalidation was thrown away, `'none'` when it returned without committing
+ *   anything (a missing frame, or a degradation to a hard navigation), and
+ *   `undefined` when a swap committed. `fetchAndApply` maps the first two to
+ *   `applied: false`.
+ * @param {'page' | 'shell' | undefined} [refresh]  same-URL in-place refresh
+ *   mode (#1398). `'shell'` takes the full-body tier directly, because the
+ *   layout's OWN markup changed and that lives outside every children range.
+ *   `'page'` falls through to the normal two-tier logic, which morphs the
+ *   deepest shared boundary and so preserves outer-layout component state.
+ */
+export function applySwap(doc, frameId, revalidating, href, incomingBuild, incomingSrc, refresh) {
   // SSR action seeding (#472): ingest the incoming page's seed payload BEFORE
   // its components are grafted into the live DOM and upgrade, so a
   // soft-navigated async component resolves from the seed instead of
@@ -165,14 +183,14 @@ export function applySwap(doc, frameId, revalidating, href, incomingBuild, incom
           if (sessionStorage) sessionStorage.setItem(flag, '1');
           reportFallback('deploy-mismatch', href);
           hardNavigate(href);
-          return;
+          return 'none';
         }
       } catch {
         // sessionStorage unavailable (private mode w/ quota etc.):
         // fall through to a single reload like before.
         reportFallback('deploy-mismatch', href);
         hardNavigate(href);
-        return;
+        return 'none';
       }
     } else if (!mismatch) {
       // No importmap/build mismatch, so no hard reload. But the app-source
@@ -254,6 +272,20 @@ export function applySwap(doc, frameId, revalidating, href, incomingBuild, incom
     if (!evt.defaultPrevented) {
       console.warn(`[webjs] frame "${frameId}" was not in the navigation response, leaving it unchanged. Handle "webjs:frame-missing" (preventDefault) to override.`);
     }
+    return 'none';
+  }
+
+  // 1b. Same-URL refresh in `shell` mode (#1398). A boundary morph can only
+  // rewrite what sits INSIDE a `<!--wj:children:...-->` range, and a layout's
+  // own header, nav, and footer sit outside every one of them, so a layout edit
+  // applied through the boundary tiers would silently do nothing, which is
+  // strictly worse than the reload it replaced. Take the full-body tier
+  // directly instead. Component instances do not survive it, which is the
+  // honest cost of a layout edit and still beats a page reload: scroll is kept
+  // and no history entry is written.
+  if (refresh === 'shell') {
+    ingestSeeds();
+    swapFullBody(doc);
     return;
   }
 
@@ -316,7 +348,7 @@ export function applySwap(doc, frameId, revalidating, href, incomingBuild, incom
       : !there ? 'incoming-boundaries-malformed'
       : 'no-shared-boundary', href);
     hardNavigate(href);
-    return;
+    return 'none';
   }
 
   // A BACKGROUND revalidation (revalidating + href) with no trustworthy plan
@@ -331,10 +363,32 @@ export function applySwap(doc, frameId, revalidating, href, incomingBuild, incom
 
   // 4. In-place full-body swap: the background paths only (a snapshot
   // restore or its revalidation, where a full load is not an option
-  // because the user is already viewing the page). Full head merge;
-  // `mergeHead` PRESERVES stylesheets and `<style>` unconditionally
-  // (#936) so the swap can never leave the page unstyled.
+  // because the user is already viewing the page).
   ingestSeeds();   // committed: past both discard branches above
+  swapFullBody(doc);
+}
+
+/**
+ * In-place FULL-BODY swap: merge the head, then replace every body child.
+ *
+ * `mergeHead` PRESERVES stylesheets and `<style>` unconditionally (#936), so
+ * this can never leave the page unstyled, and `regraftPermanentElements` adopts
+ * each live `[data-webjs-permanent][id]` node by identity so a running widget
+ * survives. Component INSTANCES do not: every element is re-created and
+ * re-upgraded, which is the difference between this and a boundary morph.
+ *
+ * Two callers. The background snapshot-restore path in `applySwap`, where a full
+ * load is not an option because the user is already viewing the page. And the
+ * `shell` mode of `refreshPage` (#1398), which needs the LAYOUT's own markup
+ * replaced and cannot get that from a boundary-range swap, since a layout's own
+ * header, nav, and footer sit outside every `<!--wj:children:...-->` range.
+ *
+ * The caller ingests seeds first: this is a commit point, and both callers reach
+ * it only past their own discard branches.
+ *
+ * @param {Document} doc
+ */
+function swapFullBody(doc) {
   mergeHead(doc.head);
   // Persist permanent elements by node identity across the full-body
   // swap: move each live [data-webjs-permanent][id] node into the matching

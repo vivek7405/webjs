@@ -1,4 +1,5 @@
 import { existsSync } from 'node:fs';
+import { strongerVerdict } from '../dev-classify.js';
 import { watch as fsWatch } from 'node:fs/promises';
 import { relative } from 'node:path';
 import { createServer as createHttp1Server } from 'node:http';
@@ -228,7 +229,7 @@ export async function startServer(opts) {
     app = await createRequestHandler({
       ...opts,
       logger,
-      onReload: () => hub.reload(),
+      onReload: (verdict) => hub.reload(verdict),
       // Dev error overlay (#264): push a frame to every open tab over the SAME
       // SSE channel. A distinct `webjs-error` event name (NOT `error`, which is
       // EventSource's native connection-error event) carries the JSON frame.
@@ -251,7 +252,19 @@ export async function startServer(opts) {
     // fs.watch returns relative paths in event.filename. `shouldIgnoreWatchPath`
     // (module-level, exported for tests) skips node_modules, .git, .webjs/, and
     // the SQLite dev DB (db/dev.db) + db/migrations so a file the dev server itself writes never loops.
-    const rebuild = debounce(() => app.rebuild(), 80);
+    // Live-reload classification (#1398). Several files can change inside one
+    // 80ms debounce window, so hold the STRONGEST verdict of the window and
+    // hand it to the rebuild. Same rule as the browser relay's cross-batch
+    // accumulation, for the same reason: a window mixing a page edit and a
+    // component edit is a component edit, and taking the last one would morph
+    // fresh markup onto the old component class.
+    /** @type {import('./dev-classify.js').ReloadVerdict | null} */
+    let pendingVerdict = null;
+    const rebuild = debounce(() => {
+      const v = pendingVerdict;
+      pendingVerdict = null;
+      app.rebuild(v || undefined);
+    }, 80);
     watcherAbort = new AbortController();
     const watchRoot = async (root) => {
       try {
@@ -265,6 +278,7 @@ export async function startServer(opts) {
           // db/dev.db carve-out above. `app` exposes the check because `state`
           // lives in createRequestHandler's scope, not here.
           if (app.isRegenerateOutput(filename)) continue;
+          pendingVerdict = strongerVerdict(pendingVerdict, app.classifyWatchPath(filename, root));
           rebuild();
         }
       } catch (err) {

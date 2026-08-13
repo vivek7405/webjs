@@ -244,7 +244,7 @@ const CLIENT_ROUTER_SUBPATH_RE = /['"]@webjsdev\/core\/client-router['"]/;
  * REACTIVE_IMPORTS: a router function the barrel re-exports but this list omits
  * is not recognized as client work, so a component using it is wrongly elided.
  */
-export const CLIENT_ROUTER_IMPORTS = ['navigate', 'enableClientRouter', 'disableClientRouter', 'revalidate', 'loadFrame'];
+export const CLIENT_ROUTER_IMPORTS = ['navigate', 'enableClientRouter', 'disableClientRouter', 'revalidate', 'refreshPage', 'loadFrame'];
 
 /** Identifiers that only exist in a browser; their presence means client work. */
 const CLIENT_GLOBAL_RE = /\b(?:window|document|navigator|localStorage|sessionStorage|customElements|matchMedia|addEventListener)\b/;

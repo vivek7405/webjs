@@ -17,6 +17,7 @@ import {
 } from '../actions.js';
 import { registerActionHooks } from '../action-seed.js';
 import { readRegenerateRules, isRegenerateOutputPath } from '../dev-regenerate.js';
+import { classifyChangedPath } from '../dev-classify.js';
 import { ensureStripper } from '../ts-strip.js';
 import { defaultLogger } from '../logger.js';
 import { assertNodeVersion } from '../node-version.js';
@@ -112,7 +113,7 @@ function frameworkServerVersion() {
  *   dev?: boolean,
  *   logger?: import('./logger.js').Logger,
  *   onError?: (error: unknown, ctx: { request: Request, requestId: string|null, phase: string }) => void,
- *   onReload?: () => void,
+ *   onReload?: (verdict?: import('./dev-classify.js').ReloadVerdict) => void,
  *   onDevError?: (frame: object) => void,
  * }} opts
  */
@@ -411,6 +412,18 @@ export async function createRequestHandler(opts) {
     // entries rather than at the closure.
     browserEntryFiles: new Set(),
     browserBoundFiles: null,
+    // Dev live-reload classification (#1398). `shippedFiles` is the transitive
+    // closure of what the browser can ACTUALLY load (the gate set minus every
+    // module elision drops), `graphFiles` is every app source the graph walked,
+    // and `pageFiles` is the route table's pages. Together they are the whole
+    // input to `classifyChangedPath`, so a watch event can be answered without
+    // reaching into the rest of this state. Dev-only; left empty in prod.
+    /** @type {Set<string>} */
+    shippedFiles: new Set(),
+    /** @type {Set<string>} */
+    graphFiles: new Set(),
+    /** @type {Set<string>} */
+    pageFiles: new Set(),
     // Transformed-source cache (stripped TS + applied elision). Per-handler,
     // NOT module-global: the cached bytes bake in THIS handler's elision
     // verdict, so two handlers for the same app with different elision
@@ -472,6 +485,16 @@ export async function createRequestHandler(opts) {
   // platform's traffic and probes are the retry loop. `readyError` holds a
   // propagating analysis failure so /__webjs/ready can report it.
   let analysisDone = false;
+  // Whether the analysis has EVER completed (#1398). Distinct from
+  // `analysisDone`, which `doRebuild` flips false on every edit: the live-reload
+  // classifier needs to know the derived sets are POPULATED, not that they are
+  // current, because it deliberately classifies against the previous build's
+  // graph (see the note in `doRebuild`). Gating it on `analysisDone` turned the
+  // feature off for every edit after the first in a burst, since nothing
+  // re-warms the analysis until an HTTP request arrives and the relay defers
+  // that request by its 2000ms quiet window (#1397), which is longer than the
+  // measured inter-save gap. Never reset.
+  let analysisEverDone = false;
   // A pinned app applied its FULL vendor map and published the build id at boot
   // (above). The deferred vendor stage still runs once (and after every rebuild)
   // to PRUNE that map to the elision-reachable specifiers, so a pinned app serves
@@ -548,6 +571,24 @@ export async function createRequestHandler(opts) {
             state.elidableComponents = r.elidableComponents;
             state.inertRouteModules = r.inertRouteModules;
             state.importOnlyRouteModules = r.importOnlyRouteModules;
+            // Dev live-reload classification (#1398): derive the three sets the
+            // watch-event classifier reads. `browserBoundFiles` above is the
+            // AUTHORIZATION gate (it walks from every entry, elided ones
+            // included, because an elided module's URL must still 404 rather
+            // than leak), so it is the wrong input here: the question is what
+            // the browser actually HOLDS. Re-walk from the entries elision
+            // keeps, and an edit to anything reachable from those is a reload.
+            // An import-only page's substituted components are themselves
+            // entries, so dropping the page loses none of its reach.
+            if (dev) {
+              const shippedEntries = [...state.browserEntryFiles].filter((f) =>
+                !state.elidableComponents.has(f)
+                && !state.inertRouteModules.has(f)
+                && !state.importOnlyRouteModules.has(f));
+              state.shippedFiles = reachableFromEntries(state.moduleGraph, shippedEntries, appDir);
+              state.graphFiles = seenFilesFor(state.moduleGraph);
+              state.pageFiles = new Set((state.routeTable.pages || []).map((p) => p.file).filter(Boolean));
+            }
             // Fold the elision verdict into app-module content hashes (#243): an
             // app module's served body is elision-transformed, so a verdict flip
             // must bust its `?v` even when its source is byte-identical. A stable
@@ -650,6 +691,7 @@ export async function createRequestHandler(opts) {
               );
             }
             analysisDone = true;
+            analysisEverDone = true;
             ranAnalysis = true;
           }
           readyError = null;
@@ -783,8 +825,14 @@ export async function createRequestHandler(opts) {
   // stale state until the next rebuild.
   let rebuildInFlight = Promise.resolve();
 
-  async function rebuild() {
-    rebuildInFlight = rebuildInFlight.then(() => doRebuild()).catch((e) => {
+  /**
+   * @param {import('./dev-classify.js').ReloadVerdict} [verdict] the live-reload
+   *   classification of the change that triggered this rebuild (#1398). Absent
+   *   (an embedded host calling `rebuild()`, or any caller with no filename to
+   *   classify) means a full reload, which is the fail-safe default.
+   */
+  async function rebuild(verdict) {
+    rebuildInFlight = rebuildInFlight.then(() => doRebuild(verdict)).catch((e) => {
       logger.error?.(`[webjs] rebuild failed:`, e);
       // Push the failure to the open tab so the overlay appears live after a
       // breaking edit, not only on the next manual navigation (#264).
@@ -793,7 +841,8 @@ export async function createRequestHandler(opts) {
     return rebuildInFlight;
   }
 
-  async function doRebuild() {
+  /** @param {import('./dev-classify.js').ReloadVerdict} [verdict] */
+  async function doRebuild(verdict) {
     // The route table is the only eager artifact (cheap directory scan); rebuild
     // it so routing reflects added/removed route files immediately.
     state.routeTable = await buildRouteTable(appDir);
@@ -838,7 +887,17 @@ export async function createRequestHandler(opts) {
     // reloaded request re-pushes a fresh frame (a brief dismiss-then-reappear
     // flicker on an unrelated edit, self-correcting to the right end state).
     state.lastDevError = null;
-    opts.onReload?.();
+    // The verdict was computed against the PREVIOUS build's graph, because this
+    // rebuild only INVALIDATES the lazy analysis (`analysisDone = false` above)
+    // and the fresh graph is not built until the next request. Awaiting
+    // `ensureReady()` here to classify against the new one would push the SSE
+    // frame roughly 1900ms later on a large app and stack that in front of the
+    // relay's quiet window, so it is not worth it. The one case that could
+    // exploit the staleness, an edit that adds a brand-new component import to
+    // an otherwise morphable page, is closed on the CLIENT: `addNewHeadElements`
+    // runs on both boundary tiers and swaps in the changed boot script, which
+    // executes and registers the new component.
+    opts.onReload?.(verdict || { v: 'reload', by: '', why: 'no-verdict' });
   }
 
   /** @param {Request} req */
@@ -1281,6 +1340,32 @@ export async function createRequestHandler(opts) {
      * `state`) can skip a build product the server itself writes and avoid a
      * spurious reload. Reads the live, rebuild-refreshed rules. */
     isRegenerateOutput: (filename) => isRegenerateOutputPath(filename, state.regenerateRules),
+    /**
+     * Classify a dev-watcher event into a live-reload verdict (#1398).
+     * `startServer`'s watcher is a different scope with no access to `state`,
+     * exactly like `isRegenerateOutput` above, so the lookup is exposed rather
+     * than the sets.
+     *
+     * `root` is the WATCHED root the event came from, not `appDir`: `fs.watch`
+     * reports a path relative to whatever root it was given, and an extra
+     * `webjs.dev.watch` root (#894) is usually OUTSIDE the app. Resolving those
+     * against `appDir` would manufacture a nonexistent in-app path and lose the
+     * one fact the classifier needs about them.
+     *
+     * Returns the fail-safe `reload` verdict until the first analysis completes.
+     *
+     * @param {string} filename  `event.filename`, relative to `root`
+     * @param {string} [root]  the watched root, defaulting to the app dir
+     * @returns {import('./dev-classify.js').ReloadVerdict}
+     */
+    classifyWatchPath: (filename, root) => classifyChangedPath(resolve(root || appDir, filename), {
+      appDir,
+      shippedFiles: state.shippedFiles,
+      graphFiles: state.graphFiles,
+      pageFiles: state.pageFiles,
+      analysisReady: analysisEverDone,
+      sep,
+    }),
     appDir,
     dev,
     logger,

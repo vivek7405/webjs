@@ -279,6 +279,19 @@ await navigate('/about');
 // Replace current history entry
 await navigate('/login', { replace: true });</code-block>
 
+    <h2>Refreshing the page you are on</h2>
+    <p><code>refreshPage()</code> re-renders the <em>current</em> URL on the server and applies it in place, with no page load. It records no history entry and never scrolls, so the reader keeps their place and Back still goes to the previous page.</p>
+    <code-block>import { refreshPage } from '@webjsdev/core';
+
+// 'page' (the default): morph the deepest shared boundary
+await refreshPage();
+
+// 'shell': replace the whole body, for when the LAYOUT's own markup changed
+await refreshPage('shell');</code-block>
+    <p>The two modes differ in what survives. <code>'page'</code> morphs the deepest shared boundary, so the outer layout's DOM and the hydrated state of its components are preserved. <code>'shell'</code> replaces the whole body, which is what a layout change needs: a layout's own header, nav, and footer live outside every children range, so a boundary morph would leave them untouched. Component instances do not survive a <code>'shell'</code> refresh.</p>
+    <p>A refresh sends no <code>X-Webjs-Have</code> header, deliberately. The server short-circuits at the first layout the client already holds, and a same-URL request matches every one of them, so the response would omit the very layout that changed. It resolves <code>false</code> when it did not apply (the router is disabled, or the fetch failed), so the caller can fall back to a full load.</p>
+    <p>It does <strong>not</strong> reload changed component modules, and cannot: <code>customElements.define</code> is once-per-tag and a module URL is fetched once per document. That is exactly why the dev server calls <code>refreshPage()</code> for a page or layout edit and falls back to a full reload for a component edit. See <a href="/docs/runtime">Runtime</a> for which dev modes get the in-place refresh.</p>
+
     <h2>Opt-out per link / form</h2>
     <code-block>&lt;a href="/logout" data-no-router&gt;Log out&lt;/a&gt;
 &lt;form action="/legacy" data-no-router&gt;...&lt;/form&gt;

@@ -45,6 +45,39 @@ export const RELOAD_QUIET_MS = 2000;
 export const RELOAD_MAX_HOLD_MS = 5000;
 
 /**
+ * Verdict strength, STRONGEST FIRST (#1398). Mirrors `RELOAD_VERDICTS` in the
+ * server's `dev-classify.js`; duplicated rather than imported because this file
+ * is inlined verbatim into two served browser scripts and must stay
+ * import-free.
+ *
+ * A batch collapses to ONE emitted reload, so it must take the STRONGEST
+ * verdict in the batch and never the last one: a burst mixing a page edit and a
+ * component edit is a component edit, and morphing it would leave the old
+ * component class running against fresh markup.
+ */
+export const VERDICT_STRENGTH = ['reload', 'shell', 'page'];
+
+/**
+ * Resolve an SSE `reload` frame's `data` to a verdict name.
+ *
+ * ANY failure resolves to `reload`: an absent payload, malformed JSON, a
+ * non-object, a `v` outside the three literals, or the legacy bare `data: now`.
+ * That is what makes the wire-format change safe in both directions between a
+ * long-running browser tab and a restarted server, since the worst a skew can
+ * produce is the full reload that was the behaviour before this existed.
+ *
+ * @param {string} data
+ * @returns {string} one of VERDICT_STRENGTH
+ */
+export function parseVerdict(data) {
+  try {
+    const o = JSON.parse(data);
+    if (o && typeof o === 'object' && VERDICT_STRENGTH.indexOf(o.v) !== -1) return o.v;
+  } catch (_) { /* fall through to the fail-safe */ }
+  return 'reload';
+}
+
+/**
  * @param {{ onconnect: any, setTimeout?: any, clearTimeout?: any }} scope  the
  *   worker global (`self`), or a plain shim object for the per-tab fallback.
  *   Timers are read off it when it has them, which is what lets a browser test
@@ -85,13 +118,30 @@ export function startReloadWorker(scope, EventSourceCtor, eventsUrl) {
   /** @type {any} */ let quietTimer = null;
   /** @type {any} */ let capTimer = null;
 
+  /** @type {string} the strongest verdict seen in the CURRENT batch (#1398) */
+  let batchVerdict = 'page';
+
   function emitReload() {
     if (quietTimer !== null) { timers.clearTimeout(quietTimer); quietTimer = null; }
     if (capTimer !== null) { timers.clearTimeout(capTimer); capTimer = null; }
-    fanout({ type: 'reload' });
+    const v = batchVerdict;
+    // Resetting HERE rather than in requestReload is load-bearing: emitReload is
+    // the single place a batch ends, and it is reached from both timers.
+    batchVerdict = 'page';   // a fresh batch starts at the weakest verdict
+    fanout({ type: 'reload', verdict: v });
   }
 
-  function requestReload() {
+  /** Strength rank; an unrecognised name ranks strongest, so it can only ever
+   * over-reload. @param {string} v */
+  function rank(v) {
+    const i = VERDICT_STRENGTH.indexOf(v);
+    return i === -1 ? 0 : i;
+  }
+
+  /** @param {string} verdict */
+  function requestReload(verdict) {
+    // Lower rank is stronger, so keep the minimum across the batch.
+    if (rank(verdict) < rank(batchVerdict)) batchVerdict = VERDICT_STRENGTH[rank(verdict)];
     if (quietTimer !== null) timers.clearTimeout(quietTimer);
     quietTimer = timers.setTimeout(emitReload, RELOAD_QUIET_MS);
     if (capTimer === null) capTimer = timers.setTimeout(emitReload, RELOAD_MAX_HOLD_MS);
@@ -111,8 +161,15 @@ export function startReloadWorker(scope, EventSourceCtor, eventsUrl) {
   // records the baseline. Both reload paths route through the ONE debounced
   // emitter above (#1397), since a burst of edits produces one signal of each
   // kind per save.
+  //
+  // A changed boot id is unconditionally a FULL RELOAD (#1398), and it is NOT a
+  // "no verdict" signal to be overridden by a lighter one already in the batch.
+  // A restart carries no filename, so nothing survives it to classify, and a
+  // burst can hold a page edit whose in-process frame was delivered next to a
+  // component edit whose frame died with the old process. In that burst the
+  // changed boot id is the component edit's ONLY trace.
   es.addEventListener('hello', (e) => {
-    if (lastBoot !== null && e.data !== lastBoot) requestReload();
+    if (lastBoot !== null && e.data !== lastBoot) requestReload('reload');
     lastBoot = e.data;
   });
 
@@ -120,7 +177,7 @@ export function startReloadWorker(scope, EventSourceCtor, eventsUrl) {
   // connecting during the pending window must not be replayed an overlay for an
   // error the rebuild already fixed. `webjs-error` itself stays undebounced,
   // since an overlay has to appear at once and it is not a reload.
-  es.addEventListener('reload', () => { lastError = null; requestReload(); });
+  es.addEventListener('reload', (e) => { lastError = null; requestReload(parseVerdict(e.data)); });
   es.addEventListener('webjs-error', (e) => { lastError = e.data; fanout({ type: 'webjs-error', data: e.data }); });
 
   scope.onconnect = (e) => {

@@ -260,6 +260,9 @@
     "revalidate": {
       "demo": "modules/client-router/components/router-controls.ts"
     },
+    "refreshPage": {
+      "demo": "modules/client-router/components/router-controls.ts"
+    },
     "richFetch": {
       "demo": "modules/route-handler/components/rich-data.ts"
     },

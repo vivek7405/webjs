@@ -353,6 +353,13 @@ const DEV_OVERLAY_SRC = readFileSync(new URL('../dev-overlay.js', import.meta.ur
 const RELOAD_WORKER_SRC = readFileSync(new URL('../dev-reload-worker.js', import.meta.url), 'utf8')
   .replace(/^export /gm, '');
 
+// The stylesheet re-request source (#1398), read once + `export`-stripped so it
+// inlines into the served reload client. Same shared-source rule as the two
+// above: the browser test imports this module directly, so it drives the EXACT
+// code that ships.
+const DEV_STYLES_SRC = readFileSync(new URL('../dev-styles.js', import.meta.url), 'utf8')
+  .replace(/^export /gm, '');
+
 /**
  * The dev live-reload client. The `EventSource` URL is a framework-emitted
  * same-origin path, so it must carry the base path under a sub-path deploy
@@ -385,6 +392,7 @@ export function reloadClientJs(bp) {
   return `// webjs dev reload client
 ${DEV_OVERLAY_SRC}
 ${RELOAD_WORKER_SRC}
+${DEV_STYLES_SRC}
 function __webjsApplyError(data) {
   let f; try { f = JSON.parse(data); } catch (_) { return; }
   renderDevOverlay(f);
@@ -402,15 +410,59 @@ installDevOverlayNavSync();
 // probes fail until the fresh server is listening, so the old page stays put
 // until the new one is ready. Bounded, so a genuinely-dead server still
 // reloads (and shows the browser's own error) rather than hanging forever.
-function __webjsReloadWhenReady() {
+function __webjsWhenReady(then) {
   var tries = 0;
   function attempt() {
     fetch(${versionUrl}, { cache: 'no-store' }).then(function (r) {
-      if (r && r.ok) location.reload(); else again();
+      if (r && r.ok) then(); else again();
     }).catch(again);
   }
   function again() { if (++tries > 100) location.reload(); else setTimeout(attempt, 100); }
   attempt();
+}
+// Apply a reload signal at the lightest correct weight (#1398). A page or
+// layout edit never changes browser-bound JS, so the server's re-render is the
+// complete truth and the client router can swap it in place: scroll and (for a
+// page edit) the hydrated state of components outside the changed region
+// survive. Anything else, including every signal the server could not classify,
+// is the full reload this always was.
+function __webjsApplyReload(verdict) {
+  __webjsWhenReady(function () {
+    // Runtime feature detection, never an assumption. The refresh entry is
+    // published by enableClientRouter and removed by disableClientRouter, so its
+    // ABSENCE covers both no-router cases at once: an app that opted out with
+    // \`webjs.clientRouter: false\`, and a page that ships no component at all so
+    // @webjsdev/core never loads in the browser and the module never runs.
+    var refresh = globalThis.__webjsRefreshPage;
+    if ((verdict === 'page' || verdict === 'shell') && typeof refresh === 'function') {
+      // Take any error overlay down BEFORE re-rendering. DEFENSIVE, and the
+      // reasoning is worth recording because the obvious scenario for it does
+      // NOT hold. The overlay's own teardown is keyed on the URL CHANGING,
+      // which a same-url refresh never does, so a refresh has no exit for a
+      // live overlay the way a full reload did (it replaced the document).
+      //
+      // The scenario that looks like it needs this, a page-render error, is not
+      // reachable: the dev 500 page carries no children boundaries and no
+      // layout, so applying it shares no boundary with the live page and
+      // degrades to a hard navigation, in BOTH directions. Breaking a page
+      // reloads, and so does fixing it, and the reload clears the overlay. What
+      // is left is the narrow case of an UNSCOPED frame (a \`rebuild\` or
+      // \`ts-strip\` failure), which the nav sync deliberately never clears and
+      // which can coexist with a page that still renders and so still refreshes.
+      //
+      // Before rather than after, so the ordering is self-correcting: if this
+      // render also fails, the server pushes a fresh frame DURING it and the
+      // overlay comes back describing the CURRENT error. Dismissing afterwards
+      // would race that push and wipe a legitimately new overlay.
+      dismissDevOverlay();
+      refresh(verdict).then(function (ok) {
+        if (!ok) { location.reload(); return; }
+        refreshStyles();
+      }, function () { location.reload(); });
+      return;
+    }
+    location.reload();
+  });
 }
 function __webjsDirectEvents() {
   // No SharedWorker (Chrome for Android has none) or its construction threw (a
@@ -438,7 +490,7 @@ function __webjsDirectEvents() {
     // dev-overlay bug leaves no trace, which would be a new behaviour rather
     // than a restored one.
     try {
-      if (m.type === 'reload') __webjsReloadWhenReady();
+      if (m.type === 'reload') __webjsApplyReload(m.verdict);
       else if (m.type === 'webjs-error') __webjsApplyError(m.data);
     } catch (_) {
       console.error('[webjs] dev reload handler threw', _);
@@ -450,7 +502,7 @@ try {
     const w = new SharedWorker(${workerUrl});
     w.port.onmessage = (e) => {
       const m = e.data || {};
-      if (m.type === 'reload') __webjsReloadWhenReady();
+      if (m.type === 'reload') __webjsApplyReload(m.verdict);
       else if (m.type === 'webjs-error') __webjsApplyError(m.data);
     };
     w.port.start();
