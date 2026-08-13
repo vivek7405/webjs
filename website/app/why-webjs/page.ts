@@ -64,7 +64,7 @@ const REASONS = [
   },
   {
     title: 'No training data required',
-    body: 'An agent does not need to have seen WebJs before. It fits the framework source into its context window, learns the real API from the code, and starts producing correct output. New model, same result, because the source is the documentation.',
+    body: 'An agent does not need to have seen WebJs before. It opens the file it is calling in node_modules, learns the real API from the code, and starts producing correct output. New model, same result, because the source is the documentation.',
   },
   {
     title: 'Standard HTML and JavaScript',
