@@ -36,7 +36,12 @@ What they mean in practice, in a buildless framework whose source IS what runs:
 - **Dependency direction matters more than dependency inversion.** Modules layer
   downward: constants at the bottom, then pure helpers, then orchestration.
   Nothing imports upward. This is not architectural taste, it is what keeps ESM
-  cycles out (see below).
+  cycles out (see below). Two subsystems are genuinely mutually recursive and
+  cannot layer, the client router (a navigation fetches, the fetch swaps, the
+  swap upgrades, an upgraded element navigates) and light-DOM slots (projecting
+  installs the interceptors, an intercepted mutation re-projects). Those two are
+  named in `test/architecture/import-cycles.test.mjs`, which fails on any THIRD
+  cycle, so the rule holds everywhere it can.
 
 ---
 
@@ -74,13 +79,20 @@ There is also a runtime cost. In dev the browser fetches core source files
 individually rather than the bundle, so N modules is N requests at one more
 level of import-graph depth.
 
-**No CI guard enforces the ceiling.** A line-count gate is a proxy metric that
-fights cohesion, and it would need an exemption list that rots. The ceiling is
-a review-time check, not a build-time one.
+**A CI guard enforces the ceiling over the trees the #1365 split produced**
+(`test/architecture/module-size.test.mjs`), and nothing else. The objection to a
+line-count gate is real, that it is a proxy metric which fights cohesion and
+needs an exemption list that rots, so the guard is scoped rather than global: it
+binds only those ten trees, and it fails when an exempt file drops back UNDER
+the ceiling, which is what makes a stale exemption get deleted instead of
+inherited. Everywhere else in the repo the ceiling stays a review-time check.
 
 Exceeding 1000 is allowed only when splitting further would create an
-artificial seam, and only when the exemption is stated in the PR with the
-measured size and the reason.
+artificial seam, and only when the exemption is named in the guard with the
+measured size and the reason. Two are, both confirmed by attempting the split
+rather than assumed: `render-client/parts.js`, whose core dispatches to the
+directive appliers that call back into its commit machinery, and
+`component/lifecycle.js`, which is one class spanning 1332 lines.
 
 ---
 
