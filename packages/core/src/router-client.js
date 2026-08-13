@@ -3063,7 +3063,12 @@ async function fetchAndApply(href, frameId, recordHistory, optimisticState, meth
         restoreOptimistic(optimisticState);
         renderStream(text);
       }
-      return { ok: respOk, status: respStatus, aborted: !fresh, applied: fresh };
+      // `ok` is forced false alongside `aborted`, matching every other abort
+      // return in this function. A caller reading `ok` as "this response was
+      // not superseded" would otherwise be wrong here and nowhere else, and one
+      // path disagreeing with the contract is worse than a slightly lossy
+      // value: the HTTP status is still on `status` for anyone who wants it.
+      return { ok: fresh && respOk, status: respStatus, aborted: !fresh, applied: fresh };
     }
     // Server-side redirect (PRG, auth-gate, etc.): fetch followed it
     // automatically. Record the FINAL URL in history, not the
