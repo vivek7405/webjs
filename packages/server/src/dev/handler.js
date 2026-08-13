@@ -926,6 +926,11 @@ export async function createRequestHandler(opts) {
       if (nonce && !merged.headers.has('content-security-policy') &&
           !merged.headers.has('content-security-policy-report-only')) {
         try {
+          // readCspConfig already drops a directive whose name/value carries a
+          // control char, so buildCspHeader produces a Headers-safe value. The
+          // try/catch is a belt-and-suspenders backstop: a surprise value must
+          // never throw the response pipeline (fail closed to no CSP header
+          // rather than a self-inflicted 500 on every request).
           merged.headers.set(cspHeaderName(cspConfig), buildCspHeader(cspConfig, nonce));
         } catch {
           /* ignore */
@@ -1050,11 +1055,26 @@ export async function createRequestHandler(opts) {
     }
 
     if (redirectRules.length) {
+      // Declarative redirects (issue #254): apply the configured old-path ->
+      // new-path rules at the VERY START of request handling, before the
+      // probes, routing, SSR, or asset serving. A matched source returns a
+      // 308 (permanent, the SEO default) / 307 (temporary) / configured
+      // status immediately, so a moved URL never reaches the router.
+      // `applyRedirects` skips /__webjs/* itself, so the framework probes /
+      // runtime below are never redirected. The secure-header + conditional-GET
+      // funnel in handle() still wraps this Response, like any other.
       const redir = applyRedirects(req, redirectRules);
       if (redir) return redir;
     }
 
     if (trailingSlashPolicy !== 'ignore') {
+      // Trailing-slash canonicalization (issue #255): after the explicit
+      // redirects above (so an explicit rule wins first and the two never
+      // form a loop), 308-redirect a non-canonical path to the policy's
+      // canonical form (`never` strips a trailing slash, `always` adds one).
+      // Default `'ignore'` is a no-op. The root `/` and file paths are
+      // exempt; `/__webjs/*` is exempt too (defense in depth, the redirects
+      // above already skip it). The funnel in handle() still wraps this.
       const canonical = applyTrailingSlash(req, trailingSlashPolicy);
       if (canonical) return canonical;
     }
@@ -1132,6 +1152,12 @@ export async function createRequestHandler(opts) {
       });
     }
 
+    // Framework-internal static assets (the @webjsdev/core runtime, the dev
+    // reload client, downloaded vendor bundles) depend on neither the analysis
+    // nor the vendor importmap, so serve them BEFORE ensureReady(). Otherwise a
+    // cold instance blocks them behind the first vendor resolve (issue #190),
+    // and the core bundle is on every page's boot path, so that stalled first
+    // interactivity site-wide. Matched on the decoded path, like handleCore.
     const earlyStatic = await tryServeFrameworkStatic(path, req.method.toUpperCase(), { coreDir, appDir, dev, versioned: url.searchParams.has('v') });
     if (earlyStatic) return earlyStatic;
 
