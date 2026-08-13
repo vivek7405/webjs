@@ -1,0 +1,5 @@
+/* A stand-in for a compiled stylesheet (the shape `webjs.dev.regenerate`
+   rebuilds on request). Its bytes do not matter; what the test asserts is that
+   an in-place refresh RE-REQUESTS it, since a swap preserves the link node by
+   identity and would otherwise never ask the server for it again (#1398). */
+#page-marker { letter-spacing: 0.01em; }

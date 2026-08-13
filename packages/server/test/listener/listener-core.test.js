@@ -142,8 +142,39 @@ test('SseHub.reload fans a reload frame to every registered client', () => {
   const a = fakeClient(); const b = fakeClient();
   hub.add(a); hub.add(b);
   hub.reload();
-  assert.deepEqual(a.frames, ['event: reload\ndata: now\n\n']);
-  assert.deepEqual(b.frames, ['event: reload\ndata: now\n\n']);
+  assert.deepEqual(a.frames, ['event: reload\ndata: {"v":"reload"}\n\n']);
+  assert.deepEqual(b.frames, ['event: reload\ndata: {"v":"reload"}\n\n']);
+  hub.closeAll();
+});
+
+// #1398: the frame carries the change's classification so the browser can pick
+// the lightest correct response. A single-line JSON `data:` payload, matching
+// the devError sibling.
+test('SseHub.reload carries the change verdict as a parseable JSON payload (#1398)', () => {
+  const hub = new SseHub({ keepaliveMs: 1_000_000 });
+  const a = fakeClient();
+  hub.add(a);
+  hub.reload({ v: 'page', by: 'app/page.ts', why: 'page-module' });
+  assert.equal(a.frames.length, 1);
+  assert.ok(a.frames[0].startsWith('event: reload\ndata: '));
+  const json = a.frames[0].slice('event: reload\ndata: '.length).trimEnd();
+  assert.equal(json.includes('\n'), false, 'the payload stays on ONE data line');
+  assert.deepEqual(JSON.parse(json), { v: 'page', by: 'app/page.ts', why: 'page-module' });
+  hub.closeAll();
+});
+
+// Fail safe on the emitting end too, so a caller with nothing to say can only
+// ever produce the full reload this always was.
+test('SseHub.reload emits `reload` for an absent or malformed verdict (#1398)', () => {
+  const hub = new SseHub({ keepaliveMs: 1_000_000 });
+  const a = fakeClient();
+  hub.add(a);
+  hub.reload();
+  hub.reload(null);
+  hub.reload(/** @type any */ ({}));
+  hub.reload(/** @type any */ ({ v: 7 }));
+  for (const f of a.frames) assert.equal(f, 'event: reload\ndata: {"v":"reload"}\n\n');
+  assert.equal(a.frames.length, 4);
   hub.closeAll();
 });
 

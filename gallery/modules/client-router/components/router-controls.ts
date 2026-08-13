@@ -1,7 +1,12 @@
 // Programmatic client navigation. `navigate(url)` does the same soft, in-place
 // swap an <a> click does, but from an event handler (after a save, a wizard
 // step, etc.). `revalidate(url?)` evicts the browser snapshot cache so the next
-// visit refetches fresh HTML instead of the cached page. `disableClientRouter()`
+// visit refetches fresh HTML instead of the cached page.
+// `refreshPage(mode?)` re-renders the page you are ALREADY on and swaps the
+// result in place, recording no history entry and never scrolling, so the reader
+// keeps their place. 'page' (the default) morphs the deepest shared boundary, so
+// hydrated component state outside it survives; 'shell' replaces the whole body,
+// which is what a layout change needs. `disableClientRouter()`
 // / `enableClientRouter()` turn soft navigation off / back on at runtime (for a
 // moment where you want a full page load, e.g. handing off to a third-party
 // flow). disableClientRouter() removes the document-level <a>/<form> click
@@ -11,7 +16,7 @@
 // All are client-only (they run in the browser), so a component is the right
 // home; a page/layout never hydrates. With JS off the plain link still works
 // (progressive enhancement), while the buttons are inert.
-import { WebComponent, html, signal, navigate, revalidate, disableClientRouter, enableClientRouter } from '@webjsdev/core';
+import { WebComponent, html, signal, navigate, revalidate, refreshPage, disableClientRouter, enableClientRouter } from '@webjsdev/core';
 import { buttonClass } from '#components/ui/button.ts';
 
 export class RouterControls extends WebComponent {
@@ -36,9 +41,18 @@ export class RouterControls extends WebComponent {
             @click=${() => revalidate()}
             class=${buttonClass({ variant: 'link', size: 'none' })}>revalidate() the snapshot cache</button>
           <button
+            @click=${() => refreshPage()}
+            class=${buttonClass({ variant: 'link', size: 'none' })}>refreshPage() this page</button>
+          <button
             @click=${() => this.toggleRouter()}
             class=${buttonClass({ variant: 'link', size: 'none' })}>${soft ? 'disableClientRouter()' : 'enableClientRouter()'} (soft nav: ${soft ? 'on' : 'off'})</button>
         </div>
+        <p class="text-sm text-muted-foreground">
+          refreshPage() re-renders THIS url on the server and swaps it in.
+          The server time above updates, and your scroll position does not
+          move. On a page with hydrated components outside the swapped region,
+          their state survives too.
+        </p>
         <p class="text-sm text-muted-foreground">
           Plain link:
           <a href="/features/client-router/second" class="text-primary underline">/features/client-router/second</a>.

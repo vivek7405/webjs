@@ -81,7 +81,7 @@ export { repeat, isRepeat } from './src/repeat.js';
 export { Suspense, isSuspense } from './src/suspense.js';
 export { connectWS } from './src/websocket-client.js';
 export { richFetch } from './src/rich-fetch.js';
-export { enableClientRouter, disableClientRouter, revalidate, loadFrame } from './src/router-client.js';
+export { enableClientRouter, disableClientRouter, revalidate, refreshPage, loadFrame } from './src/router-client.js';
 
 // `navigate` is typed against the generated `Route` union (#258) rather than
 // the JSDoc `string`. Until an app runs `webjs types`, `Route` resolves to

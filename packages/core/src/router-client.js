@@ -584,6 +584,14 @@ function afterTwoFrames(fn) {
 export function enableClientRouter() {
   if (enabled || typeof document === 'undefined') return;
   enabled = true;
+  // Publish the in-place refresh entry on the global (#1398). The dev
+  // live-reload client is a separate served script with no import of this
+  // module, so a global is the only seam it has, and its PRESENCE is the
+  // feature detection: an app that opted out with `webjs.clientRouter: false`
+  // never calls this, and a page that ships no component never loads
+  // @webjsdev/core at all, so both no-router cases resolve to a full reload
+  // without either side assuming anything about the other.
+  /** @type any */ (globalThis).__webjsRefreshPage = refreshPage;
   // Both `click` and `submit` are BUBBLE phase, not capture. A component's
   // per-element `@click` / `@submit` handler (render-client.js) runs in the
   // at-target phase, BEFORE a document-level bubble listener. So onClick /
@@ -656,6 +664,9 @@ export function disableClientRouter() {
   if (releaseScrollAnchor) releaseScrollAnchor();
   if (cancelScrollCatchUp) cancelScrollCatchUp();
   currentPageUrl = null;
+  // Unpublish the refresh entry (#1398) so the dev reload client's feature
+  // detection sees the router is gone and falls back to a full reload.
+  delete (/** @type any */ (globalThis).__webjsRefreshPage);
 }
 
 /**
@@ -695,16 +706,20 @@ export async function navigate(url, opts) {
  *
  * @param {Element} frameEl  The live `<webjs-frame>` element to fill.
  * @param {string} url  The `src` value, resolved against `location.href`.
- * @returns {Promise<{ ok: boolean, status: number | null, aborted: boolean }>}
+ * @returns {Promise<{ ok: boolean, status: number | null, aborted: boolean, applied: boolean }>}
+ *   Passed straight through from `fetchAndApply`, so `applied` says whether the
+ *   frame subtree was actually swapped (#1398). Each guard below returns it
+ *   explicitly rather than leaving the field off: one path omitting it would be
+ *   the same kind of contract hole the flag exists to close.
  */
 export async function loadFrame(frameEl, url) {
-  if (typeof location === 'undefined') return { ok: false, status: null, aborted: false };
+  if (typeof location === 'undefined') return { ok: false, status: null, aborted: false, applied: false };
   const id = frameEl && /** @type any */ (frameEl).id;
-  if (!id) return { ok: false, status: null, aborted: false };
+  if (!id) return { ok: false, status: null, aborted: false, applied: false };
   const target = new URL(url, location.href);
   // Cross-origin can't be a same-document frame swap (and a frame fetch must
   // send a same-origin credentialed request). Leave the frame unchanged.
-  if (target.origin !== location.origin) return { ok: false, status: null, aborted: false };
+  if (target.origin !== location.origin) return { ok: false, status: null, aborted: false, applied: false };
 
   // A frame self-load shares the global abort + token machinery so a real
   // navigation that starts mid-load supersedes it (and vice versa), exactly
@@ -747,6 +762,65 @@ export function revalidate(url) {
   const key = u.pathname + u.search;
   snapshotCache.delete(key);
   prefetchCache.delete(key);
+}
+
+/**
+ * Re-render the CURRENT url on the server and apply it in place, with no page
+ * reload (#1398).
+ *
+ * Dev-facing today, since the live-reload client calls it for a page or layout
+ * edit, but it is a plain capability with no dev-only code in it.
+ *
+ * It records no history entry and never scrolls, so the reader keeps their
+ * place and Back still goes to the previous page. `mode` picks the swap tier:
+ *
+ * - `'page'` morphs the deepest shared boundary, so the outer layout's DOM and
+ *   the hydrated state of its components survive. This is the light tier and
+ *   the default.
+ * - `'shell'` replaces the whole body. Needed when the LAYOUT's own markup
+ *   changed, because that markup lives outside every children range and a
+ *   boundary morph would leave it untouched. Component instances do not survive
+ *   it.
+ *
+ * It does NOT reload changed component modules, and cannot: `customElements
+ * .define` is once-per-tag and a module URL is fetched once per document. A
+ * caller whose change touched browser code must reload instead.
+ *
+ * @param {'page' | 'shell'} [mode]
+ * @returns {Promise<boolean>} whether the refresh applied. `false` means the
+ *   caller should fall back to a full load.
+ */
+export async function refreshPage(mode) {
+  if (!enabled || typeof location === 'undefined') return false;
+  // Every cached copy predates the change, so drop both caches before fetching.
+  revalidate();
+  try {
+    const res = await performNavigation(location.href, false, null, { refresh: mode === 'shell' ? 'shell' : 'page' });
+    // The outcome has to be READ, not inferred from the absence of a throw.
+    // `fetchAndApply` reports every real failure as `{ applied: false }` and
+    // throws for none of them (a rejected fetch, a non-HTML body, an
+    // unparseable one), so a bare try/catch here would resolve `true` for
+    // exactly the cases the caller's full-load fallback exists to cover, and
+    // the page would silently sit on stale content.
+    //
+    // It reads `applied`, NOT `ok`. An HTML body of any status is swapped in
+    // place, so a page rendered through `notFound()`, `forbidden()`, or an
+    // `error.ts` boundary is `ok: false` and applied perfectly well. Reading
+    // `ok` would report those as failures and make the dev client reload on top
+    // of a swap that already happened, losing the state this exists to keep,
+    // every time you iterate on a page that currently renders a 4xx or 5xx.
+    //
+    // Two outcomes are NOT failures either. A `null` means no fetch decided it
+    // (the parse guard hard-navigated, or a popstate restored a snapshot), so
+    // the page is already resolved. An `aborted` means a newer navigation
+    // superseded this one and owns the page now, and reloading would yank the
+    // reader out of it; Turbo drops a refresh that lands mid-navigation for the
+    // same reason.
+    if (!res || res.aborted) return true;
+    return res.applied;
+  } catch (_) {
+    return false;
+  }
 }
 
 // Auto-enable on import: deferred to the END of this module (see the
@@ -1784,8 +1858,21 @@ function cacheKey(url) {
  * @param {string} href
  * @param {boolean} isPopState
  * @param {string | null} frameId  Active <webjs-frame> id, or null.
+ * @param {{ refresh?: 'page' | 'shell' }} [opts]  `refresh` marks a same-URL
+ *   in-place re-render (#1398). It suppresses three things a forward navigation
+ *   does and a refresh must not: the outgoing snapshot, the optimistic loading
+ *   skeleton, and history plus scroll. See `refreshPage`.
+ * @returns {Promise<{ ok: boolean, status: number | null, aborted: boolean, applied: boolean } | null>}
+ *   The `fetchAndApply` outcome, so a caller can tell an applied navigation from
+ *   a failed one (#1398). Read `applied` rather than `ok` for that question: an
+ *   HTML body of any status is swapped in place, so a rendered 404 or 500 is
+ *   `ok: false` and `applied: true`. `null` means no fetch decided the outcome:
+ *   the parse guard hard-navigated, or a popstate restored from the snapshot
+ *   cache. Both already resolved the page, so a caller must not treat `null` as
+ *   a failure. Every other caller ignores the value.
  */
-async function performNavigation(href, isPopState, frameId) {
+async function performNavigation(href, isPopState, frameId, opts) {
+  const refresh = (opts && opts.refresh) || undefined;
   // #1008 / #936: a forward, main-document nav fired while the document is
   // still parsing (`readyState === 'loading'`) races the DOM. The leaving
   // page's closing layout markers at the bottom of the body may not exist yet,
@@ -1799,7 +1886,7 @@ async function performNavigation(href, isPopState, frameId) {
   if (shouldFullLoadDuringParse(isPopState, frameId) && typeof location !== 'undefined') {
     reportFallback('readyState-loading', href);
     hardNavigate(href);
-    return;
+    return null;
   }
 
   // Cancel any in-flight fetch: Turbo Drive's navigator.stop().
@@ -1842,7 +1929,11 @@ async function performNavigation(href, isPopState, frameId) {
   // the browser has already updated `location.href` to the destination
   // URL: using it as the key would clobber the cached snapshot we're
   // about to read in the popstate-restore branch below.
-  if (currentPageUrl) snapshotCurrent(currentPageUrl);
+  //
+  // A refresh (#1398) skips it: it navigates to the URL it is already on, so
+  // snapshotting first would write the PRE-EDIT page into `snapshotCache` under
+  // that exact key and a later Back would restore the stale render.
+  if (!refresh && currentPageUrl) snapshotCurrent(currentPageUrl);
 
   // Expose the opt-in `data-navigating` loading-indicator hook (see
   // setNavigating), but only if the nav takes long enough to be worth showing
@@ -1856,8 +1947,13 @@ async function performNavigation(href, isPopState, frameId) {
   // any) into the deepest current children-slot so the user sees an
   // instant skeleton instead of stale content. Saved so we can restore
   // it if the fetch fails.
+  //
+  // A refresh (#1398) shows none: flashing a `loading.ts` skeleton over content
+  // that is already correct is strictly worse than showing the old content for
+  // one round trip. Turbo's `MorphingPageRenderer` suppresses its own
+  // equivalents for the same reason.
   let optimisticState = null;
-  if (!isPopState) optimisticState = applyOptimisticLoading();
+  if (!isPopState && !refresh) optimisticState = applyOptimisticLoading();
 
   try {
     // popstate: try cache first, then refetch in background. Instant restore.
@@ -1962,7 +2058,7 @@ async function performNavigation(href, isPopState, frameId) {
             .catch(() => {});
           const floor = new Promise((r) => setTimeout(r, ANCHOR_SUPPRESS_FLOOR_MS));
           Promise.all([revalidated, floor]).then(() => afterTwoFrames(releaseAnchor));
-          return;
+          return null;
         }
       }
       // Cache-miss popstate. Browser-native scroll restoration is
@@ -1974,7 +2070,11 @@ async function performNavigation(href, isPopState, frameId) {
       if (typeof window !== 'undefined') window.scrollTo({ left: 0, top: 0, behavior: 'instant' });
     }
 
-    await fetchAndApply(href, frameId, !isPopState, optimisticState, 'GET', null, signal, myToken);
+    // `recordHistory: false` on a refresh (#1398) is what suppresses BOTH the
+    // duplicate `history.pushState` and the whole scroll block in one flag,
+    // which is exactly what the comment above that block already says it means.
+    // So Back still goes to the previous page and the reader keeps their place.
+    return await fetchAndApply(href, frameId, !isPopState && !refresh, optimisticState, 'GET', null, signal, myToken, /* revalidating */ false, refresh);
   } finally {
     if (navigatingFlagTimer) clearTimeout(navigatingFlagTimer);
     // Only clear the navigating flag if WE are still the active nav.
@@ -2841,15 +2941,30 @@ function handleNavigationError(href, status, error) {
  * @param {boolean} [revalidating]  True for the BACKGROUND refresh after a
  *   snapshot restore: the user is already viewing a page, so a boundary
  *   mismatch must degrade in place (never a jarring `location.href` load).
- * @returns {Promise<{ ok: boolean, status: number | null, aborted: boolean }>}
+ * @param {'page' | 'shell'} [refresh]  Same-URL in-place refresh (#1398). It
+ *   suppresses the `X-Webjs-Have` header and picks the swap tier; see
+ *   `refreshPage`.
+ * @returns {Promise<{ ok: boolean, status: number | null, aborted: boolean, applied: boolean }>}
  *   The fetch outcome, so a caller (the form-submission busy/event lifecycle)
  *   can report whether the submission settled as a success, an error, or an
  *   abort. `ok` mirrors `response.ok` for an HTTP response (a 422 validation
  *   re-render is `ok:false`), `false` for a transport/parse error, and `false`
  *   for an abort (which also sets `aborted:true`). `status` is the HTTP status
  *   or `null` when the request never produced one.
+ *
+ *   `applied` is a DIFFERENT question from `ok` and the two must not be
+ *   conflated (#1398). An HTML body of ANY status is parsed and swapped in
+ *   place, which is the whole point of the 422-revalidation and error-boundary
+ *   behaviour, so a page rendered through `notFound()`, `forbidden()`, or an
+ *   `error.ts` boundary has `ok:false` and `applied:true`. It is `false`
+ *   wherever no swap committed: a transport failure, a non-HTML body, an
+ *   unparseable one, a 204/205, a discarded revalidation, an abort, and every
+ *   `applySwap` path that returns without committing (a missing frame, or a
+ *   degradation to a hard navigation from an importmap mismatch or a poisoned
+ *   boundary scan). A caller deciding whether to fall back to a full page load
+ *   wants `applied`; one reporting the submission's success wants `ok`.
  */
-async function fetchAndApply(href, frameId, recordHistory, optimisticState, method, body, signal, token, revalidating) {
+async function fetchAndApply(href, frameId, recordHistory, optimisticState, method, body, signal, token, revalidating, refresh) {
   method = method || 'GET';
   const myToken = typeof token === 'number' ? token : currentNavigationToken;
   let html;
@@ -2884,7 +2999,11 @@ async function fetchAndApply(href, frameId, recordHistory, optimisticState, meth
     // navigation between the prefetch and this click does not disqualify it.
     // The optimistic skeleton has already deleted nested boundaries by now, so
     // pass the view captured before it ran.
-    const prefetched = (method === 'GET' && !body && !frameId)
+    // A refresh must never consume a prefetch (#1398): every cached copy
+    // predates the change that triggered it. `refreshPage` clears both caches
+    // before it fetches, so this only closes the window where a prefetch lands
+    // between that clear and this read.
+    const prefetched = (method === 'GET' && !body && !frameId && !refresh)
       ? prefetchTake(href, optimisticState ? optimisticState.haveKeys : undefined)
       : null;
     if (prefetched) {
@@ -2897,7 +3016,13 @@ async function fetchAndApply(href, frameId, recordHistory, optimisticState, meth
       respOk = true;
     } else {
     const headers = { 'x-webjs-router': '1' };
-    const have = buildHaveHeader();
+    // A same-URL refresh sends NO have-header (#1398). This is required, not an
+    // optimisation: the server short-circuits at the first layout whose segment
+    // path AND route key the client already holds, and a same-URL request
+    // matches every one of them, so the response would omit the layouts and a
+    // layout edit would be invisible. Sending nothing forces the full chain to
+    // render.
+    const have = refresh ? '' : buildHaveHeader();
     if (have) headers['x-webjs-have'] = have;
     if (frameId) headers['x-webjs-frame'] = frameId;
     // Content-negotiate a stream-action response on a write submission (a
@@ -2934,13 +3059,22 @@ async function fetchAndApply(href, frameId, recordHistory, optimisticState, meth
     // so the non-text/html stream MIME is not treated as a navigation error.
     if (isStream) {
       const text = await resp.text();
-      if (myToken === currentNavigationToken) {
+      // A newer navigation owns the page, so nothing is applied and `applied`
+      // has to say so: it reports whether this response reached the DOM, and a
+      // superseded one did not.
+      const fresh = myToken === currentNavigationToken;
+      if (fresh) {
         // Roll back any optimistic loading skeleton: a stream response patches
         // the page in place, it does not swap the region the skeleton covered.
         restoreOptimistic(optimisticState);
         renderStream(text);
       }
-      return { ok: respOk, status: respStatus, aborted: false };
+      // `ok` is forced false alongside `aborted`, matching every other abort
+      // return in this function. A caller reading `ok` as "this response was
+      // not superseded" would otherwise be wrong here and nowhere else, and one
+      // path disagreeing with the contract is worse than a slightly lossy
+      // value: the HTTP status is still on `status` for anyone who wants it.
+      return { ok: fresh && respOk, status: respStatus, aborted: !fresh, applied: fresh };
     }
     // Server-side redirect (PRG, auth-gate, etc.): fetch followed it
     // automatically. Record the FINAL URL in history, not the
@@ -2956,7 +3090,7 @@ async function fetchAndApply(href, frameId, recordHistory, optimisticState, meth
       if (myToken === currentNavigationToken && recordHistory) {
         history.pushState(null, '', finalUrl);
       }
-      return { ok: respOk, status: respStatus, aborted: false };
+      return { ok: respOk, status: respStatus, aborted: false, applied: false };
     }
 
     // Non-HTML response (JSON error, file download, opaque): can't be
@@ -2976,7 +3110,7 @@ async function fetchAndApply(href, frameId, recordHistory, optimisticState, meth
         restoreOptimistic(optimisticState);
         handleNavigationError(href, resp.status, null);
       }
-      return { ok: false, status: respStatus, aborted: false };
+      return { ok: false, status: respStatus, aborted: false, applied: false };
     }
 
     // HTML body of ANY status: 2xx, 4xx validation errors, 5xx error
@@ -3005,39 +3139,52 @@ async function fetchAndApply(href, frameId, recordHistory, optimisticState, meth
     // AbortError is a normal supersede, NOT a navigation error, so it must
     // NEVER dispatch webjs:navigation-error (the key no-false-positive
     // line).
-    if (err && /** @type any */ (err).name === 'AbortError') return { ok: false, status: null, aborted: true };
+    if (err && /** @type any */ (err).name === 'AbortError') return { ok: false, status: null, aborted: true, applied: false };
     // Stale (a newer nav started before we got the network error): the
     // newer nav owns the page now, so don't clobber it.
-    if (myToken !== currentNavigationToken) return { ok: false, status: null, aborted: true };
+    if (myToken !== currentNavigationToken) return { ok: false, status: null, aborted: true, applied: false };
     restoreOptimistic(optimisticState);
     // Transport/parse failure (fetch rejected, e.g. offline / DNS / TLS).
     // Surface a navigation-error so the app can recover in place instead
     // of a destructive full reload.
     handleNavigationError(href, null, err instanceof Error ? err : new Error(String(err)));
-    return { ok: false, status: null, aborted: false };
+    return { ok: false, status: null, aborted: false, applied: false };
   }
 
   // A newer navigation started while we awaited the response body -
   // bail before we overwrite its work.
   if (myToken !== currentNavigationToken) {
     if (streamCtx && streamCtx.reader) { try { streamCtx.reader.cancel(); } catch { /* ignore */ } }
-    return { ok: false, status: respStatus, aborted: true };
+    return { ok: false, status: respStatus, aborted: true, applied: false };
   }
 
   const doc = parseHTML(html);
   // The body claimed text/html but didn't parse into a document (a
   // malformed/empty HTML body). Surface a navigation-error so the app can
   // recover in place rather than a destructive full reload.
-  if (!doc) { restoreOptimistic(optimisticState); handleNavigationError(href, null, new Error('navigation response did not parse as HTML')); return { ok: false, status: respStatus, aborted: false }; }
+  if (!doc) { restoreOptimistic(optimisticState); handleNavigationError(href, null, new Error('navigation response did not parse as HTML')); return { ok: false, status: respStatus, aborted: false, applied: false }; }
 
-  const disposition = applySwap(doc, frameId, !!revalidating, finalUrl, incomingBuild, incomingSrc);
+  const disposition = applySwap(doc, frameId, !!revalidating, finalUrl, incomingBuild, incomingSrc, refresh);
+  // `'none'` means applySwap returned WITHOUT committing anything: the frame the
+  // response was for is missing, or it degraded to a hard navigation (an
+  // importmap/build mismatch, a poisoned boundary scan). The page is not left
+  // in a bad state either way, but nothing was applied IN PLACE, and `applied`
+  // has to say so or it repeats the hole it exists to close.
+  //
+  // Recorded as a FLAG rather than returned early on purpose. These paths used
+  // to fall through to the history push, the scroll block, and the streaming
+  // tail, and an early return would silently change all three (a click-driven
+  // frame nav records history, so a frame-missing response would stop advancing
+  // the URL). This commit is about what the outcome REPORTS, not about what the
+  // pipeline does, so the fall-through is left exactly as it was.
+  const applied = disposition !== 'none';
   // A discarded revalidation must be discarded OUTRIGHT: a streamed response's
   // boundary templates must not splice into the restored snapshot afterward
   // (boundary ids are per-render sequential, so a reduced render's numbering
   // need not line up with the snapshot's). Cancel the reader and stop here.
   if (disposition === 'discard') {
     if (streamCtx && streamCtx.reader) { try { streamCtx.reader.cancel(); } catch { /* ignore */ } }
-    return { ok: respOk, status: respStatus, aborted: false };
+    return { ok: respOk, status: respStatus, aborted: false, applied: false };
   }
 
   if (recordHistory) history.pushState(null, '', finalUrl);
@@ -3088,7 +3235,7 @@ async function fetchAndApply(href, frameId, recordHistory, optimisticState, meth
   }
 
   document.dispatchEvent(new CustomEvent('webjs:navigate', { detail: { url: finalUrl, frameId, from: 'navigate' } }));
-  return { ok: respOk, status: respStatus, aborted: false };
+  return { ok: respOk, status: respStatus, aborted: false, applied };
   } finally {
     // Clear the frame's busy state on every exit path (the early returns
     // above all unwind through here). No-op when this was not a frame nav.
@@ -3555,7 +3702,25 @@ function upgradeCustomElementsInRange(range) {
  */
 let _swapCommit = Promise.resolve();
 
-function applySwap(doc, frameId, revalidating, href, incomingBuild, incomingSrc) {
+/**
+ * @param {Document} doc
+ * @param {string | null} frameId
+ * @param {boolean} revalidating
+ * @param {string | null} href
+ * @param {string | null} [incomingBuild]
+ * @param {string | null} [incomingSrc]
+ * @returns {'discard' | 'none' | undefined} `'discard'` when a background
+ *   revalidation was thrown away, `'none'` when it returned without committing
+ *   anything (a missing frame, or a degradation to a hard navigation), and
+ *   `undefined` when a swap committed. `fetchAndApply` maps the first two to
+ *   `applied: false`.
+ * @param {'page' | 'shell' | undefined} [refresh]  same-URL in-place refresh
+ *   mode (#1398). `'shell'` takes the full-body tier directly, because the
+ *   layout's OWN markup changed and that lives outside every children range.
+ *   `'page'` falls through to the normal two-tier logic, which morphs the
+ *   deepest shared boundary and so preserves outer-layout component state.
+ */
+function applySwap(doc, frameId, revalidating, href, incomingBuild, incomingSrc, refresh) {
   // SSR action seeding (#472): ingest the incoming page's seed payload BEFORE
   // its components are grafted into the live DOM and upgrade, so a
   // soft-navigated async component resolves from the seed instead of
@@ -3691,14 +3856,14 @@ function applySwap(doc, frameId, revalidating, href, incomingBuild, incomingSrc)
           if (sessionStorage) sessionStorage.setItem(flag, '1');
           reportFallback('deploy-mismatch', href);
           hardNavigate(href);
-          return;
+          return 'none';
         }
       } catch {
         // sessionStorage unavailable (private mode w/ quota etc.):
         // fall through to a single reload like before.
         reportFallback('deploy-mismatch', href);
         hardNavigate(href);
-        return;
+        return 'none';
       }
     } else if (!mismatch) {
       // No importmap/build mismatch, so no hard reload. But the app-source
@@ -3780,6 +3945,20 @@ function applySwap(doc, frameId, revalidating, href, incomingBuild, incomingSrc)
     if (!evt.defaultPrevented) {
       console.warn(`[webjs] frame "${frameId}" was not in the navigation response, leaving it unchanged. Handle "webjs:frame-missing" (preventDefault) to override.`);
     }
+    return 'none';
+  }
+
+  // 1b. Same-URL refresh in `shell` mode (#1398). A boundary morph can only
+  // rewrite what sits INSIDE a `<!--wj:children:...-->` range, and a layout's
+  // own header, nav, and footer sit outside every one of them, so a layout edit
+  // applied through the boundary tiers would silently do nothing, which is
+  // strictly worse than the reload it replaced. Take the full-body tier
+  // directly instead. Component instances do not survive it, which is the
+  // honest cost of a layout edit and still beats a page reload: scroll is kept
+  // and no history entry is written.
+  if (refresh === 'shell') {
+    ingestSeeds();
+    swapFullBody(doc);
     return;
   }
 
@@ -3842,7 +4021,7 @@ function applySwap(doc, frameId, revalidating, href, incomingBuild, incomingSrc)
       : !there ? 'incoming-boundaries-malformed'
       : 'no-shared-boundary', href);
     hardNavigate(href);
-    return;
+    return 'none';
   }
 
   // A BACKGROUND revalidation (revalidating + href) with no trustworthy plan
@@ -3857,10 +4036,32 @@ function applySwap(doc, frameId, revalidating, href, incomingBuild, incomingSrc)
 
   // 4. In-place full-body swap: the background paths only (a snapshot
   // restore or its revalidation, where a full load is not an option
-  // because the user is already viewing the page). Full head merge;
-  // `mergeHead` PRESERVES stylesheets and `<style>` unconditionally
-  // (#936) so the swap can never leave the page unstyled.
+  // because the user is already viewing the page).
   ingestSeeds();   // committed: past both discard branches above
+  swapFullBody(doc);
+}
+
+/**
+ * In-place FULL-BODY swap: merge the head, then replace every body child.
+ *
+ * `mergeHead` PRESERVES stylesheets and `<style>` unconditionally (#936), so
+ * this can never leave the page unstyled, and `regraftPermanentElements` adopts
+ * each live `[data-webjs-permanent][id]` node by identity so a running widget
+ * survives. Component INSTANCES do not: every element is re-created and
+ * re-upgraded, which is the difference between this and a boundary morph.
+ *
+ * Two callers. The background snapshot-restore path in `applySwap`, where a full
+ * load is not an option because the user is already viewing the page. And the
+ * `shell` mode of `refreshPage` (#1398), which needs the LAYOUT's own markup
+ * replaced and cannot get that from a boundary-range swap, since a layout's own
+ * header, nav, and footer sit outside every `<!--wj:children:...-->` range.
+ *
+ * The caller ingests seeds first: this is a commit point, and both callers reach
+ * it only past their own discard branches.
+ *
+ * @param {Document} doc
+ */
+function swapFullBody(doc) {
   mergeHead(doc.head);
   // Persist permanent elements by node identity across the full-body
   // swap: move each live [data-webjs-permanent][id] node into the matching
