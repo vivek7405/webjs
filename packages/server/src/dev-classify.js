@@ -103,8 +103,13 @@ function verdictRank(v) {
  *    util, a `.server.*` file reachable only from a page). Server-only by
  *    elimination, so `shell`.
  * 6. Anything else. A brand-new file, a deleted file, and every `public/` asset
- *    land here. A `public/` stylesheet MUST: `mergeHead` preserves stylesheets
- *    unconditionally (#936), so a swap would visibly do nothing.
+ *    land here. `public/` is not in the module graph at all, so the server
+ *    cannot tell what the file IS or what depends on it, and most of what lives
+ *    there (an image, a font, a service worker, a hand-written script) is
+ *    something no amount of re-rendering picks up. The refresh does re-request
+ *    the page's stylesheets, so a `public/` CSS edit alone would now survive a
+ *    morph, but that is one knowable case inside a rung whose whole point is
+ *    that the file is unknowable.
  *
  * Note what step 3 sweeps in deliberately. A `'use server'` action file
  * imported by a SHIPPING component is inside the closure (the graph keeps a

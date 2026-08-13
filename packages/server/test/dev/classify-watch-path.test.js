@@ -96,9 +96,9 @@ test('an action reachable from a shipping component reloads; one reachable only 
   assert.equal(v.why, 'server-only-module');
 });
 
-// The case a naive implementation gets wrong, and the one that silently does
-// NOTHING if morphed: `mergeHead` preserves stylesheets unconditionally (#936),
-// so swapping in a re-render would never re-fetch the changed CSS.
+// `public/` is outside the module graph, so the server cannot tell what the
+// file is or what depends on it, and most of what lives there (an image, a
+// font, a service worker) is something no re-render picks up.
 test('a public/ asset is a full reload, never a morph', () => {
   const v = classifyChangedPath(p('public/app.css'), ctx());
   assert.equal(v.v, 'reload');

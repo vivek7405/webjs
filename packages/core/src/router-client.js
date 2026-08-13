@@ -1858,12 +1858,14 @@ function cacheKey(url) {
  *   in-place re-render (#1398). It suppresses three things a forward navigation
  *   does and a refresh must not: the outgoing snapshot, the optimistic loading
  *   skeleton, and history plus scroll. See `refreshPage`.
- * @returns {Promise<{ ok: boolean, status: number | null, aborted: boolean } | null>}
+ * @returns {Promise<{ ok: boolean, status: number | null, aborted: boolean, applied: boolean } | null>}
  *   The `fetchAndApply` outcome, so a caller can tell an applied navigation from
- *   a failed one (#1398). `null` means no fetch decided the outcome: the parse
- *   guard hard-navigated, or a popstate restored from the snapshot cache. Both
- *   already resolved the page, so a caller must not treat `null` as a failure.
- *   Every other caller ignores the value.
+ *   a failed one (#1398). Read `applied` rather than `ok` for that question: an
+ *   HTML body of any status is swapped in place, so a rendered 404 or 500 is
+ *   `ok: false` and `applied: true`. `null` means no fetch decided the outcome:
+ *   the parse guard hard-navigated, or a popstate restored from the snapshot
+ *   cache. Both already resolved the page, so a caller must not treat `null` as
+ *   a failure. Every other caller ignores the value.
  */
 async function performNavigation(href, isPopState, frameId, opts) {
   const refresh = (opts && opts.refresh) || undefined;
@@ -3051,13 +3053,17 @@ async function fetchAndApply(href, frameId, recordHistory, optimisticState, meth
     // so the non-text/html stream MIME is not treated as a navigation error.
     if (isStream) {
       const text = await resp.text();
-      if (myToken === currentNavigationToken) {
+      // A newer navigation owns the page, so nothing is applied and `applied`
+      // has to say so: it reports whether this response reached the DOM, and a
+      // superseded one did not.
+      const fresh = myToken === currentNavigationToken;
+      if (fresh) {
         // Roll back any optimistic loading skeleton: a stream response patches
         // the page in place, it does not swap the region the skeleton covered.
         restoreOptimistic(optimisticState);
         renderStream(text);
       }
-      return { ok: respOk, status: respStatus, aborted: false, applied: true };
+      return { ok: respOk, status: respStatus, aborted: !fresh, applied: fresh };
     }
     // Server-side redirect (PRG, auth-gate, etc.): fetch followed it
     // automatically. Record the FINAL URL in history, not the

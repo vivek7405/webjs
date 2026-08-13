@@ -3053,6 +3053,13 @@ const DEV_OVERLAY_SRC = readFileSync(new URL('./dev-overlay.js', import.meta.url
 const RELOAD_WORKER_SRC = readFileSync(new URL('./dev-reload-worker.js', import.meta.url), 'utf8')
   .replace(/^export /gm, '');
 
+// The stylesheet re-request source (#1398), read once + `export`-stripped so it
+// inlines into the served reload client. Same shared-source rule as the two
+// above: the browser test imports this module directly, so it drives the EXACT
+// code that ships.
+const DEV_STYLES_SRC = readFileSync(new URL('./dev-styles.js', import.meta.url), 'utf8')
+  .replace(/^export /gm, '');
+
 function reloadClientJs(bp) {
   // The overlay renderer uses textContent throughout (never innerHTML), so the
   // error message / code frame can never inject markup (#264). Served only in
@@ -3077,6 +3084,7 @@ function reloadClientJs(bp) {
   return `// webjs dev reload client
 ${DEV_OVERLAY_SRC}
 ${RELOAD_WORKER_SRC}
+${DEV_STYLES_SRC}
 function __webjsApplyError(data) {
   let f; try { f = JSON.parse(data); } catch (_) { return; }
   renderDevOverlay(f);
@@ -3110,67 +3118,6 @@ function __webjsWhenReady(then) {
 // page edit) the hydrated state of components outside the changed region
 // survive. Anything else, including every signal the server could not classify,
 // is the full reload this always was.
-// Re-request the page's stylesheets after an in-place refresh (#1398).
-//
-// A swap never re-requests them on its own: \`mergeHead\` preserves every
-// stylesheet unconditionally (#936) and the dev href carries no content hash
-// (\`asset()\` is prod-only), so the link node is kept by identity and the browser
-// never asks the server for it again. A full reload used to do that asking,
-// which is how \`webjs.dev.regenerate\` (#967) ever ran: it rebuilds a stale build
-// output like \`public/tailwind.css\` ON REQUEST. Without this, an edit that adds
-// a utility class produces a \`page\` verdict, the morph fetches only the HTML,
-// the regenerated CSS is never requested, and the new class has no backing rule
-// until a manual reload. Every in-repo app is configured that way, and it bites
-// the plain \`tailwindcss --watch\` shape too.
-//
-// The new sheet is inserted BESIDE the old one, and which one survives depends
-// on how the request went. On LOAD the old one is dropped, so the page is never
-// briefly unstyled. On ERROR the NEW one is dropped and the old one kept: the
-// re-request can fail (the server is mid-restart, the file was renamed), and
-// removing the last working sheet there would leave the page permanently
-// unstyled, which is the exact failure #936 and #1400 exist to prevent.
-//
-// Same-origin only, and one link per identity, where the identity is every
-// attribute EXCEPT the href's query. The duplicate being collapsed is the one
-// the head merge re-appends (the incoming bare-href link beside the busted
-// one), so the head would otherwise gain a link on every refresh. Keying on the
-// path alone would be wrong in the other direction: it would delete an author's
-// second, legitimately distinct link to the same file, such as a
-// \`media="print"\` sheet.
-function __webjsRefreshStyles() {
-  var kept = Object.create(null);
-  var links = [].slice.call(document.querySelectorAll('link[rel~="stylesheet"][href]'));
-  for (var i = 0; i < links.length; i++) {
-    var el = links[i], url;
-    try { url = new URL(el.getAttribute('href'), location.href); } catch (_) { continue; }
-    if (url.origin !== location.origin) continue;
-    var parts = [];
-    var attrs = el.attributes;
-    for (var a = 0; a < attrs.length; a++) {
-      if (attrs[a].name === 'href') continue;
-      parts.push([attrs[a].name, attrs[a].value]);
-    }
-    parts.sort(function (x, y) { return x[0] < y[0] ? -1 : x[0] > y[0] ? 1 : 0; });
-    var key = JSON.stringify([url.pathname, parts]);
-    if (kept[key]) { if (el.parentNode) el.parentNode.removeChild(el); continue; }
-    kept[key] = { el: el, url: url };
-  }
-  Object.keys(kept).forEach(function (key) {
-    var old = kept[key].el, url = kept[key].url;
-    if (!old.parentNode) return;
-    url.searchParams.set('__webjs_dev', String(Date.now()));
-    var next = old.cloneNode(false);
-    next.setAttribute('href', url.pathname + url.search);
-    next.addEventListener('load', function () {
-      if (old.parentNode) old.parentNode.removeChild(old);
-    });
-    next.addEventListener('error', function () {
-      // Keep the sheet that still works rather than the one that just 404ed.
-      if (next.parentNode) next.parentNode.removeChild(next);
-    });
-    old.parentNode.insertBefore(next, old.nextSibling);
-  });
-}
 function __webjsApplyReload(verdict) {
   __webjsWhenReady(function () {
     // Runtime feature detection, never an assumption. The refresh entry is
@@ -3182,7 +3129,7 @@ function __webjsApplyReload(verdict) {
     if ((verdict === 'page' || verdict === 'shell') && typeof refresh === 'function') {
       refresh(verdict).then(function (ok) {
         if (!ok) { location.reload(); return; }
-        __webjsRefreshStyles();
+        refreshStyles();
       }, function () { location.reload(); });
       return;
     }
