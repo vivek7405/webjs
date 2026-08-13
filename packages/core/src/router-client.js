@@ -3170,7 +3170,14 @@ async function fetchAndApply(href, frameId, recordHistory, optimisticState, meth
   // importmap/build mismatch, a poisoned boundary scan). The page is not left
   // in a bad state either way, but nothing was applied IN PLACE, and `applied`
   // has to say so or it repeats the hole it exists to close.
-  if (disposition === 'none') return { ok: respOk, status: respStatus, aborted: false, applied: false };
+  //
+  // Recorded as a FLAG rather than returned early on purpose. These paths used
+  // to fall through to the history push, the scroll block, and the streaming
+  // tail, and an early return would silently change all three (a click-driven
+  // frame nav records history, so a frame-missing response would stop advancing
+  // the URL). This commit is about what the outcome REPORTS, not about what the
+  // pipeline does, so the fall-through is left exactly as it was.
+  const applied = disposition !== 'none';
   // A discarded revalidation must be discarded OUTRIGHT: a streamed response's
   // boundary templates must not splice into the restored snapshot afterward
   // (boundary ids are per-render sequential, so a reduced render's numbering
@@ -3228,7 +3235,7 @@ async function fetchAndApply(href, frameId, recordHistory, optimisticState, meth
   }
 
   document.dispatchEvent(new CustomEvent('webjs:navigate', { detail: { url: finalUrl, frameId, from: 'navigate' } }));
-  return { ok: respOk, status: respStatus, aborted: false, applied: true };
+  return { ok: respOk, status: respStatus, aborted: false, applied };
   } finally {
     // Clear the frame's busy state on every exit path (the early returns
     // above all unwind through here). No-op when this was not a frame nav.
