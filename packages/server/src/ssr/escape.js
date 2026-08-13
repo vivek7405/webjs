@@ -1,5 +1,10 @@
 /**
- * The two HTML escapers the SSR path uses, in one place.
+ * The HTML escapers the SSR render and head paths use, in one place.
+ *
+ * Not quite the only pair in the package: `importmap.js` keeps a private,
+ * byte-identical `escapeAttr` for the one attribute it writes itself, on the
+ * stated ground that one small helper is not worth a cross-file dependency.
+ * That one is in step with these and has to stay so.
  *
  * `main` had a single pair serving every call site. The split produced three
  * copies, in the render path, the head builder and the env shim, and two of

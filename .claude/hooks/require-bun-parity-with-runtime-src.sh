@@ -59,7 +59,7 @@ if [ -z "$staged" ]; then exit 0; fi
 # require-tests-with-src.sh. Scoped to published-package source.
 src_runtime=$(printf '%s\n' "$staged" \
   | grep -E '^packages/([^/]+/src|editors/[^/]+/src|cli/lib)/' \
-  | grep -E 'serialize|/json\.js|file-storage|listener|ts-strip|action|render-server|/ssr\.js|conditional-get|websocket|node-version|csrf|/auth\.js|/session\.js|/cors\.js|crypto|compression|body-limit|/dev\.js|stream' \
+  | grep -E 'serialize|/json\.js|file-storage|listener|ts-strip|action|render-server|/ssr[./]|conditional-get|websocket|node-version|csrf|/auth\.js|/session\.js|/cors\.js|crypto|compression|body-limit|/dev[./]|stream' \
   || true)
 if [ -z "$src_runtime" ]; then exit 0; fi
 

@@ -115,7 +115,7 @@ fi
 # jq objects would be invalid hook output).
 reminder=""
 
-client_facing=$(printf '%s\n' "$src_touched" | grep -E 'router-client|render-client|component\.js|slot\.js|lazy-loader|websocket-client|client-router|directives' || true)
+client_facing=$(printf '%s\n' "$src_touched" | grep -E 'router-client|render-client|component[./]|slot[./]|lazy-loader|websocket-client|client-router|directives' || true)
 if [ -n "$client_facing" ]; then
   list=$(printf '%s' "$client_facing" | tr '\n' ' ')
   reminder="${reminder}Client/browser-facing source changed ($list). A unit test alone is not sufficient; confirm browser and/or e2e coverage (network probes, navigation, hydration) asserts the real behaviour. "
@@ -129,7 +129,7 @@ fi
 # Kept in sync with require-bun-parity-with-runtime-src.sh (the BLOCKING gate);
 # this is the matching non-blocking nudge, widened to the request path (csrf /
 # actions / ssr / dev handler / auth / session / cors), which diverges on Bun too.
-runtime_sensitive=$(printf '%s\n' "$src_touched" | grep -E 'serialize|/json\.js|file-storage|listener|ts-strip|action|render-server|/ssr\.js|conditional-get|websocket|node-version|csrf|/auth\.js|/session\.js|/cors\.js|crypto|compression|body-limit|/dev\.js|stream' || true)
+runtime_sensitive=$(printf '%s\n' "$src_touched" | grep -E 'serialize|/json\.js|file-storage|listener|ts-strip|action|render-server|/ssr[./]|conditional-get|websocket|node-version|csrf|/auth\.js|/session\.js|/cors\.js|crypto|compression|body-limit|/dev[./]|stream' || true)
 if [ -n "$runtime_sensitive" ]; then
   rlist=$(printf '%s' "$runtime_sensitive" | tr '\n' ' ')
   reminder="${reminder}Runtime-sensitive source changed ($rlist). webjs runs on Node AND Bun: run \`node scripts/run-bun-tests.js\` (needs bun installed) plus the test/bun/*.mjs scripts under Bun, and treat any divergence as a real framework bug to fix (not a skip). Add a test/bun/<feature>.mjs cross-runtime script for a new listener/serializer/streaming surface. See .agents/skills/webjs/references/testing.md. "

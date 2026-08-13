@@ -153,23 +153,16 @@ test('the head builder uses those same escapers, not a widened copy', async () =
   assert.ok(html.includes('content="x > y"'), 'meta content keeps a bare >');
 });
 
-test('the app-source id is a real digest, not a stringified promise', async () => {
-  // fileByteHash was made async while its only call site interpolated it
-  // directly, so every entry became `[object Promise]` and the id stopped
-  // changing when app source changed, killing the #899 deploy signal. The
-  // branch is production-only, which is why nothing saw it.
-  const appDir = makeApp({ 'app/page.ts': `export default () => 'ok';` });
-  const app = await createRequestHandler({ appDir, dev: false });
-  await app.warmup();
-  const src = (await app.handle(new Request('http://x/'))).headers.get('x-webjs-src');
-
-  assert.ok(src, 'a prod response carries the app-source id');
-  assert.ok(!src.includes('object Promise'), 'the id is not a stringified promise');
-});
-
 test('the app-source id changes when app source changes', async () => {
-  // The counterfactual: an id that never changes still satisfies the check
-  // above, and a frozen id is precisely the defect.
+  // fileByteHash was made async while its only call site interpolated it
+  // directly, so every entry became `[object Promise]`, the id froze, and the
+  // #899 deploy signal stopped evicting stale client caches. Production-only
+  // branch, which is why nothing saw it.
+  //
+  // The assertion has to be CHANGE DETECTION. `x-webjs-src` is a sha256 of the
+  // collected input (importmap.js `setAppSourceId`), so the header is hex
+  // whatever goes in: asserting it does not contain "object Promise" is
+  // unfalsifiable and passes with the defect present.
   const files = { 'app/page.ts': `export default () => 'one';` };
   const a = makeApp(files);
   const appA = await createRequestHandler({ appDir: a, dev: false });
