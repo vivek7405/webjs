@@ -301,8 +301,5 @@ suite('Client router: refreshPage re-renders the current url in place (#1398)', 
       disableClientRouter();
     }
     assert.equal(typeof globalThis.__webjsRefreshPage, 'undefined', 'disabling takes it back down');
-    // Leave the router in the state the rest of the file expects.
-    enableClientRouter();
-    disableClientRouter();
   });
 });

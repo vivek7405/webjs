@@ -155,32 +155,32 @@ suite('Client router: <webjs-frame> frame-missing contract (#251)', () => {
   // which nothing else in the suite would notice.
   test('a frameless response still advances the URL, because the sentinel only reports', async () => {
     setup();
-    const before = location.href;
+    // Observe the history CALL rather than reading `location` afterwards.
+    //
+    // Reading `location` cannot work here without two history mutations of its
+    // own, a park before and a restore after, because an earlier case in this
+    // suite clicks the same link and leaves the URL at its target (web-test
+    // -runner isolates per file, not per test) so the assertion would otherwise
+    // be satisfied by that case's push. Both of those mutations are hazards in
+    // their own right: this file's only cross-case leaks have come from exactly
+    // those two lines, and WebKit rate-limits history mutations, so either can
+    // throw and strand the shared page state on the cases below.
+    //
+    // A spy needs neither, depends on no sibling case, and asserts the thing
+    // directly instead of inferring it from a global the whole file shares.
+    const pushed = [];
+    const origPush = history.pushState;
+    history.pushState = function (...args) { pushed.push(String(args[2])); };
     try {
-      // Park the URL somewhere this click cannot reach FIRST. The earlier case
-      // in this suite clicks the same link and leaves the URL at its target
-      // (web-test-runner isolates per file, not per test), so without this the
-      // assertion below is satisfied by that case's history push and would pass
-      // with this one's removed. It has to observe its OWN click.
-      //
-      // Inside the `try`, like every other post-setup step in this file. A
-      // throw out here (a failed park, or WebKit rate-limiting history
-      // mutations) would otherwise skip the `finally` and leak the parked URL,
-      // the patched console, the nav guard, and this case's container into the
-      // three cases below, which would then fail against the wrong container
-      // for reasons naming nothing about the cause. That is the cross-case
-      // state leak this very test exists to close.
-      history.replaceState(null, '', '/wj-parked-1398');
-      assert.equal(location.pathname, '/wj-parked-1398', 'parked, so the assertion starts from a known place');
       window.fetch = () => htmlResponse(
         '<!doctype html><html><head></head><body><h1 id="login">Login</h1></body></html>'
       );
       document.getElementById('frame-link').click();
       await settle();
-      assert.equal(location.pathname, '/no-frame-here',
-        'history still advanced past the frame-missing return');
+      assert.equal(pushed.length, 1, 'the frame-missing return still records history');
+      assert.match(pushed[0], /\/no-frame-here$/, 'and it advanced to the navigation target');
     } finally {
-      history.replaceState(null, '', before);
+      history.pushState = origPush;
       teardown();
     }
   });
