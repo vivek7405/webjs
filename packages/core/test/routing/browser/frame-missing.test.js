@@ -156,6 +156,13 @@ suite('Client router: <webjs-frame> frame-missing contract (#251)', () => {
   test('a frameless response still advances the URL, because the sentinel only reports', async () => {
     setup();
     const before = location.href;
+    // Park the URL somewhere this click cannot reach FIRST. The earlier case in
+    // this suite clicks the same link and leaves the URL at its target (web-test
+    // -runner isolates per file, not per test), so without this the assertion
+    // below is satisfied by that case's history push and would pass with this
+    // one's removed. It has to observe its OWN click.
+    history.replaceState(null, '', '/wj-parked-1398');
+    assert.equal(location.pathname, '/wj-parked-1398', 'parked, so the assertion starts from a known place');
     try {
       window.fetch = () => htmlResponse(
         '<!doctype html><html><head></head><body><h1 id="login">Login</h1></body></html>'
