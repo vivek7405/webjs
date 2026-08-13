@@ -13,7 +13,8 @@ import { isRepeat } from '../repeat.js';
 import { isSuspense } from '../suspense.js';
 import { isUnsafeHTML, isLive, isKeyed, isGuard, isTemplateContent, isRef, isCache, isUntil, isAsyncAppend, isAsyncReplace, isWatch } from '../directives.js';
 import { stringify } from '../serialize.js';
-import { injectDSD, kebabCase, decodeAttrEntities, isRawtextTag } from './dsd.js';
+import { isRawtextTag } from './html-scan.js';
+import { kebabCase } from './text.js';
 
 /** True in a production build (no dev error surfacing). */
 export function isProd() {
