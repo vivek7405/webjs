@@ -422,9 +422,14 @@ export class UiAlertDialogContent extends WebComponent({
       panel.setAttribute('aria-describedby', authored);
       return;
     }
+    // Clear the previous open's value before resolving again. The panel keeps
+    // its attributes between opens, so a guard that skips when the attribute is
+    // already present can never re-resolve, and a removed description node
+    // leaves a stale aria-describedby pointing at a dead IDREF.
+    panel.removeAttribute('aria-describedby');
     const desc =
       this.querySelector('[data-slot="alert-dialog-description"]') ?? this.querySelector('p');
-    if (desc && !panel.hasAttribute('aria-describedby')) {
+    if (desc) {
       panel.setAttribute('aria-describedby', ensureId(desc as HTMLElement, 'ui-alert-desc'));
     }
   }
@@ -454,9 +459,13 @@ export class UiAlertDialogContent extends WebComponent({
       this._wireDescription(panel);
       return;
     }
+    // Same re-resolve rule: clear what a previous open wrote, or a removed
+    // title node leaves a stale aria-labelledby that points at a dead IDREF AND
+    // suppresses the floor below, which exists to prevent exactly that state.
+    panel.removeAttribute('aria-labelledby');
     const title =
       this.querySelector('[data-slot="alert-dialog-title"]') ?? this.querySelector('h1, h2, h3');
-    if (title && !panel.hasAttribute('aria-labelledby')) {
+    if (title) {
       panel.setAttribute('aria-labelledby', ensureId(title as HTMLElement, 'ui-alert-title'));
     }
     this._wireDescription(panel);
@@ -478,7 +487,6 @@ export class UiAlertDialogContent extends WebComponent({
     return html`<dialog
       data-slot="alert-dialog-native"
       role="alertdialog"
-      tabindex="-1"
       class=${NATIVE_DIALOG_CLASS}
       ${ref(this.#dialog)}
       @cancel=${this._onNativeCancel}

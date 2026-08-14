@@ -1202,13 +1202,18 @@ describe('E2E: Blog example', { skip: !process.env.WEBJS_E2E && 'set WEBJS_E2E=1
       const panel = host?.querySelector('[data-slot="dialog-content"]');
       if (!native || !panel) return null;
       const labelledBy = native.getAttribute('aria-labelledby');
-      const target = labelledBy ? document.getElementById(labelledBy) : null;
+      const describedBy = native.getAttribute('aria-describedby');
+      const nameTarget = labelledBy ? document.getElementById(labelledBy) : null;
+      const descTarget = describedBy ? document.getElementById(describedBy) : null;
       return {
         open: native.open,
         nativeRole: native.getAttribute('role'),
         panelHasRole: panel.hasAttribute('role'),
-        // The resolved name, however it was supplied.
-        name: (target?.textContent || native.getAttribute('aria-label') || '').trim(),
+        // Whether the IDREF actually resolves, which a dead one would not.
+        nameResolves: !!nameTarget,
+        descResolves: !!descTarget,
+        name: (nameTarget?.textContent || native.getAttribute('aria-label') || '').trim(),
+        desc: (descTarget?.textContent || '').trim(),
       };
     });
 
@@ -1216,7 +1221,14 @@ describe('E2E: Blog example', { skip: !process.env.WEBJS_E2E && 'set WEBJS_E2E=1
     assert.ok(seen.open, 'the dialog should be open');
     assert.equal(seen.nativeRole, 'dialog', 'the native <dialog> carries role="dialog"');
     assert.equal(seen.panelHasRole, false, 'the content panel carries no second dialog role');
-    assert.ok(seen.name.length > 0, `an open modal must have an accessible name, got ${JSON.stringify(seen.name)}`);
+    // Assert the RESOLVED title, not merely that some name exists. A
+    // non-empty check passes on the generic "Dialog" floor alone, so it would
+    // stay green with the entire title lookup deleted and could never observe
+    // that the wiring found this demo's <ui-dialog-title>.
+    assert.ok(seen.nameResolves, 'aria-labelledby must point at a live element, not a dead IDREF');
+    assert.equal(seen.name, 'Edit profile', 'the name comes from the demo title node');
+    assert.ok(seen.descResolves, 'aria-describedby must point at a live element');
+    assert.match(seen.desc, /Make changes to your profile/, 'the description comes from the demo description node');
   });
 
   test('/ui-demo: clicking a button does not crash the page', async () => {

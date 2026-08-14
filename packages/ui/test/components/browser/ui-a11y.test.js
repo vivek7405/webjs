@@ -1577,3 +1577,44 @@ suite('ui-sonner a11y', () => {
     root.remove();
   });
 });
+
+suite('ui-dialog naming re-resolves on each open', () => {
+  suiteSetup(async () => { await import(`${COMPONENTS_DIR}/dialog.ts`); });
+
+  // The panel keeps its attributes between opens, so the wiring has to clear
+  // what a previous open wrote before resolving again. Without that, removing
+  // the title node leaves a stale aria-labelledby pointing at a dead IDREF,
+  // which resolves to NO name and also suppresses the generic-name floor that
+  // exists to make an unnamed modal impossible. Both failures are silent.
+  test('a removed title node does not leave a dead aria-labelledby behind', async () => {
+    const root = await mount(html`
+      <ui-dialog>
+        <ui-dialog-content>
+          <h2 data-slot="dialog-title">First title</h2>
+          <p data-slot="dialog-description">First description.</p>
+        </ui-dialog-content>
+      </ui-dialog>
+    `);
+    const host = root.querySelector('ui-dialog');
+    host.show();
+    await tick();
+    const native = root.querySelector('dialog[data-slot="dialog-native"]');
+    const firstRef = native.getAttribute('aria-labelledby');
+    assert.ok(firstRef, 'the first open names the dialog from its title');
+    assert.ok(document.getElementById(firstRef), 'and that IDREF resolves');
+
+    host.hide();
+    await tick();
+    root.querySelector('[data-slot="dialog-title"]').remove();
+    root.querySelector('[data-slot="dialog-description"]').remove();
+    host.show();
+    await tick();
+
+    const ref = native.getAttribute('aria-labelledby');
+    assert.equal(ref && document.getElementById(ref), null, 'no stale IDREF survives the re-open');
+    assert.equal(native.getAttribute('aria-label'), 'Dialog', 'the generic name floor applies instead');
+    const descRef = native.getAttribute('aria-describedby');
+    assert.equal(descRef && document.getElementById(descRef), null, 'and no stale description IDREF either');
+    root.remove();
+  });
+});

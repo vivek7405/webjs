@@ -115,9 +115,14 @@ function wireDialogDescription(host: Element, panel: Element): void {
     panel.setAttribute('aria-describedby', authored);
     return;
   }
+  // Clear the previous open's value before resolving again. The panel keeps its
+  // attributes between opens, so a guard that skips when the attribute is
+  // already present can never re-resolve: remove the description node and
+  // re-open, and the stale aria-describedby survives pointing at a dead IDREF.
+  panel.removeAttribute('aria-describedby');
   const desc =
     host.querySelector('[data-slot="dialog-description"]') ?? host.querySelector('p');
-  if (desc && !panel.hasAttribute('aria-describedby')) {
+  if (desc) {
     panel.setAttribute('aria-describedby', ensureId(desc as HTMLElement, 'ui-dialog-desc'));
   }
 }
@@ -148,9 +153,13 @@ export function wireDialogLabels(host: Element, panelSelector: string): void {
     wireDialogDescription(host, panel);
     return;
   }
+  // Same re-resolve rule: clear what a previous open wrote, or a removed title
+  // node leaves a stale aria-labelledby that points at a dead IDREF AND
+  // suppresses the floor below, which exists to prevent exactly that state.
+  panel.removeAttribute('aria-labelledby');
   const title =
     host.querySelector('[data-slot="dialog-title"]') ?? host.querySelector('h1, h2, h3');
-  if (title && !panel.hasAttribute('aria-labelledby')) {
+  if (title) {
     panel.setAttribute('aria-labelledby', ensureId(title as HTMLElement, 'ui-dialog-title'));
   }
   wireDialogDescription(host, panel);
@@ -525,7 +534,6 @@ export class UiDialogContent extends WebComponent({
     return html`<dialog
       data-slot="dialog-native"
       role="dialog"
-      tabindex="-1"
       class=${NATIVE_DIALOG_CLASS}
       ${ref(this.#dialog)}
       @close=${this._onNativeClose}
