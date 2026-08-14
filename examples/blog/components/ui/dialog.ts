@@ -412,14 +412,15 @@ export class UiDialogContent extends WebComponent({
     const parentOpen = !!this._parent()?.open;
     return html`<dialog
       data-slot="dialog-native"
-      role="dialog"
-      tabindex="-1"
       class=${NATIVE_DIALOG_CLASS}
       ${ref(this.#dialog)}
       @close=${this._onNativeClose}
       @click=${this._onNativeBackdropClick}
     ><div
       data-slot="dialog-content"
+      role="dialog"
+      aria-modal="true"
+      tabindex="-1"
       data-state=${parentOpen ? 'open' : 'closed'}
       class=${dialogContentClass()}
     >
