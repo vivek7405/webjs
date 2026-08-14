@@ -240,11 +240,13 @@ export function revalidate(url) {
   // because `new URL('', location.href)` is a valid relative URL and the
   // resulting cache key rarely matches anything.
   // Neither form touches the refusal memos (#1407). This is the post-MUTATION
-  // API an app calls after an RPC write, and a data mutation cannot change
-  // whether a route streams, which is the only thing a memo records. Clearing
-  // here would drop every memo on every mutation and reopen the
-  // request-per-hover loop the memo exists to close. `refreshPage`, where the
-  // CODE may actually have changed, clears them itself.
+  // api an app calls after an RPC write, so clearing here would drop every memo
+  // on every mutation and reopen the request-per-hover loop the memo exists to
+  // close. A mutation CAN change a render's streamed shape, since a page may
+  // render `Suspense` conditionally on fetched data, but a memo that outlives
+  // that costs one skipped warm-up for that key until the TTL, which is the
+  // cheaper side of the trade. `refreshPage`, where the SOURCE may have changed,
+  // clears them itself.
   if (!url) { snapshotCache.clear(); prefetchCache.clear(); return; }
   const u = new URL(url, location.href);
   const key = u.pathname + u.search;
@@ -293,15 +295,15 @@ export async function refreshPage(mode) {
   // Every cached copy predates the change, so drop both caches before fetching.
   revalidate();
   // And the refusal memos (#1407), which `revalidate` deliberately leaves alone
-  // because it is also the post-mutation api. Here the SOURCE changed, which is
-  // what can change whether a route streams, and a streamed render is what
-  // produced the unmarked answer a memo recorded. The edit that reaches here is
-  // one classified `page` or `shell`: a page that renders `Suspense(...)` or a
-  // component that renders `<webjs-suspense>` gains or loses that boundary, and
-  // the route starts or stops streaming. NOT a `loading.{js,ts}` edit, either
-  // direction: that file is a browser ENTRY, so it is in `shippedFiles` and
-  // classifies `ships-to-browser`, which is a full reload and never arrives
-  // here (and a brand-new one is in no graph at all, so it reloads too).
+  // because it is also the post-mutation api. Here the SOURCE changed, and an
+  // edit can start or stop a route streaming, which is what produced the
+  // unmarked answer a memo recorded. What reaches here is an edit to a file the
+  // browser does NOT download: a page gaining or losing a `Suspense(...)`
+  // boundary is the plain case, since rendering one does not by itself make the
+  // page client-effecting, so it classifies `page` rather than a reload. An edit
+  // to anything that SHIPS reloads instead and never arrives, which covers a
+  // `loading.{js,ts}` either direction (it can never be elided, so it is always
+  // shipped, and a brand-new one is in no graph at all).
   clearPrefetchRefused();
   try {
     const res = await performNavigation(location.href, false, null, { refresh: mode === 'shell' ? 'shell' : 'page' });

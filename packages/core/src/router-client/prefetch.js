@@ -89,10 +89,11 @@ function prefetchRefusedRecently(key) {
 /**
  * Forget every refusal (#1407). Called from the two places where the SOURCE may
  * have changed under us: wherever a DEPLOY is detected, and `refreshPage`, the
- * dev live-reload path, where a `page` or `shell` edit can add or remove a
- * `Suspense` / `<webjs-suspense>` boundary and so start or stop the route
- * streaming. (A `loading.{js,ts}` edit is NOT one of them: that file is a
- * browser entry, so it classifies `ships-to-browser` and takes a full reload.)
+ * dev live-reload path, where an edit can add or remove a `Suspense` boundary
+ * and so start or stop the route streaming. Only an edit to a file the browser
+ * does NOT download arrives there; anything that SHIPS takes a full reload
+ * instead, which covers a `loading.{js,ts}` in either direction, since it can
+ * never be elided and so always ships.
  *
  * NEITHER form of `revalidate` clears them, which is a cost/benefit call rather
  * than an impossibility. It is the post-MUTATION api an app calls after an RPC
