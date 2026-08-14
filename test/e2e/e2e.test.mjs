@@ -2567,6 +2567,81 @@ describe('E2E: Blog example', { skip: !process.env.WEBJS_E2E && 'set WEBJS_E2E=1
     }
   });
 
+  test('prefetch: hovering a FRAME link warms the subtree; the click swaps it with no second fetch (#1407)', async () => {
+    // The frame half of the test above, over the wire. Before #1407 the click
+    // could not consume a prefetch while a frame id was set, so the hover cost
+    // a DUPLICATE request and the reader waited a full round trip for the tab
+    // to change. The counterfactual is the request COUNT, not a timing.
+    //
+    // /frame-demo renders <webjs-frame id="panel"> with external tab links
+    // carrying data-webjs-frame="panel", so a tab click is a frame nav.
+    await page.goto(`${baseUrl}/frame-demo?tab=one`, { waitUntil: 'domcontentloaded', timeout: 15000 });
+    await sleep(2000);
+
+    const href = '/frame-demo';
+    await page.evaluate(() => {
+      // Latch webjs:prefetch BEFORE hovering, so the click waits for the
+      // fragment to be CACHED rather than racing the response body read (the
+      // race the sibling prefetch e2e used to flake on).
+      window.__e2eFramePrefetchCached = false;
+      document.addEventListener('webjs:prefetch', (e) => {
+        const u = e.detail && e.detail.url;
+        if (typeof u === 'string' && u.includes('tab=two')) window.__e2eFramePrefetchCached = true;
+      });
+    });
+
+    // Count requests for the tab-two URL, split by which path issued them and
+    // whether each asked for the frame subtree.
+    const hits = { prefetch: 0, nav: 0, framedPrefetch: 0 };
+    const onRequest = (req) => {
+      let u;
+      try { u = new URL(req.url()); } catch { return; }
+      if (u.pathname !== href || u.searchParams.get('tab') !== 'two') return;
+      const h = req.headers();
+      if (h['x-webjs-prefetch']) {
+        hits.prefetch++;
+        if (h['x-webjs-frame'] === 'panel') hits.framedPrefetch++;
+      } else if (h['x-webjs-router']) {
+        hits.nav++;
+      }
+    };
+    page.on('request', onRequest);
+    try {
+      await page.evaluate(() => {
+        document.getElementById('tab-two')
+          ?.dispatchEvent(new PointerEvent('pointerover', { bubbles: true }));
+      });
+      await waitFor(() => hits.prefetch >= 1, 4000,
+        () => `hover should issue a speculative GET for ${href}?tab=two (got ${hits.prefetch})`);
+      assert.equal(hits.framedPrefetch, hits.prefetch,
+        'the speculative request asked for the frame subtree (x-webjs-frame: panel)');
+      const afterHover = hits.prefetch;
+
+      await waitForCond(() => page.evaluate(() => window.__e2eFramePrefetchCached === true), 4000,
+        () => 'the frame subtree should become cached (webjs:prefetch) before the click');
+
+      await page.evaluate(() => { document.getElementById('tab-two')?.click(); });
+      await waitFor(
+        () => page.evaluate(() => (document.getElementById('panel-body')?.textContent || '').includes('TWO')),
+        4000,
+        () => 'the frame should swap to the tab-two content',
+      );
+      await sleep(300); // let any (erroneous) second fetch land before asserting absence
+
+      // The sentinel OUTSIDE the frame proves this was a frame swap and not a
+      // full-page load, which would ALSO issue no router request and pass the
+      // "no second fetch" assertion for the wrong reason.
+      const sentinel = await page.evaluate(
+        () => document.getElementById('outside-sentinel')?.textContent || '');
+      assert.ok(sentinel.includes('Outside the frame'),
+        'the region outside the frame survived, so the click was a frame swap');
+      assert.equal(hits.nav, 0, 'the click consumed the prefetched subtree: no second fetch');
+      assert.equal(hits.prefetch, afterHover, 'and no extra prefetch fired during the click');
+    } finally {
+      page.off('request', onRequest);
+    }
+  });
+
   test('navigation-error: a JSON 500 nav fires webjs:navigation-error and recovers in place (no full reload) (#249)', async () => {
     await page.goto(`${baseUrl}/`, { waitUntil: 'domcontentloaded', timeout: 15000 });
     await sleep(2000);
