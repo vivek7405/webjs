@@ -90,10 +90,13 @@ export async function fetchAndApply(href, frameId, recordHistory, optimisticStat
     // fetched under the SAME frame id (#1407): the key carries that dimension,
     // so a page fragment can never be applied into a frame region, nor a frame
     // subtree into a page swap. The entry
-    // is single-use (prefetchTake removes it), TTL-guarded, and validated by its
-    // ANCHOR rather than by an identical X-Webjs-Have (#1114): a fragment
-    // applies wherever the boundary it starts at is still live, so an unrelated
-    // navigation between the prefetch and this click does not disqualify it.
+    // is single-use (prefetchTake removes it) and TTL-guarded. A PAGE entry is
+    // then validated by its ANCHOR rather than by an identical X-Webjs-Have
+    // (#1114): a fragment applies wherever the boundary it starts at is still
+    // live, so an unrelated navigation between the prefetch and this click does
+    // not disqualify it. A FRAME entry is validated differently, by its
+    // `<webjs-frame id>` still being in the document, since a subtree carries no
+    // boundary comment to anchor on (#1407).
     // The optimistic skeleton has already deleted nested boundaries by now, so
     // pass the view captured before it ran.
     // A refresh must never consume a prefetch (#1398): every cached copy

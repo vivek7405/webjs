@@ -243,7 +243,17 @@ export function revalidate(url) {
   const u = new URL(url, location.href);
   const key = u.pathname + u.search;
   snapshotCache.delete(key);
+  // EVERY dimension of that url, not just the page one (#1407). A frame link's
+  // entry is keyed `<frameId> <path>`, so deleting the bare path would leave a
+  // pre-mutation frame subtree consumable by the next frame click for the rest
+  // of its TTL, which is the exact staleness this function exists to prevent.
+  // The path half can never contain a space (the URL parser percent-encodes
+  // one), so a trailing-space match identifies the framed keys unambiguously.
   prefetchCache.delete(key);
+  const framedSuffix = ` ${key}`;
+  for (const k of [...prefetchCache.keys()]) {
+    if (k.endsWith(framedSuffix)) prefetchCache.delete(k);
+  }
 }
 
 /**

@@ -4300,6 +4300,45 @@ test('revalidate evicts the prefetch cache, not just the snapshot cache', async 
   });
 });
 
+test('revalidate(url) evicts EVERY dimension of that url, not just the page one (#1407)', async () => {
+  // A frame entry is keyed `<frameId> <path>`, so evicting the bare path would
+  // leave a pre-mutation subtree consumable by the next frame click for the rest
+  // of its TTL, which is exactly the staleness revalidate exists to prevent.
+  const calls = [];
+  await withPrefetchEnv(async () => {
+    document.body.innerHTML = '<webjs-frame id="tasks"><p>live</p></webjs-frame>';
+    _prefetch('http://localhost/items', 'tasks');
+    _prefetch('http://localhost/items', 'other');
+    await new Promise((r) => setTimeout(r, 0));
+    assert.ok(_prefetchPeek('http://localhost/items', 'tasks'), 'precondition: frame entry cached');
+    assert.ok(_prefetchPeek('http://localhost/items', 'other'), 'precondition: second frame entry cached');
+
+    revalidate('http://localhost/items');
+    assert.equal(_prefetchPeek('http://localhost/items', 'tasks'), null, 'the frame entry was evicted');
+    assert.equal(_prefetchPeek('http://localhost/items', 'other'), null, 'and so was every other frame dimension');
+    document.body.innerHTML = '';
+  }, { fetchImpl: frameFetchImpl(calls) });
+});
+
+test('revalidate(url) leaves an unrelated url in its frame dimension alone (#1407)', async () => {
+  // The counterfactual for the suffix match: it must not become a substring
+  // sweep that evicts a different url which merely ends the same way.
+  const calls = [];
+  await withPrefetchEnv(async () => {
+    document.body.innerHTML = '<webjs-frame id="tasks"><p>live</p></webjs-frame>';
+    _prefetch('http://localhost/items', 'tasks');
+    _prefetch('http://localhost/other-items', 'tasks');
+    await new Promise((r) => setTimeout(r, 0));
+    assert.ok(_prefetchPeek('http://localhost/other-items', 'tasks'), 'precondition: the other url is cached');
+
+    revalidate('http://localhost/items');
+    assert.equal(_prefetchPeek('http://localhost/items', 'tasks'), null, 'the named url went');
+    assert.ok(_prefetchPeek('http://localhost/other-items', 'tasks'),
+      'a url that merely ENDS with the same text is untouched');
+    document.body.innerHTML = '';
+  }, { fetchImpl: frameFetchImpl(calls) });
+});
+
 /* ====================================================================
  * View Transitions opt-in gate + permanent-element regraft (#250)
  * ==================================================================== */
@@ -4756,6 +4795,60 @@ test('a prefetch that reveals a NEW build id evicts stale pre-deploy caches (#89
     globalThis.document.head.innerHTML = savedHead;
     _snapshotCache.clear();
     _prefetchCache.clear();
+  }
+});
+
+test('a deploy also clears the refusal memos, so a refused link re-asks (#1407)', async () => {
+  // Before the memo moved out of `prefetchCache`, this came for free from that
+  // cache's own clear. The move hand-restored it, which is exactly the case that
+  // needs a counterfactual: a new build can change whether a route streams, so a
+  // refusal recorded against the old one says nothing about the new one.
+  const origFetch = globalThis.fetch;
+  const savedHead = globalThis.document.head.innerHTML;
+  const savedLoc = globalThis.location;
+  globalThis.location = /** @type any */ ({ href: 'http://localhost/', origin: 'http://localhost' });
+  try {
+    globalThis.document.head.innerHTML =
+      '<script type="importmap" data-webjs-build="OLD">{}</script>';
+    _resetPrefetch();
+
+    // A framed prefetch answered UNMARKED (the streaming fall-through), on the
+    // OLD build. The refusal is memoed, so a second attempt issues nothing.
+    let calls = 0;
+    globalThis.fetch = async () => {
+      calls++;
+      return new Response('<!doctype html><html><head></head><body>whole page</body></html>', {
+        status: 200, headers: { 'content-type': 'text/html', 'x-webjs-build': 'OLD' },
+      });
+    };
+    _prefetch('http://localhost/streamed', 'tasks');
+    await new Promise((r) => setTimeout(r, 0));
+    assert.equal(calls, 1, 'precondition: the first attempt went out');
+    _prefetch('http://localhost/streamed', 'tasks');
+    await new Promise((r) => setTimeout(r, 0));
+    assert.equal(calls, 1, 'precondition: the refusal is memoed, so the retry was suppressed');
+
+    // A prefetch of ANOTHER url now reveals a NEW build id: a deploy landed.
+    globalThis.fetch = async () => {
+      calls++;
+      return new Response('<!doctype html><html><head></head><body>fresh</body></html>', {
+        status: 200, headers: { 'content-type': 'text/html', 'x-webjs-build': 'NEW' },
+      });
+    };
+    const done = new Promise((r) => document.addEventListener('webjs:prefetch', r, { once: true }));
+    _prefetch('http://localhost/elsewhere');
+    await done;
+    const afterDeploy = calls;
+
+    // The memo is gone, so the refused link is willing to ask the new build.
+    _prefetch('http://localhost/streamed', 'tasks');
+    await new Promise((r) => setTimeout(r, 0));
+    assert.equal(calls, afterDeploy + 1, 'the refusal was forgotten on the deploy, so the link re-asked');
+  } finally {
+    globalThis.fetch = origFetch;
+    globalThis.location = savedLoc;
+    globalThis.document.head.innerHTML = savedHead;
+    _resetPrefetch();
   }
 });
 
