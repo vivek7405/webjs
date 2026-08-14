@@ -303,6 +303,10 @@ export async function startServer(opts) {
   // package.json or the matching WEBJS_*_MS env vars; `0` disables that timeout.
   const timeouts = await readServerTimeoutsFromApp(app.appDir);
 
+  // The shared context both listener shells consume. The transport-specific glue
+  // (node:http `res.write`, Bun.serve streaming Response) lives in each shell;
+  // the SSE registry, the live-reload path predicate, the WS module loader, and
+  // the lifecycle wiring are shared via listener-core.js so the shells can't drift.
   /** @type {import('../listener-types.js').ListenerContext} */
   const ctx = { app, dev, compress, logger, hub, port, basePathStr: basePath(), timeouts, watcherAbort };
 

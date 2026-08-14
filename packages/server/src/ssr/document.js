@@ -166,6 +166,7 @@ export function wrapWithChildrenMarker(tree, segmentPath, params) {
   };
 }
 
+/** Internal helpers re-exported for unit testing. */
 export const _layoutSegmentPath = layoutSegmentPath;
 export const _pageSegmentPath = pageSegmentPath;
 export const _regionRouteKey = regionRouteKey;
@@ -223,6 +224,7 @@ export function extractUserShell(body) {
   };
 }
 
+/** Re-export for unit testing. */
 export const _extractUserShell = extractUserShell;
 
 /**
@@ -285,6 +287,7 @@ export function buildDocumentParts(body, wrapOpts) {
   return { prefix: head, streamBody: bodyOut, closer: `\n</body>\n</html>` };
 }
 
+/** Re-export for unit testing. */
 export const _buildDocumentParts = buildDocumentParts;
 
 /**

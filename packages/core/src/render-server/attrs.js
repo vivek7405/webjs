@@ -149,7 +149,11 @@ export function consumePropAttrs(attrs) {
     const propName = camelCase(key.slice('data-webjs-prop-'.length));
     try {
       props[propName] = parse(decodeAttrEntities(attrs[key]));
-    } catch {}
+    } catch {
+      // Malformed payload. Skip silently so the rest of the component
+      // can still render. The client-side hydration will also try and
+      // fail, which is fine: undefined-prop semantics.
+    }
     delete attrs[key];
   }
   return props;

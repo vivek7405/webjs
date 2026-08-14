@@ -111,6 +111,7 @@ export function jsonLdScript(obj) {
   }
 }
 
+/** Re-exports for unit testing. */
 export const _escapeJsonLd = escapeJsonLd;
 export const _jsonLdScript = jsonLdScript;
 
@@ -232,6 +233,7 @@ export function hoistHeadTags(headHtml, bodyHtml) {
   return { head: newHead, body: remaining };
 }
 
+/** Internal helper re-exported for unit testing. */
 export const _hoistHeadTags = hoistHeadTags;
 
 /**
@@ -616,6 +618,16 @@ export function wrapHead(opts) {
     }
   }
 
+  // Sub-path deployment (issue #256): the modulepreload href is prefixed with
+  // the base path (a no-op when empty), but `crossorigin` / `integrity` are
+  // decided on the ORIGINAL url, so the integrity lookup still keys on the
+  // unprefixed map url and a cross-origin CDN url (never prefixed) keeps its
+  // crossorigin attribute.
+  // Content-hash (#243): the href additionally gets a `?v=<hash>` after the
+  // base-path prefix (a no-op in dev / for a cross-origin url), but
+  // `crossorigin` / `integrity` are still decided on the ORIGINAL url, so the
+  // integrity lookup keys on the unprefixed/unhashed map url and a cross-origin
+  // CDN url (never prefixed, never hashed) keeps its crossorigin attribute.
   for (const url of opts.moduleUrls) {
     linkTags.push(
       `<link rel="modulepreload" href="${escapeAttr(fp(url))}"` +

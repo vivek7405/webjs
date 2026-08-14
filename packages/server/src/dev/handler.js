@@ -992,7 +992,7 @@ export async function createRequestHandler(opts) {
           // rather than a self-inflicted 500 on every request).
           merged.headers.set(cspHeaderName(cspConfig), buildCspHeader(cspConfig, nonce));
         } catch {
-          /* ignore */
+          /* a malformed policy must not take the request down: serve without CSP */
         }
       }
 
@@ -1203,6 +1203,10 @@ export async function createRequestHandler(opts) {
     // cold instance blocks them behind the first vendor resolve (issue #190),
     // and the core bundle is on every page's boot path, so that stalled first
     // interactivity site-wide. Matched on the decoded path, like handleCore.
+    //
+    // Content-hash fingerprint (#243): a `?v=` query means an immutable,
+    // content-addressed asset url, so it is served `immutable` rather than
+    // with the 1h fallback.
     const earlyStatic = await tryServeFrameworkStatic(path, req.method.toUpperCase(), { coreDir, appDir, dev, versioned: url.searchParams.has('v') });
     if (earlyStatic) return earlyStatic;
 

@@ -71,6 +71,7 @@ export function renderToStream(value, opts = { ssr: true }) {
     async start(controller) {
       try {
         if (opts && opts.ssr === false) {
+          // No DSD injection: just stream the raw rendered chunks.
           const { streamRender } = await import('./template-renderer.js');
           await streamRender(value, ctx, controller);
         } else {

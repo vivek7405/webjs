@@ -1186,6 +1186,12 @@ function reconcileArray(part, value, reconcileFormActionsCb) {
         consumed = i + 1;
         continue;
       }
+      // Shape changed, or the array grew past the old length. Build fresh,
+      // insert at this position (before the current / next still-attached
+      // old node, else the marker), then drop the old slot it replaced.
+      // The push sits BEFORE the removal, which is a pure reordering on the
+      // success path and means a slot that has already been built and
+      // inserted is never untracked at any throw point.
       const { item, frag } = buildArrayItem(v, reconcileFormActionsCb);
       if (frag) parent.insertBefore(frag, nextArrayAnchor(old, i, marker));
       next.push(item);
@@ -1476,6 +1482,10 @@ function applyCache(part, inner, reconcileFormActionsCb) {
     }
   }
 
+  // No cached instance available. Render the new inner value via the
+  // standard applyChild path. The currentIsInstance branch already
+  // handled detaching the prior instance; if part.child still holds a
+  // non-instance shape, applyChild will tear it down generically.
   applyChildInner(part, inner, reconcileFormActionsCb);
 }
 
@@ -1544,9 +1554,15 @@ function applyUntil(part, args, reconcileFormActionsCb) {
   }
 
   if (firstSyncIdx !== -1 && firstSyncIdx <= state.highestResolved) {
+    // The sync candidate beats any previously-rendered Promise value
+    // (when firstSyncIdx < state.highestResolved) OR re-renders the
+    // sync fallback at the same priority slot (when ===), in case its
+    // value changed between renders.
     applyChildInner(part, firstSyncVal, reconcileFormActionsCb);
     state.highestResolved = firstSyncIdx;
   } else if (firstSyncIdx === -1 && !partAny.__untilEverRendered) {
+    // First-ever render of this part with all-Promise args: render
+    // empty as the initial fallback while Promises settle.
     applyChildInner(part, '', reconcileFormActionsCb);
   }
   // Else: either there is no sync candidate but the part has rendered
