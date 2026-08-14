@@ -1176,6 +1176,49 @@ describe('E2E: Blog example', { skip: !process.env.WEBJS_E2E && 'set WEBJS_E2E=1
     assert.ok(result.hasButtonClassOutput, 'buttonClass() Tailwind output should be present');
   });
 
+  test('/ui-demo: an opened dialog exposes ONE dialog node, and it is named', async () => {
+    // The role sits on the native <dialog>, which already has an implicit
+    // dialog role, so a second one on the content panel would expose two nested
+    // dialog-family nodes. Declaring the role also obliges the element to carry
+    // a NAME: a modal that announces itself as a dialog with nothing to read is
+    // worse than one a reader treats as ordinary content. Naming is wired at
+    // showModal() time, so it can only be observed with the dialog open.
+    await page.goto(baseUrl + '/ui-demo', { waitUntil: 'domcontentloaded', timeout: 10000 });
+    await sleep(1500);
+
+    const opened = await page.evaluate(() => {
+      const btn = [...document.querySelectorAll('button')]
+        .find((b) => /open dialog/i.test(b.textContent || ''));
+      if (!btn) return false;
+      btn.click();
+      return true;
+    });
+    assert.ok(opened, 'the "Open dialog" trigger should be present');
+    await sleep(600);
+
+    const seen = await page.evaluate(() => {
+      const host = document.querySelector('ui-dialog');
+      const native = host?.querySelector('dialog[data-slot="dialog-native"]');
+      const panel = host?.querySelector('[data-slot="dialog-content"]');
+      if (!native || !panel) return null;
+      const labelledBy = native.getAttribute('aria-labelledby');
+      const target = labelledBy ? document.getElementById(labelledBy) : null;
+      return {
+        open: native.open,
+        nativeRole: native.getAttribute('role'),
+        panelHasRole: panel.hasAttribute('role'),
+        // The resolved name, however it was supplied.
+        name: (target?.textContent || native.getAttribute('aria-label') || '').trim(),
+      };
+    });
+
+    assert.ok(seen, 'the native <dialog> and its content panel should both be found');
+    assert.ok(seen.open, 'the dialog should be open');
+    assert.equal(seen.nativeRole, 'dialog', 'the native <dialog> carries role="dialog"');
+    assert.equal(seen.panelHasRole, false, 'the content panel carries no second dialog role');
+    assert.ok(seen.name.length > 0, `an open modal must have an accessible name, got ${JSON.stringify(seen.name)}`);
+  });
+
   test('/ui-demo: clicking a button does not crash the page', async () => {
     const errors = [];
     page.on('pageerror', (e) => errors.push(e.message));
