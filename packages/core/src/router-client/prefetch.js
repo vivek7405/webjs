@@ -87,15 +87,18 @@ function prefetchRefusedRecently(key) {
 }
 
 /**
- * Forget every refusal (#1407). Two callers, both meaning "what is held predates
- * the change": wherever a DEPLOY is detected, since a new build can change
- * whether a route streams, and the blanket `revalidate()`, which `refreshPage`
- * relies on and which fires after an edit that may add or remove a
- * `loading.{js,ts}`.
+ * Forget every refusal (#1407). Called from the two places where the SOURCE may
+ * have changed under us, which is the only thing that can change whether a
+ * route streams: wherever a DEPLOY is detected, and `refreshPage`, the dev
+ * live-reload path (deleting a `loading.{js,ts}` stops a route streaming and
+ * arrives here as a shell refresh; ADDING one does not, since a brand-new file
+ * is in no build's graph and takes a full reload instead).
  *
- * The TARGETED `revalidate(url)` deliberately does NOT clear them, because a
- * memo holds no content and so can never serve anything stale; the worst a
- * surviving one costs is one skipped speculative warm-up until its TTL runs out.
+ * NEITHER form of `revalidate` clears them. It is the post-MUTATION API an app
+ * calls after an RPC write, and a data mutation cannot change whether a route
+ * streams, so clearing there would drop every memo on every mutation and reopen
+ * the request-per-hover loop this exists to close. A memo holds no content, so
+ * leaving one costs at most a skipped warm-up until its TTL runs out.
  */
 export function clearPrefetchRefused() {
   prefetchRefused.clear();

@@ -239,12 +239,13 @@ export function revalidate(url) {
   // Loose `== null` would have left `revalidate('')` to silently no-op,
   // because `new URL('', location.href)` is a valid relative URL and the
   // resulting cache key rarely matches anything.
-  // The blanket form means "everything held predates the change", which is what
-  // `refreshPage` relies on, so it drops the refusal memos too (#1407): an edit
-  // can add or remove a `loading.{js,ts}`, and with it whether the route streams
-  // at all, which is exactly what a memo recorded. The TARGETED form below does
-  // not, since a memo holds no content and so can never be served stale.
-  if (!url) { snapshotCache.clear(); prefetchCache.clear(); clearPrefetchRefused(); return; }
+  // Neither form touches the refusal memos (#1407). This is the post-MUTATION
+  // API an app calls after an RPC write, and a data mutation cannot change
+  // whether a route streams, which is the only thing a memo records. Clearing
+  // here would drop every memo on every mutation and reopen the
+  // request-per-hover loop the memo exists to close. `refreshPage`, where the
+  // CODE may actually have changed, clears them itself.
+  if (!url) { snapshotCache.clear(); prefetchCache.clear(); return; }
   const u = new URL(url, location.href);
   const key = u.pathname + u.search;
   snapshotCache.delete(key);
@@ -291,6 +292,14 @@ export async function refreshPage(mode) {
   if (!enabled || typeof location === 'undefined') return false;
   // Every cached copy predates the change, so drop both caches before fetching.
   revalidate();
+  // And the refusal memos (#1407), which `revalidate` deliberately leaves alone
+  // because it is also the post-mutation API. Here the SOURCE changed, and
+  // DELETING a `loading.{js,ts}` (still in the previous build's graph, so it
+  // classifies as a shell refresh rather than a reload) stops the route
+  // streaming, which is exactly what a memo recorded. Adding one does not reach
+  // this path: a brand-new file is in no build's graph, so it classifies
+  // `unknown-path` and takes a full reload.
+  clearPrefetchRefused();
   try {
     const res = await performNavigation(location.href, false, null, { refresh: mode === 'shell' ? 'shell' : 'page' });
     // The outcome has to be READ, not inferred from the absence of a throw.

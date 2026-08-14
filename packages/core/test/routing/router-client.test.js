@@ -4320,15 +4320,14 @@ test('revalidate(url) evicts EVERY dimension of that url, not just the page one 
   }, { fetchImpl: frameFetchImpl(calls) });
 });
 
-test('revalidate() blanket form also drops the refusal memos; the targeted form does not (#1407)', async () => {
-  // The blanket form means "everything held predates the change", which is what
-  // `refreshPage` relies on, and an edit can add or remove a `loading.{js,ts}`
-  // and with it whether the route streams, which is exactly what a memo
-  // recorded. The targeted form keeps them, since a memo holds no content and
-  // so can never be served stale.
+test('NEITHER revalidate form drops the refusal memos (#1407)', async () => {
+  // `revalidate` is the post-MUTATION api an app calls after an RPC write, and a
+  // data mutation cannot change whether a route streams, which is the only thing
+  // a memo records. Clearing there would drop every memo on every mutation and
+  // reopen the request-per-hover loop the memo exists to close. `refreshPage`,
+  // where the SOURCE may actually have changed, clears them itself.
   const calls = [];
   await withPrefetchEnv(async () => {
-    // Refuse once, and confirm the memo suppresses the retry.
     _prefetch('http://localhost/streamy', 'tasks');
     await new Promise((r) => setTimeout(r, 0));
     assert.equal(calls.length, 1, 'precondition: the first attempt went out');
@@ -4336,17 +4335,15 @@ test('revalidate() blanket form also drops the refusal memos; the targeted form 
     await new Promise((r) => setTimeout(r, 0));
     assert.equal(calls.length, 1, 'precondition: memoed, so the retry was suppressed');
 
-    // Targeted: the memo survives, so the link still does not re-ask.
     revalidate('http://localhost/streamy');
     _prefetch('http://localhost/streamy', 'tasks');
     await new Promise((r) => setTimeout(r, 0));
     assert.equal(calls.length, 1, 'a targeted revalidate keeps the memo');
 
-    // Blanket: the memo goes, so the link is willing to ask again.
     revalidate();
     _prefetch('http://localhost/streamy', 'tasks');
     await new Promise((r) => setTimeout(r, 0));
-    assert.equal(calls.length, 2, 'the blanket revalidate dropped the memo, so the link re-asked');
+    assert.equal(calls.length, 1, 'and so does the blanket form, which fires on every app mutation');
   }, { fetchImpl: frameFetchImpl(calls, null) });
 });
 
