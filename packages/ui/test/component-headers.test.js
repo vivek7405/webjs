@@ -42,8 +42,25 @@ for (const file of files) {
     const header = src.slice(0, src.indexOf('*/'));
     const start = header.search(/^ \* Design:/m);
     const rest = header.slice(start);
-    const end = rest.search(/^ \* [A-Z][a-z]+ (tokens|\()/m);
+    // The terminator is the set of block headings that can follow, matched
+    // literally. A pattern like `[A-Z][a-z]+ \(` looks equivalent and is not:
+    // it cannot match `A11y (`, because `[a-z]+` fails on the digits. That
+    // version silently found no terminator wherever the Design block sits
+    // ABOVE the A11y one, swallowed the rest of the header into the block, and
+    // then passed the length check on the A11y prose rather than on any design
+    // content at all.
+    const end = rest.search(/^ \* (A11y|Design tokens used|shadcn parity|Attributes|Events|@example)/m);
     const block = (end === -1 ? rest : rest.slice(0, end)).replace(/^ \* ?/gm, '').trim();
+
+    // Guard the extraction itself, so the same class of bug cannot come back
+    // quietly: if the terminator ever stops matching, the block absorbs the
+    // A11y section and this fails rather than passing on borrowed text.
+    assert.ok(
+      !/^A11y/m.test(block),
+      `${file}: the Design block extraction swallowed the A11y section, so the length check below would be vacuous`,
+    );
+    assert.ok(block.startsWith('Design:'), `${file}: extraction did not start at the Design block`);
+
     // Three lines is not a high bar, and it is enough to stop a one-line
     // placeholder standing in for the intent the block exists to carry.
     assert.ok(block.length > 120, `${file}'s Design block is too short to be intent: ${JSON.stringify(block)}`);

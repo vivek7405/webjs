@@ -12,7 +12,7 @@
  *
  * The four decisions that matter most here:
  *
- *   1. ONE primary action. Everything else is outline or ghost. A dashboard is
+ *   1. ONE primary action. Everything else is secondary or ghost. A dashboard is
  *      where the action pyramid collapses first, because every control feels
  *      important to whoever built it.
  *   2. The label is quieter than the value. A reader scans a dashboard for
@@ -128,7 +128,7 @@ export default async function DashboardExample({ searchParams }: PageProps) {
 
   return html`
     <!-- The page header holds the ONE <h1>, the one-line explanation, and the
-         page-scoped actions. Export is outline and New booking is default, so
+         page-scoped actions. Export is secondary and New booking is default, so
          the pyramid is visible at a glance rather than argued about. -->
     <header class=${pageHeaderClass({ variant: 'bordered' })}>
       <div>
@@ -138,7 +138,7 @@ export default async function DashboardExample({ searchParams }: PageProps) {
         </p>
       </div>
       <div class=${pageHeaderActionsClass()}>
-        <button class=${buttonClass({ variant: 'outline' })} type="button">Export</button>
+        <button class=${buttonClass({ variant: 'secondary' })} type="button">Export</button>
         <button class=${buttonClass()} type="button">New booking</button>
       </div>
     </header>
@@ -157,7 +157,7 @@ export default async function DashboardExample({ searchParams }: PageProps) {
             )}
           </select>
         </div>
-        <button class=${buttonClass({ variant: 'outline', size: 'sm' })}>Apply</button>
+        <button class=${buttonClass({ variant: 'secondary', size: 'sm' })}>Apply</button>
         ${data.depot
           ? html`<a class=${buttonClass({ variant: 'ghost', size: 'sm' })} href="/examples/dashboard">Clear</a>`
           : ''}
@@ -206,7 +206,7 @@ export default async function DashboardExample({ searchParams }: PageProps) {
                   Nothing has moved through this depot today. Other depots may still be busy.
                 </p>
                 <div class=${emptyStateActionsClass()}>
-                  <a class=${buttonClass({ variant: 'outline' })} href="/examples/dashboard">Show all depots</a>
+                  <a class=${buttonClass({ variant: 'secondary' })} href="/examples/dashboard">Show all depots</a>
                 </div>
               </div>
             `}

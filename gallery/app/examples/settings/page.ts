@@ -78,13 +78,19 @@ function field(opts: {
   // aria-describedby points at whichever of the two exist, so the control is
   // described by its hint normally and by its error once there is one.
   const describedBy = [opts.hint ? hintId : null, opts.error ? errorId : null].filter(Boolean).join(' ');
+  // `value=` the ATTRIBUTE, never `.value=` the property. A `.prop` hole is
+  // dropped at SSR on a native element (it round-trips only on a custom
+  // element, via data-webjs-prop-*), and a page never hydrates, so nothing
+  // would set it client-side either. The field would render empty and a 422
+  // would lose everything typed, which is the opposite of what this file
+  // claims to demonstrate.
   const control = html`
     <input
       class=${inputClass()}
       id=${opts.name}
       name=${opts.name}
       type=${opts.type ?? 'text'}
-      .value=${opts.value}
+      value=${opts.value}
       aria-describedby=${describedBy}
       aria-invalid=${opts.error ? 'true' : 'false'}
     >
@@ -222,7 +228,7 @@ export default function SettingsExample({ searchParams, actionData }: PageProps)
           </div>
         </dl>
         <div>
-          <a class=${buttonClass({ variant: 'outline', size: 'sm' })} href="/examples/settings">Change plan</a>
+          <a class=${buttonClass({ variant: 'secondary', size: 'sm' })} href="/examples/settings">Change plan</a>
         </div>
       </fieldset>
 
