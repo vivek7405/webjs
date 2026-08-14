@@ -13,7 +13,7 @@ import { parseHTML } from './dom-parse.js';
 import { onClick, onPopState, onSubmit } from './events.js';
 import { fetchAndApply } from './fetch-apply.js';
 import { clearFormBusy, markFormBusy } from './frames.js';
-import { clearPrefetchHover, clearPrefetchViewTimers, onPrefetchIntent, onPrefetchOut, prefetchCache, refreshPrefetchObservers, teardownPrefetchViewObserver } from './prefetch.js';
+import { clearPrefetchHover, clearPrefetchRefused, clearPrefetchViewTimers, onPrefetchIntent, onPrefetchOut, prefetchCache, refreshPrefetchObservers, teardownPrefetchViewObserver } from './prefetch.js';
 // `restoreGeneration` is imported READ-ONLY: the deferred restore captures it
 // and re-compares after the frame, so it must be the live binding. Writes go
 // through bumpRestoreGeneration(), since ESM forbids assigning an import.
@@ -239,7 +239,12 @@ export function revalidate(url) {
   // Loose `== null` would have left `revalidate('')` to silently no-op,
   // because `new URL('', location.href)` is a valid relative URL and the
   // resulting cache key rarely matches anything.
-  if (!url) { snapshotCache.clear(); prefetchCache.clear(); return; }
+  // The blanket form means "everything held predates the change", which is what
+  // `refreshPage` relies on, so it drops the refusal memos too (#1407): an edit
+  // can add or remove a `loading.{js,ts}`, and with it whether the route streams
+  // at all, which is exactly what a memo recorded. The TARGETED form below does
+  // not, since a memo holds no content and so can never be served stale.
+  if (!url) { snapshotCache.clear(); prefetchCache.clear(); clearPrefetchRefused(); return; }
   const u = new URL(url, location.href);
   const key = u.pathname + u.search;
   snapshotCache.delete(key);

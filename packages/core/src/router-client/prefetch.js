@@ -87,12 +87,15 @@ function prefetchRefusedRecently(key) {
 }
 
 /**
- * Forget every refusal (#1407). Called wherever a DEPLOY is detected, alongside
- * the cache clears: a new build can change whether a route streams, so a memo
- * recorded against the old one says nothing about the new one. A targeted
- * `revalidate(url)` deliberately does NOT clear these, because a memo holds no
- * content and so can never serve anything stale; the worst a surviving one costs
- * is one skipped speculative warm-up until its TTL runs out.
+ * Forget every refusal (#1407). Two callers, both meaning "what is held predates
+ * the change": wherever a DEPLOY is detected, since a new build can change
+ * whether a route streams, and the blanket `revalidate()`, which `refreshPage`
+ * relies on and which fires after an edit that may add or remove a
+ * `loading.{js,ts}`.
+ *
+ * The TARGETED `revalidate(url)` deliberately does NOT clear them, because a
+ * memo holds no content and so can never serve anything stale; the worst a
+ * surviving one costs is one skipped speculative warm-up until its TTL runs out.
  */
 export function clearPrefetchRefused() {
   prefetchRefused.clear();

@@ -4320,21 +4320,58 @@ test('revalidate(url) evicts EVERY dimension of that url, not just the page one 
   }, { fetchImpl: frameFetchImpl(calls) });
 });
 
+test('revalidate() blanket form also drops the refusal memos; the targeted form does not (#1407)', async () => {
+  // The blanket form means "everything held predates the change", which is what
+  // `refreshPage` relies on, and an edit can add or remove a `loading.{js,ts}`
+  // and with it whether the route streams, which is exactly what a memo
+  // recorded. The targeted form keeps them, since a memo holds no content and
+  // so can never be served stale.
+  const calls = [];
+  await withPrefetchEnv(async () => {
+    // Refuse once, and confirm the memo suppresses the retry.
+    _prefetch('http://localhost/streamy', 'tasks');
+    await new Promise((r) => setTimeout(r, 0));
+    assert.equal(calls.length, 1, 'precondition: the first attempt went out');
+    _prefetch('http://localhost/streamy', 'tasks');
+    await new Promise((r) => setTimeout(r, 0));
+    assert.equal(calls.length, 1, 'precondition: memoed, so the retry was suppressed');
+
+    // Targeted: the memo survives, so the link still does not re-ask.
+    revalidate('http://localhost/streamy');
+    _prefetch('http://localhost/streamy', 'tasks');
+    await new Promise((r) => setTimeout(r, 0));
+    assert.equal(calls.length, 1, 'a targeted revalidate keeps the memo');
+
+    // Blanket: the memo goes, so the link is willing to ask again.
+    revalidate();
+    _prefetch('http://localhost/streamy', 'tasks');
+    await new Promise((r) => setTimeout(r, 0));
+    assert.equal(calls.length, 2, 'the blanket revalidate dropped the memo, so the link re-asked');
+  }, { fetchImpl: frameFetchImpl(calls, null) });
+});
+
 test('revalidate(url) leaves an unrelated url in its frame dimension alone (#1407)', async () => {
-  // The counterfactual for the suffix match: it must not become a substring
-  // sweep that evicts a different url which merely ends the same way.
+  // The counterfactual for the suffix match: it must not degrade into a
+  // substring sweep that evicts a different url merely ending the same way.
+  //
+  // The fixture has to DISCRIMINATE the leading space, which is the whole
+  // guarantee. `/store/items` does: its framed key `tasks /store/items` ends
+  // with `/items` (so a spaceless match wrongly evicts it) and does NOT end
+  // with ` /items` (so the real match leaves it). A `/other-items` pairing
+  // would fail both forms and prove nothing, and `revalidate('/items')` beside
+  // a cached frame entry for `/store/items` is an ordinary situation.
   const calls = [];
   await withPrefetchEnv(async () => {
     document.body.innerHTML = '<webjs-frame id="tasks"><p>live</p></webjs-frame>';
     _prefetch('http://localhost/items', 'tasks');
-    _prefetch('http://localhost/other-items', 'tasks');
+    _prefetch('http://localhost/store/items', 'tasks');
     await new Promise((r) => setTimeout(r, 0));
-    assert.ok(_prefetchPeek('http://localhost/other-items', 'tasks'), 'precondition: the other url is cached');
+    assert.ok(_prefetchPeek('http://localhost/store/items', 'tasks'), 'precondition: the other url is cached');
 
     revalidate('http://localhost/items');
     assert.equal(_prefetchPeek('http://localhost/items', 'tasks'), null, 'the named url went');
-    assert.ok(_prefetchPeek('http://localhost/other-items', 'tasks'),
-      'a url that merely ENDS with the same text is untouched');
+    assert.ok(_prefetchPeek('http://localhost/store/items', 'tasks'),
+      'a url whose last segment matches is untouched, so the delimiter is load-bearing');
     document.body.innerHTML = '';
   }, { fetchImpl: frameFetchImpl(calls) });
 });
