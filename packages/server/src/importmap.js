@@ -6,9 +6,12 @@ import { jsonForScriptTag } from './script-tag-json.js';
 import { withBasePath } from './base-path.js';
 import { withAssetHash } from './asset-hash.js';
 
-// Local attribute escaper. Matches ssr.js's escapeAttr (the source
-// of truth for HTML attribute escaping in this package). Kept inline
-// to avoid a cross-file dependency for one small helper.
+// Local attribute escaper, byte-identical to the pair in `ssr/escape.js`,
+// which is the source of truth for HTML attribute escaping in this package.
+// Kept inline to avoid a cross-file dependency for one small helper, so the
+// two must stay in step: this one escapes an attribute in the served head
+// (the importmap script's nonce), so a divergence here moves served bytes
+// exactly as a divergence there would.
 function escapeAttr(s) {
   return String(s).replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;');
 }

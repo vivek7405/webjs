@@ -66,6 +66,47 @@ test('runtime-sensitive src with no test/bun BLOCKS (exit 2)', () => {
   } finally { rmSync(dir, { recursive: true, force: true }); }
 });
 
+test('the SPLIT ssr/ and dev/ trees trip the gate, not just the barrels (#1365)', () => {
+  // The #1365 split moved the real code out of `src/ssr.js` and `src/dev.js`
+  // into `src/ssr/*.js` and `src/dev/*.js`, leaving 30-line barrels behind.
+  // The gate matched on the monolith FILENAMES, so every runtime-sensitive
+  // edit the split produced sailed past it: the same change that blocks on
+  // main stopped blocking here, silently.
+  for (const f of [
+    'packages/server/src/ssr/render.js',
+    'packages/server/src/ssr/head.js',
+    'packages/server/src/ssr/responses.js',
+    'packages/server/src/dev/handler.js',
+    'packages/server/src/dev/serve.js',
+  ]) {
+    const { dir, git } = makeRepo();
+    try {
+      w(dir, f);
+      git('add', f);
+      const r = runHook(dir);
+      assert.equal(r.status, 2, `${f} must trip the Bun-parity gate`);
+    } finally { rmSync(dir, { recursive: true, force: true }); }
+  }
+});
+
+test('a barrel-shaped sibling that is NOT runtime-sensitive still passes', () => {
+  // The widened pattern must not turn into "anything under a directory whose
+  // name starts with ssr or dev". `component-scanner.js` and
+  // `component-elision.js` sit next to the runtime path and are not on it.
+  for (const f of [
+    'packages/server/src/component-scanner.js',
+    'packages/server/src/component-elision.js',
+  ]) {
+    const { dir, git } = makeRepo();
+    try {
+      w(dir, f);
+      git('add', f);
+      const r = runHook(dir);
+      assert.equal(r.status, 0, `${f} is not runtime-sensitive and must not block`);
+    } finally { rmSync(dir, { recursive: true, force: true }); }
+  }
+});
+
 test('the request path (ssr / actions / dev / auth) all trip the gate', () => {
   for (const f of [
     'packages/server/src/ssr.js',

@@ -4,6 +4,47 @@ Read this only when editing the WebJs monorepo (this repo), not a scaffolded app
 
 ---
 
+### Splitting a large module in `packages/`
+
+The framework's own source is where the 800-line target and the roughly-1000
+ceiling actually bite, since `packages/` is plain `.js` with JSDoc and several
+subsystems grew past both. The naming rule is settled for the whole monorepo:
+**the original file keeps its path and becomes the barrel, and its parts land in
+a sibling directory named after it** (`src/slot.js` stays, parts go in
+`src/slot/`). Do not rename a barrel to match its public `exports` subpath. The
+`package.json` `exports` map, the hand-written `.d.ts` overlays and the two
+guard tests that derive a runtime sibling from an overlay path, the docs pages
+that print importmap examples, and every relative test import all key off the
+current path.
+
+A split is a MOVE. Verify it two ways before running anything else: the barrel's
+runtime export set must be identical to the pre-split module's in BOTH
+directions (`added` empty too, since a behaviour-preserving split adds no public
+surface), and every code line must survive byte-identical once comments and the
+added `export ` prefix are normalized away. Any line that changed needs a reason
+in the commit message.
+
+Four monorepo-specific traps, each of which has already cost a debugging session
+here:
+
+- **`packages/core/dist` is a symlink into the primary checkout in a linked
+  worktree.** Building through it clobbers the primary's bundle, and NOT
+  building means e2e and Bun resolve the pre-split code and pass vacuously.
+  Replace the symlink with a real directory in the worktree, then
+  `node scripts/build-framework-dist.js`.
+- **A relative `import.meta.url` walk breaks when the file moves one level
+  deeper.** `locateCoreDir`'s workspace fallback resolved three levels up to
+  reach `packages/`, and after the move needed four. It silently pointed at a
+  directory that does not exist, and every `/__webjs/core/*` request 404d.
+- **Drift guards read source files by path.** Point each at the barrel PLUS
+  every module beneath it. An `assert.match` fails loudly, but an
+  `assert.doesNotMatch` starts passing vacuously.
+- **The browser suite is mandatory** for a renderer, router, component, or slot
+  split. Those defects are post-hydration, so `npm test` stays green and
+  `webjs elision --verify` still reports byte parity.
+
+---
+
 ### Deploying the in-repo apps (Docker image + readiness gate)
 
 The two in-repo apps (`website`, which serves the documentation at `/docs` and the component gallery at `/ui`, and `examples/blog`) deploy from ONE image built by the root `Dockerfile`, each run as a separate service with its own `PORT` (compose sets it locally, the platform injects it in prod). `compose.yaml` is local parity for that setup; the platform never reads it.
@@ -201,7 +242,7 @@ This replaced a `WEBJS_SKIP_NETWORK_TESTS` gate that could not work: it was opt-
 
 Four things to keep in mind when touching this.
 
-**A new vendor test uses the double, not the network.** `withJspmDouble(opts, body)` installs it, clears the vendor caches on both sides, and fails the test on any request the double was not asked to serve. Refusals are RECORDED rather than thrown on purpose: every fetch caller in `packages/server/src/vendor.js` catches, so a throw would be indistinguishable from the CDN being down and would quietly weaken whatever test hit it. The runtime deny answers 503 for the same reason, since that is the shape those call sites classify as transient.
+**A new vendor test uses the double, not the network.** `withJspmDouble(opts, body)` installs it, clears the vendor caches on both sides, and fails the test on any request the double was not asked to serve. Refusals are RECORDED rather than thrown on purpose: every fetch caller in the `packages/server/src/vendor/` tree catches (`jspm.js`, `integrity.js`, `resolver.js`, `audit.js`; `vendor.js` itself is now the barrel), so a throw would be indistinguishable from the CDN being down and would quietly weaken whatever test hit it. The runtime deny answers 503 for the same reason, since that is the shape those call sites classify as transient.
 
 **The deny is at RUNTIME, and that was learned the hard way.** Both runners preload `test/fixtures/deny-live-hosts.mjs`, which answers 503 for jspm.io and registry.npmjs.org unless `WEBJS_REQUIRE_NETWORK` is set. It needs no parsing, and within the test process it has no blind spots (a spawned child is the exception, below). It covers the transitive callers a source scan structurally cannot see: the app-boot tests reach jspm through `resolveVendorImports` with no `fetch(` anywhere in their own source. A test that depends on a third party now fails on EVERY run rather than only during an outage, which arrives the day it is written instead of months later.
 
@@ -241,7 +282,7 @@ npm runs first; if it fails (auth, network, transient registry error), the GitHu
 
 The workflow uses `NPM_TOKEN` (repo secret) and the auto-provisioned `GITHUB_TOKEN`. Free for public repos.
 
-**When `server` or the scaffold consumes a NEW `@webjsdev/core` export, core MUST publish first.** `packages/server/src/dev.js` and `context.js` import core symbols statically (`setAssetUrlProvider`, `setCspNonceProvider`), and `webjs create` emits an app that imports them too. A server published against an older core dies at module load with `does not provide an export named ...`, and a cli published first makes every freshly scaffolded app 500 on every route. Two things force the right order:
+**When `server` or the scaffold consumes a NEW `@webjsdev/core` export, core MUST publish first.** `packages/server/src/dev/handler.js` and `context.js` import core symbols statically (`setAssetUrlProvider`, `setCspNonceProvider`), and `webjs create` emits an app that imports them too. A server published against an older core dies at module load with `does not provide an export named ...`, and a cli published first makes every freshly scaffolded app 500 on every route. Two things force the right order:
 
 1. **Give `changelog/core/<version>.md` the EARLIEST `date:` of the batch.** The publish loop sorts by that timestamp ASC, and the tie-break on equal timestamps is filename DESC, which would publish `server` BEFORE `core`. The loop is `set -e` sequential, so core-first is also the fail-safe order: if core's publish fails, nothing after it ships and no skew can reach the registry.
 2. **Bump the declared range in the same release PR.** `packages/server/package.json` still declares `"@webjsdev/core": "^0.7.1"`, which every published core satisfies, so npm cannot catch the skew. Raising it to the version that actually carries the new export makes the resolver enforce the coupling permanently, independent of publish order. The scaffold cannot be range-protected (it installs `@latest`), so it relies on the ordering above.
@@ -258,4 +299,4 @@ In development, three error sources push a structured error frame to the open ta
 
 **A reload is coalesced (#1397), so after a burst of edits the page reloads once the edits settle** rather than once per saved file. Each save produces two reload signals (the in-process rebuild frame, then a changed boot id when the browser reconnects to the process `node --watch` restarted), and acting on every one reloads into a server about to be killed again, which is what leaves the page unstyled. The relay holds the reload until the signals stop for 2 seconds, or at most 5 seconds into a sustained burst. So if a reload looks "missing" right after you saved, wait two seconds before looking for a bug: that is the first thing to check. An error overlay is never held, since it is not a reload.
 
-The overlay client uses `textContent` throughout (never `innerHTML`), so the error content cannot inject markup. It is **strictly dev-only**: `reportDevError` early-returns when `!dev`, `/__webjs/reload.js` 404s in prod, and the prod 500 stays terse (only `error.message`, never the stack or a file path), so no source leaks. An embedding host can observe the same frames via the `onDevError` option on `createRequestHandler` / `startServer`. Mechanism: `buildDevErrorFrame` in `packages/server/src/dev-error.js`, `reportDevError` + the SSE push in `packages/server/src/dev.js`, the SSR-catch hook in `packages/server/src/ssr.js`.
+The overlay client uses `textContent` throughout (never `innerHTML`), so the error content cannot inject markup. It is **strictly dev-only**: `reportDevError` early-returns when `!dev`, `/__webjs/reload.js` 404s in prod, and the prod 500 stays terse (only `error.message`, never the stack or a file path), so no source leaks. An embedding host can observe the same frames via the `onDevError` option on `createRequestHandler` / `startServer`. Mechanism: `buildDevErrorFrame` in `packages/server/src/dev-error.js`, `reportDevError` + the SSE push in `packages/server/src/dev/handler.js`, the SSR-catch hook in the `packages/server/src/ssr/` tree. (`dev.js` and `ssr.js` are barrels since #1365; the code is one level down.)

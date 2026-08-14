@@ -13,7 +13,8 @@
  *     `src/` entry-point files.
  *   - `query`: grep the framework `src/` trees, returning bounded `file:line`
  *     hits (with a disclosed cap, no silent truncation).
- *   - `path`: read one source file (e.g. `server/src/ssr.js`), traversal-guarded
+ *   - `path`: read one source file (e.g. `server/src/ssr/head.js`; the bare
+ *     `server/src/ssr.js` is a barrel over the sibling directory), traversal-guarded
  *     to stay inside a resolved framework package root.
  *
  * READ-ONLY and side-effect-free: it only reads files, loads no module, and
@@ -209,7 +210,7 @@ export async function readSource(deps, path) {
   const pkg = segs[0];
   const entry = deps.roots.find((r) => r.pkg === pkg);
   if (!entry) {
-    return `Unknown or unresolvable package "${pkg || path}". Resolvable: ${deps.roots.map((r) => r.pkg).join(', ') || '(none)'}. Pass a path like server/src/ssr.js.`;
+    return `Unknown or unresolvable package "${pkg || path}". Resolvable: ${deps.roots.map((r) => r.pkg).join(', ') || '(none)'}. Pass a path like server/src/ssr/head.js.`;
   }
   const abs = resolve(entry.root, segs.slice(1).join('/'));
   const srcLabel = entry.src.split(sep).pop();

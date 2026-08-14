@@ -28,9 +28,9 @@ the same output in all three.
 |---|---|
 | `html.js` | `` html`` `` tagged-template → `TemplateResult`, plus `MARKER` and `isTemplate` |
 | `css.js` | `` css`` `` → `CSSResult`, `adoptStyles`, `stylesToString` |
-| `component.js` | `WebComponent` base class: lifecycle, properties, reactive accessors, light-vs-shadow DOM, scheduling, slot host wiring. On the server the base is a DOM shim (attribute methods backed by a Map, no-op events, inert `attachInternals`, `closest()` over the SSR ancestor chain, and the host IDL reflections `dataset` / `className` / `hidden` / `id` / `title` / `slot` / `role` / `tabIndex` / `aria*`); `performServerUpdate` runs the pre-render lifecycle (`willUpdate` + controllers' `hostUpdate` + reflection) for SSR. **Async render (#469):** `render()` may be async; when it returns a promise, `update()` routes to `_commitAsync` (stale-while-revalidate, a monotonic `__renderToken` race guard, rejection to the `renderError()` boundary) and `_performRender` defers the post-commit half (`hostUpdated`, `firstUpdated` / `updated`, `updateComplete`) until the commit lands via `_postCommit`. `renderFallback()` is the optional client re-fetch loading UI (re-fetch only, never first paint); `renderError()` is the per-component error boundary |
-| `render-server.js` | `renderToString`, `renderToStream` (async, with Suspense streaming), SSR slot substitution in `injectDSD`. The walker seeds the server attribute shim from the source attributes, threads the enclosing-instance ancestor chain into each instance (so the shim's `closest()` resolves a parent), calls `performServerUpdate` before `render()`, and appends reflected/added attributes (including host attributes set inside `render()`) to the opening tag |
-| `render-client.js` | Client-side patcher + hydration; the only file that touches `document`. Also discovers and binds light-DOM slot parts |
+| `component.js` | Barrel re-exporting `WebComponent` base class, reactive property helpers, and server element shim sub-modules (`component/lifecycle.js`, `component/reactive.js`, `component/server-element.js`). `WebComponent` base class: lifecycle, properties, reactive accessors, light-vs-shadow DOM, scheduling, slot host wiring. On the server the base is a DOM shim (attribute methods backed by a Map, no-op events, inert `attachInternals`, `closest()` over the SSR ancestor chain, and the host IDL reflections `dataset` / `className` / `hidden` / `id` / `title` / `slot` / `role` / `tabIndex` / `aria*`); `performServerUpdate` runs the pre-render lifecycle (`willUpdate` + controllers' `hostUpdate` + reflection) for SSR. **Async render (#469):** `render()` may be async; when it returns a promise, `update()` routes to `_commitAsync` (stale-while-revalidate, a monotonic `__renderToken` race guard, rejection to the `renderError()` boundary) and `_performRender` defers the post-commit half (`hostUpdated`, `firstUpdated` / `updated`, `updateComplete`) until the commit lands via `_postCommit`. `renderFallback()` is the optional client re-fetch loading UI (re-fetch only, never first paint); `renderError()` is the per-component error boundary |
+| `render-server.js` | Barrel re-exporting server-side rendering, streaming, and DSD slot substitution sub-modules (`render-server/stream.js`, `render-server/template-renderer.js`, `render-server/dsd.js`). `renderToString`, `renderToStream` (async, with Suspense streaming), SSR slot substitution in `injectDSD`. The walker seeds the server attribute shim from the source attributes, threads the enclosing-instance ancestor chain into each instance (so the shim's `closest()` resolves a parent), calls `performServerUpdate` before `render()`, and appends reflected/added attributes (including host attributes set inside `render()`) to the opening tag |
+| `render-client.js` | Barrel re-exporting client-side patcher, hydration, template compilation, and part binding sub-modules (`render-client/template-compiler.js`, `render-client/parts.js`, `render-client/reconciler.js`). The only subsystem that touches `document`. Also discovers and binds light-DOM slot parts |
 | `slot.js` | Light-DOM `<slot>` runtime, full native parity (#1021): `HTMLSlotElement` polyfills (`assignedNodes` / `assignedElements` / `assignedSlot` / `assign`), the ordered `authored` record + derived `assignedByName` (`repartition`), the single writer `applySlotAssignments`, per-instance method interception + the `RENDERING` window (`withRendererWrites`) + two read-only sensors for liveness, the parent-keyed prune rule, the unmatched-name park, first-wins resolution, fallback swap, and the `projectAuthored` router seam |
 | `directives.js` | the lit-html-parity directive set (`unsafeHTML`, `live`, `keyed`, `guard`, `templateContent`, `ref` / `createRef`, `cache`, `until`, `asyncAppend` / `asyncReplace`, `watch`, plus each `is*` guard). `repeat` lives in `repeat.js`. All are re-exported from `index.js` / `index-browser.js` so the bare specifier and the `/directives` subpath (which collapses onto the dist browser bundle) expose the full set |
 | `repeat.js` | `repeat(items, keyFn, templateFn)` for keyed list reconciliation |
@@ -110,10 +110,41 @@ return instead of a silent wire loss. All are pure declaration files (erased at
 runtime, zero build cost). A page imports them with `import type { Metadata,
 PageProps } from '@webjsdev/core'`. The `Metadata` and `PageProps` /
 `LayoutProps` shapes MUST stay in lockstep with what
-`packages/server/src/ssr.js` actually reads / constructs, never Next.js's
+`packages/server/src/ssr/head.js` actually reads / constructs, never Next.js's
 superset. `routes.d.ts`'s `WebjsRoutes` / `RouteParamMap` are EMPTY by default
 (so `Route = string`); `webjs types` generates `.webjs/routes.d.ts` to augment
 them per app.
+
+## Module size and barrel splits
+
+Several modules here are barrels over a sibling directory (`component.js`,
+`render-client.js`, `render-server.js`, `router-client.js`, `slot.js`). The rule
+that produced them, and that any future split must follow, is in
+`../../.agents/skills/webjs/references/module-structure.md`. Target 800 lines,
+around 1000 at the most, barrels exempt, no CI guard.
+
+Three things bite specifically in this package:
+
+1. **The barrel keeps the original path.** `package.json` `exports` maps
+   `./client-router` at `./src/router-client.js`, the 26 hand-written `.d.ts`
+   overlays are matched to their runtime sibling BY PATH by two guard tests, and
+   32 test files import `src/router-client.js` relatively. Renaming a barrel to
+   match its subpath breaks all three for no behaviour gain.
+2. **Symbol identity.** `slot.js` creates `SLOT_STATE` and `SLOT_OWNER` with
+   `Symbol()`. Substituting `Symbol.for()` yields a registry symbol no host
+   carries, so every lookup returns `undefined`, forwarded-slot stamping stops
+   happening, and nothing outside the browser suite notices.
+3. **Mutable state goes with its writers.** An ESM import binding cannot be
+   assigned, so `inBrowser` sits with `installSlotPolyfills`, the `N_*` natives
+   sit with `captureNatives`, and the client router's `restoreGeneration`,
+   `currentNavigationToken` and `prefetchViewObserver` each expose a
+   one-statement accessor for the navigator to call. Keep importing a binding
+   that is also READ: dropping it leaves a free variable that throws only when
+   its line runs.
+
+Rebuild `dist` before e2e or Bun (they resolve the built bundle, so a src-only
+edit is invisible and a counterfactual passes vacuously), and run
+`npm run test:browser` for any renderer, router, component, or slot change.
 
 ## Package-specific invariants
 

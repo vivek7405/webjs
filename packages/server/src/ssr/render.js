@@ -1,0 +1,885 @@
+import { pathToFileURL } from 'node:url';
+import { resolve } from 'node:path';
+import { renderToString, isNotFound, isRedirect, isForbidden, isUnauthorized } from '@webjsdev/core';
+import { vendorPreloadTargets } from '../importmap.js';
+import {
+  componentPreloads, deduplicatedPreloads, reachedVendorSpecifiers, toUrlPath,
+} from './preloads.js';
+import { seedingEnabled, collectSeeds, buildSeedScript, SEED_DROP_BLOCK } from '../action-seed.js';
+import {
+  readRevalidate,
+  readHtmlCache,
+  HTML_CACHE_MARKER,
+} from '../html-cache.js';
+import { requestedFrameId, extractFrameSubtree } from '../frame-render.js';
+import { makeThenable } from '../thenable-params.js';
+import { buildDocumentParts, wrapInDocument, layoutSegmentPath, pageSegmentPath, regionRouteKey, wrapWithChildrenMarker } from './document.js';
+import { escapeHtml } from './escape.js';
+import {
+  cachedHtmlResponse, getNonce, htmlResponse, streamingHtmlResponse,
+} from './responses.js';
+
+
+/**
+ * Downgrade a PARTIAL response so no shared cache can store it (#1140).
+ *
+ * A reduced `X-Webjs-Have` body is sliced by a REQUEST header, so it is valid
+ * only for a client that sent it. It is marked `Vary` for that header, but
+ * `Vary` is not a guarantee in practice: Cloudflare honours only
+ * `Accept-Encoding` and several other shared caches are just as selective.
+ * Since a reduced body otherwise INHERITS the page's `Cache-Control`, a page
+ * that opted into public caching was handing CDNs a chrome-less fragment under
+ * the full page's URL, to be served to whoever navigated there next. Measured
+ * on webjs.dev: 71,759 bytes for the document versus 47,375 for the fragment,
+ * identical `Cache-Control` on both.
+ *
+ * The reduced path is the ONLY caller. A `<webjs-frame>` subtree is sliced by a
+ * request header too, but its response is built without page metadata, so it is
+ * already `no-store` and needs no downgrade; that property is locked by a test
+ * rather than by a call here. A NEW partial-response shape does not get this
+ * treatment for free: call this from its response site.
+ *
+ * `private` fixes that at the source instead of relying on `Vary` being
+ * respected: no shared cache may store it, while the browser that asked for it
+ * still may. The freshness directives are preserved, so a returning client
+ * keeps whatever reuse the page declared. `Vary` stays too, as belt-and-braces
+ * for caches that do honour it.
+ *
+ * The response KEEPS its validator. `private` forbids shared storage, not
+ * validation, so the funnel still attaches an ETag (see conditional-get.js,
+ * which stopped excluding `private` for exactly this reason). That matters:
+ * the router fetches partials with `cache: 'no-cache'` (#1131), so without a
+ * validator every prefetch and soft navigation would re-download the whole
+ * fragment instead of being answered 304.
+ *
+ * @param {Response} res
+ */
+export function privateFragment(res) {
+  const cc = res.headers.get('cache-control') || '';
+  // No header at all is not "nothing to do": a response with no Cache-Control
+  // is heuristically storable by a shared cache (RFC 9111), which is precisely
+  // the hazard here. Fail CLOSED.
+  if (!cc) {
+    res.headers.set('cache-control', 'private');
+    return;
+  }
+  // Split on commas that are NOT inside a quoted argument: a directive may
+  // carry one (`no-cache="Set-Cookie, X-Foo"`, `private="x-user"`), and a naive
+  // split tears those apart.
+  const directives = [];
+  let buf = '';
+  let inQuotes = false;
+  for (const ch of cc) {
+    if (ch === '"') inQuotes = !inQuotes;
+    if (ch === ',' && !inQuotes) { directives.push(buf.trim()); buf = ''; continue; }
+    buf += ch;
+  }
+  directives.push(buf.trim());
+
+  // `name` is everything before the first `=`, trimmed, so `s-maxage = 600`
+  // and `private="x-user"` are recognised as the directives they are.
+  const nameOf = (d) => d.split('=')[0].trim().toLowerCase();
+  // Already unshareable: leave it exactly as the author wrote it. Only a BARE
+  // `private` counts. The qualified form (`private="x-user"`) marks just the
+  // NAMED header fields private per RFC 9111, leaving the response itself
+  // storable by a shared cache, so it must still be downgraded.
+  const isBare = (d) => !d.includes('=');
+  if (directives.some((d) => nameOf(d) === 'no-store' || (nameOf(d) === 'private' && isBare(d)))) return;
+
+  // `private` joins the drop list because a bare one is prepended below: a
+  // qualified `private="x-user"` left in place would emit the directive twice,
+  // and a cache that resolves a repeat by taking the last occurrence would read
+  // the qualified form, which per RFC 9111 leaves the response shared-storable.
+  const SHARED_ONLY = new Set(['public', 's-maxage', 'proxy-revalidate', 'private']);
+  const kept = directives.filter((d) => d && !SHARED_ONLY.has(nameOf(d)));
+  kept.unshift('private');
+  res.headers.set('cache-control', kept.join(', '));
+}
+
+/**
+ * Import a route module. In prod the URL is stable so Node's module cache
+ * serves a single evaluation; in dev a cache-bust query forces a fresh
+ * evaluation so source edits take effect (which also re-runs the module's
+ * top-level side effects, the reason pages/layouts must keep their top level
+ * side-effect-free).
+ *
+ * @param {string} file
+ * @param {boolean} dev
+ */
+async function loadModule(file, dev) {
+  const url = pathToFileURL(file).toString();
+  const bust = dev ? `?t=${Date.now()}-${Math.random().toString(36).slice(2)}` : '';
+  return import(url + bust);
+}
+
+/**
+ * Nearest-wins boundary file from a chain projected outermost -> innermost
+ * (the router builds these arrays via chainOf). The innermost (last) wins, the
+ * same "nearest boundary" rule error.js uses. Returns null for an empty chain.
+ * @param {string[] | undefined} files
+ * @returns {string | null}
+ */
+function nearest(arr) {
+  return arr && arr.length ? arr[arr.length - 1] : null;
+}
+
+/**
+ * @param {import('../router.js').PageRoute} route
+ * @param {Record<string,unknown>} ctx
+ * @param {boolean} dev
+ */
+async function collectMetadata(route, ctx, dev) {
+  /** @type {Record<string, any>} */
+  let meta = {};
+  // Carry the title template forward across layers. Once an outer layout
+  // sets `title: { template, default }`, every deeper layer that supplies
+  // a plain string title gets it transformed via the template: matching
+  // Next.js App Router semantics.
+  /** @type {string | null} */
+  let titleTemplate = null;
+  for (const file of route.metadataFiles) {
+    try {
+      const mod = await loadModule(file, dev);
+      let m = null;
+      if (typeof mod.generateMetadata === 'function') {
+        m = await mod.generateMetadata(ctx);
+      } else if (mod.metadata) {
+        m = mod.metadata;
+      }
+      // Next.js 14+ split `viewport` out of metadata into its own export
+      // (with `themeColor`, `colorScheme`). We support both: the new
+      // `export const viewport = {…}` shape merges into metadata.viewport
+      // as a string at emit time, and existing `metadata.viewport` keeps
+      // working. Likewise for `themeColor` and `colorScheme`.
+      let vp = null;
+      if (typeof mod.generateViewport === 'function') {
+        vp = await mod.generateViewport(ctx);
+      } else if (mod.viewport) {
+        vp = mod.viewport;
+      }
+      if (vp && typeof vp === 'object') {
+        m = { ...(m || {}), _viewport: { ...(m && m._viewport), ...vp } };
+        // Allow `themeColor` / `colorScheme` to live on the viewport export.
+        if (typeof vp.themeColor === 'string' && !(m && m.themeColor)) {
+          m.themeColor = vp.themeColor;
+        }
+        if (typeof vp.colorScheme === 'string') m.colorScheme = vp.colorScheme;
+      }
+      if (!m || typeof m !== 'object') continue;
+      // Pre-resolve the title for this layer using the inherited template.
+      const resolved = { ...m };
+      if (m.title !== undefined) {
+        const t = m.title;
+        if (typeof t === 'string') {
+          resolved.title = titleTemplate ? titleTemplate.replace('%s', t) : t;
+        } else if (t && typeof t === 'object') {
+          // { template, default, absolute }: `absolute` overrides everything;
+          // `template` is captured for deeper layers; `default` is the value
+          // used when no deeper layer supplies a plain title string.
+          if (typeof t.template === 'string') titleTemplate = t.template;
+          if (typeof t.absolute === 'string') {
+            resolved.title = t.absolute;
+            // `absolute` does NOT clear the template: Next.js propagates
+            // it for deeper segments below, but the *current* segment is
+            // rendered absolute.
+          } else if (typeof t.default === 'string') {
+            resolved.title = t.default;
+          } else {
+            delete resolved.title;
+          }
+        }
+      }
+      meta = { ...meta, ...resolved };
+    } catch {
+      // ignore: metadata collection never fails the request
+    }
+  }
+  return meta;
+}
+
+/**
+ * Like layoutSegmentPath but for `loading.{js,ts}` files. Strips the
+ * `loading.ext` filename from the URL path under app/.
+ *
+ * @param {string} loadingFile
+ * @returns {string}
+ */
+function loadingSegmentPath(loadingFile) {
+  const p = loadingFile
+    .replace(/^.*\/app\//, '')
+    .replace(/\/?loading\.[jt]sx?$/, '');
+  return p === '' ? '/' : '/' + p;
+}
+
+/**
+ * Render each `loading.{js,ts}` in the route's chain into a hidden
+ * `<template id="wj-loading:<segment-path>">`. The client router clones
+ * the deepest matching template into the swap slot on nav-start, giving
+ * users an instant per-segment skeleton instead of stale content.
+ *
+ * Each loading file's segment path is the URL prefix it serves: same
+ * derivation as layoutSegmentPath but stripping `loading.ext` instead.
+ *
+ * Errors loading a single file are swallowed so a broken loading.ts in
+ * one segment doesn't break the whole response.
+ *
+ * @param {{ loadings?: string[] }} route
+ * @param {Record<string,unknown>} ctx
+ * @param {boolean} dev
+ * @returns {Promise<string>}
+ */
+async function loadingTemplates(route, ctx, dev) {
+  if (!route.loadings || route.loadings.length === 0) return '';
+  /** @type {string[]} */
+  const parts = [];
+  for (const file of route.loadings) {
+    try {
+      const mod = await loadModule(file, dev);
+      if (!mod.default) continue;
+      const tree = await mod.default(ctx);
+      const html = await renderToString(tree, { ssr: true, dev });
+      const segmentPath = loadingSegmentPath(file);
+      parts.push(`<template id="wj-loading:${segmentPath}">${html}</template>`);
+    } catch { /* skip broken loading file */ }
+  }
+  return parts.join('');
+}
+
+async function renderChain(route, ctx, dev, suspenseCtx, have, pageModule) {
+  // Reuse a caller-supplied page module when present. The only producer is the
+  // HTML-cache path above, which loads the module to read `export const
+  // revalidate` and threads it back so this does not load it a second time.
+  // (The removed page `action` export used to be a second producer: it ran in
+  // the page module, so the 422 re-render could share that evaluation. A form
+  // action lives in a `.server.*` module instead, so the re-render loads the
+  // page module itself, exactly as a plain render does.)
+  const page = pageModule || await loadModule(route.file, dev);
+  if (!page.default) throw new Error(`Page ${route.file} must have a default export`);
+  let tree = await page.default(ctx);
+
+  // If the route has a loading.ts file, wrap the page in a Suspense boundary
+  // with the loading content as the fallback. This mirrors NextJs's automatic
+  // Suspense wrapping when loading.tsx is present.
+  if (route.loadings && route.loadings.length > 0) {
+    // Use the innermost (closest) loading file
+    const loadingFile = route.loadings[route.loadings.length - 1];
+    try {
+      const loadingMod = await loadModule(loadingFile, dev);
+      if (loadingMod.default) {
+        const { Suspense } = await import('@webjsdev/core');
+        const fallback = await loadingMod.default(ctx);
+        tree = Suspense({ fallback, children: Promise.resolve(tree) });
+      }
+    } catch { /* loading file failed: skip, render page directly */ }
+  }
+
+  // Resolved route params drive every boundary's route-key. ctx.params is
+  // thenable (#848) but its `then` is non-enumerable, so a spread yields the
+  // plain param map the route-key derivation expects.
+  const params = { ...(/** @type {Record<string,string>} */ (ctx.params) || {}) };
+
+  // Page-level boundary (#1015). The page gets its own keyed boundary pair
+  // whose route-key is its full resolved path, so a dynamic-param change
+  // (`/blog/a` -> `/blog/b`) REPLACES (remounts) the page on the client (Next
+  // parity) while a shared parent layout (a shorter segment whose key did not
+  // change) is preserved. Skipped when the page's segment equals the innermost
+  // layout's: the layout's children-slot boundary already delimits that exact
+  // range, and two boundaries with one segment id would break keyed pairing.
+  const pageSeg = pageSegmentPath(route.file);
+  const innermostLayoutSeg = route.layouts && route.layouts.length
+    ? layoutSegmentPath(route.layouts[route.layouts.length - 1])
+    : null;
+  if (pageSeg !== innermostLayoutSeg) {
+    tree = wrapWithChildrenMarker(tree, pageSeg, params);
+  }
+
+  // Wrap each layout's `${children}` interpolation in the KEYED boundary
+  // comment pair (open `<!--wj:children:<segment>:<route-key>-->`, close
+  // `<!--/wj:children:<segment>-->`, #1015). The client router scans both the
+  // live and incoming DOM for these boundaries (strict id-matched pairing, no
+  // LIFO guessing) and applies the two-tier swap: a changed route-key
+  // REPLACES at the PARENT of the shallowest change, else the deepest shared
+  // boundary MORPHS. Outer
+  // layout DOM (and the scroll position of anything inside it: sidenavs,
+  // fixed headers, inner scroll containers) is preserved. Auto-derived from
+  // folder structure: no opt-in required from layout authors.
+  // X-Webjs-Have optimization: iterate from innermost → outermost and
+  // SHORT-CIRCUIT at the first layout whose segment path the client
+  // already has rendered. Wrap the accumulated inner tree in that
+  // layout's boundary pair (so the client can identify the splice
+  // target) and return: outer layouts are not rendered at all,
+  // saving CPU and wire bytes.
+  for (let i = route.layouts.length - 1; i >= 0; i--) {
+    const segmentPath = layoutSegmentPath(route.layouts[i]);
+    // Short-circuit ONLY when the client's copy of this layout was rendered
+    // for the SAME route-key: a param change at a dynamic layout must
+    // re-render the layout's own markup (#1015).
+    if (have && have.get(segmentPath) === regionRouteKey(segmentPath, params)) {
+      tree = wrapWithChildrenMarker(tree, segmentPath, params);
+      const body = await renderToString(tree, { ssr: true, suspenseCtx });
+      // REDUCED response (#1009): the outer layouts were skipped, so these
+      // bytes are only valid for a client that already HAS them. The caller
+      // marks the response `private` so no shared cache can store it, and
+      // additionally `Vary: X-Webjs-Have` for caches that honour it. The
+      // `private` is the guarantee, not the Vary: Cloudflare and others honour
+      // only `Accept-Encoding` (#1140).
+      return { html: body + (await loadingTemplates(route, ctx, dev)), reduced: true };
+    }
+    const mod = await loadModule(route.layouts[i], dev);
+    if (!mod.default) continue;
+    tree = await mod.default({
+      ...ctx,
+      children: wrapWithChildrenMarker(tree, segmentPath, params),
+    });
+  }
+  const body = await renderToString(tree, { ssr: true, suspenseCtx });
+  return { html: body + (await loadingTemplates(route, ctx, dev)), reduced: false };
+}
+
+/**
+ * Render a simple boundary page (forbidden / unauthorized, #848) at the given
+ * default heading. Loads the nearest boundary module when one exists (its
+ * default export receives no props, like not-found), else emits the default
+ * heading. Mirrors ssrNotFoundHtml.
+ * @param {string | null} file
+ * @param {string} heading  e.g. '403: Forbidden'
+ * @param {{ dev: boolean, appDir: string, req?: Request }} opts
+ */
+async function ssrBoundaryHtml(file, heading, opts) {
+  let body = `<h1>${heading}</h1>`;
+  if (file) {
+    try {
+      const mod = await loadModule(file, opts.dev);
+      if (mod.default) body = await renderToString(await mod.default({}), { ssr: true, dev: opts.dev });
+    } catch (e) {
+      body = `<h1>${heading}</h1><pre>${escapeHtml(String(e))}</pre>`;
+    }
+  }
+  const nonce = opts.req ? getNonce(opts.req) : undefined;
+  return wrapInDocument(body, {
+    metadata: { title: heading.replace(/^\d+:\s*/, '') },
+    moduleUrls: [],
+    dev: opts.dev,
+    nonce,
+  });
+}
+
+async function ssrNotFoundHtml(notFoundFile, opts) {
+  let body = '<h1>404: Not found</h1>';
+  if (notFoundFile) {
+    try {
+      const mod = await loadModule(notFoundFile, opts.dev);
+      if (mod.default) body = await renderToString(await mod.default({}), { ssr: true, dev: opts.dev });
+    } catch (e) {
+      body = `<h1>404: Not found</h1><pre>${escapeHtml(String(e))}</pre>`;
+    }
+  }
+  const nonce = opts.req ? getNonce(opts.req) : undefined;
+  return wrapInDocument(body, {
+    metadata: { title: 'Not found' },
+    moduleUrls: [],
+    dev: opts.dev,
+    nonce,
+  });
+}
+
+/**
+ * SSR a matched page route to a Response.
+ *
+ * Mirrors NextJs semantics:
+ *   - Page + layout default exports can be async.
+ *   - `metadata` named export on layouts/pages is merged (page > innermost layout > … > root).
+ *   - `notFound()` and `redirect()` thrown anywhere in the chain are caught
+ *     and converted to 404 or 3xx responses.
+ *   - On a render error we walk up the chain looking for the nearest `error.js`
+ *     and render that instead (falls back to a plain error page).
+ *
+ * @param {import('../router.js').PageRoute} route
+ * @param {Record<string,string>} params
+ * @param {URL} url
+ * @param {{ dev: boolean, appDir: string, req?: Request, moduleGraph?: import('../module-graph.js').ModuleGraph, serverFiles?: Map<string,string> | Set<string>, actionData?: unknown, status?: number, pageModule?: Record<string, unknown>, cspEnabled?: boolean }} opts
+ * @returns {Promise<Response>}
+ */
+export async function ssrPage(route, params, url, opts) {
+  // Server HTML response cache (ISR for no-build, #241). OPT-IN: only a page
+  // that declares `export const revalidate = N` is ever cached (the page
+  // module export is the single trigger). The page module is loaded ONCE up
+  // front to read that window
+  // and is threaded back through `opts.pageModule` so renderChain reuses the
+  // same evaluation (no double-load). A cache HIT serves the stored HTML
+  // without re-running the page function. Skipped entirely (no opt-in read,
+  // no double behaviour) for the form-action re-render (actionData / a non-200
+  // status) and for a partial-nav request (X-Webjs-Have), whose bytes depend
+  // on the request and must not be shared under the full-URL key.
+  const cacheEligible =
+    !opts.actionData &&
+    !opts.status &&
+    !opts.pageModule &&
+    !(opts.req && opts.req.headers.get('x-webjs-have'));
+  let revalidateSeconds = null;
+  if (cacheEligible) {
+    try {
+      const pageMod = await loadModule(route.file, opts.dev);
+      opts = { ...opts, pageModule: pageMod };
+      revalidateSeconds = readRevalidate(pageMod);
+      if (revalidateSeconds !== null) {
+        const hit = await readHtmlCache(url);
+        if (hit) {
+          const cached = cachedHtmlResponse(hit, opts.req, url);
+          // A cache hit returns before any seed work runs, so it would otherwise
+          // report nothing at all, which reads as "seeding is broken" when it is
+          // really the cache answering (#1309). The seed block rides INSIDE the
+          // cached bytes, so the seeds are exactly as fresh as the HTML.
+          if (opts.dev) cached.headers.set('X-Webjs-Seed', 'html-cache');
+          return cached;
+        }
+      }
+    } catch {
+      // A load / store failure falls through to a normal fresh render: the
+      // cache is an optimization, never a correctness dependency. Leave
+      // revalidateSeconds as read so the write path still applies when the
+      // page loaded but only the store lookup failed.
+    }
+  }
+
+  const ctx = {
+    // params / searchParams are awaitable AND synchronously readable (#848):
+    // `params.id` still works, `await params` also works (Next 15/16 parity).
+    // The `then` is non-enumerable so spread / JSON / Object.keys are unchanged.
+    params: makeThenable(params),
+    searchParams: makeThenable(Object.fromEntries(url.searchParams.entries())),
+    url: url.toString(),
+    // Populated only when this render is the re-render after a failed page
+    // `action` submission (#244). The page function and every layout receive
+    // it so they can surface field errors and repopulate inputs from the
+    // user's submitted values. Undefined on a normal GET render, so GET output
+    // is byte-identical to before this feature.
+    actionData: opts.actionData,
+  };
+
+  // Collect metadata across layouts (outermost first) then page.
+  const metadata = await collectMetadata(route, ctx, opts.dev);
+
+  try {
+    const suspenseCtx = { pending: [], nextId: 1, usedComponents: new Set(), dev: opts.dev };
+    // Parse the partial-nav "have" header from the client. The server walks
+    // the target route's layout chain innermost → outermost and
+    // SHORT-CIRCUITS at the first FULL match (segment AND route-key),
+    // returning only the content below that layout, wrapped in the matched
+    // layout's boundary pair. Real wire-byte savings: the outer layouts'
+    // HTML is never re-serialized for same-shell navigations.
+    const haveHeader = opts.req?.headers.get('x-webjs-have') || '';
+    // Entries are `<segment>:<route-key>` (#1015). The route-key is required
+    // for a correct short-circuit: a dynamic layout the client holds for
+    // OTHER params ('/[org]' rendered for org-a on an org-b navigation) must
+    // be re-rendered and re-shipped, or the client's parent-anchored REPLACE
+    // has no fresh layout markup to swap in. Split at the LAST ':' (encoded
+    // route-keys contain no ':'; a hand-authored folder name that smuggles a
+    // delimiter through the SEGMENT half can only fail to match, which
+    // degrades to a full render: always correct). An entry with no key (a
+    // malformed or legacy client) is ignored, degrading the same way.
+    /** @type {Map<string, string> | null} */
+    let have = null;
+    if (haveHeader) {
+      have = new Map();
+      for (const entry of haveHeader.split(',')) {
+        const e = entry.trim();
+        if (!e) continue;
+        const cut = e.lastIndexOf(':');
+        if (cut <= 0 || cut === e.length - 1) continue;
+        have.set(e.slice(0, cut), e.slice(cut + 1));
+      }
+      if (have.size === 0) have = null;
+    }
+    // SSR action-result seeding (#472). When enabled, run the whole render
+    // inside an ambient seed collector so every `'use server'` action a
+    // component awaits in `async render()` records its (args -> result) for the
+    // hydration payload. Disabled -> the plain render, byte-identical to before.
+    let seedCollector = null;
+    let body;
+    let reduced = false;
+    if (seedingEnabled()) {
+      const seeded = await collectSeeds(() =>
+        renderChain(route, ctx, opts.dev, suspenseCtx, have, opts.pageModule),
+      );
+      body = seeded.value.html;
+      reduced = seeded.value.reduced;
+      seedCollector = seeded.collector;
+    } else {
+      const chain = await renderChain(route, ctx, opts.dev, suspenseCtx, have, opts.pageModule);
+      body = chain.html;
+      reduced = chain.reduced;
+    }
+
+    // Frame subtree render (#253). A `<webjs-frame src>` self-load (or a
+    // click-driven frame nav) sends `x-webjs-frame: <id>` and applies ONLY the
+    // matching `<webjs-frame id>` subtree from the response, discarding the rest
+    // of the page. So when that header is present AND the requested frame is in
+    // the rendered output (the "isolable" case), return JUST that subtree: the
+    // bytes are extracted verbatim from the same full render, so the result is
+    // BYTE-EQUIVALENT to what the client would slice from a full-page response,
+    // but the full document shell + all the other regions never go on the wire.
+    // The frame swap path (applySwap in router-client.js) parses this body and
+    // does `doc.querySelector('webjs-frame#<id>')`, which finds the lone
+    // subtree exactly as it would in the full page. A streamed (Suspense)
+    // render is skipped (its bytes are not yet final). When the frame id is NOT
+    // found (an auth redirect to a login page, a route that dropped the frame),
+    // we fall through to the normal full-page render, where the client's
+    // existing `webjs:frame-missing` fallback handles the absence. A request
+    // with NO `x-webjs-frame` header never reaches this branch, so a normal
+    // page request is byte-identical to before this feature.
+    const frameId = requestedFrameId(opts.req);
+    if (frameId && suspenseCtx.pending.length === 0) {
+      const subtree = extractFrameSubtree(body, frameId);
+      if (subtree !== null) {
+        const frameRes = htmlResponse(subtree, opts.status || 200, opts.req, url);
+        // The subtree is sliced by the x-webjs-frame REQUEST header, so a
+        // shared cache must never serve it to a request that did not send
+        // one (the same #1009 poisoning shape as the reduced-have case).
+        frameRes.headers.append('vary', 'X-Webjs-Frame');
+        // #1009: a subtree sliced from a REDUCED render inherits its variance.
+        if (reduced) frameRes.headers.append('vary', 'X-Webjs-Have');
+        // No privateFragment call here on purpose: this response is built
+        // WITHOUT page metadata, so it is already `no-store` and the call
+        // would be dead code with nothing to assert against. The property is
+        // locked by a test instead, which fails if the frame response ever
+        // starts carrying the page's cacheControl.
+        return frameRes;
+      }
+    }
+    // Module URLs for the page + every layout in its chain. These ride
+    // the importmap; the browser fetches each file as it walks the
+    // import graph. Combined with the modulepreload hints below, this
+    // is the Rails 7+ / Hotwire pattern: per-file ESM, no bundling,
+    // HTTP/2 multiplex on the wire.
+    //
+    // Inert route modules (a page or layout that does no client work, even
+    // transitively) are dropped from the boot script: the browser never
+    // downloads them. The SSR'd HTML is the complete output, and
+    // progressive enhancement is unaffected, so a fully-static route ships
+    // zero application JS. The analysis is conservative (anything that
+    // touches the client router, a signal, an event, an npm import, or a
+    // shipping component keeps shipping).
+    //
+    // Import-only route modules (#605) go one step further: a page / layout
+    // whose only client relevance is importing shipping components is itself
+    // dead weight on the client (it never hydrates), so it is dropped and its
+    // component modules are emitted directly in its place. The component set
+    // is the FRONTIER of the analyser's path-aware walk (#963): the shipping
+    // components the module reaches without passing through another shipping
+    // component. A component imported but only conditionally rendered still
+    // registers; one nested behind an emitted component is absent here and
+    // loads via its importer's own imports. Dedup so a component shared
+    // across the page and a layout (or two layouts) is emitted once.
+    const inert = opts.inertRouteModules;
+    const importOnly = opts.importOnlyRouteModules;
+    const moduleUrls = [];
+    {
+      const seen = new Set();
+      const push = (abs) => {
+        const u = toUrlPath(abs, opts.appDir);
+        if (!seen.has(u)) { seen.add(u); moduleUrls.push(u); }
+      };
+      for (const f of [route.file, ...route.layouts]) {
+        if (inert && inert.has(f)) continue;
+        const emit = importOnly && importOnly.get(f);
+        if (emit) emit.forEach(push);
+        else push(f);
+      }
+    }
+    // instrumentation-client.{js,ts} (#848): import it FIRST in the client boot
+    // so it runs before app modules (Next's instrumentation-client ordering).
+    // It ships even on an otherwise-static page (the app opted into client work),
+    // so it is prepended AFTER the component/page modules are collected.
+    if (opts.instrumentationClient) {
+      const u = toUrlPath(opts.instrumentationClient, opts.appDir);
+      const i = moduleUrls.indexOf(u);
+      if (i !== -1) moduleUrls.splice(i, 1);
+      moduleUrls.unshift(u);
+    }
+    // Emit <link rel="modulepreload"> for every custom element that
+    // actually rendered PLUS their transitive dependencies (from the
+    // module graph). URLs are deduplicated so the browser never sees
+    // the same preload twice. Lazy components are excluded from
+    // preloads and instead loaded via IntersectionObserver when they
+    // enter the viewport.
+    const { eager: eagerComponents, lazy: lazyComponents } =
+      componentPreloads(suspenseCtx.usedComponents, opts.appDir, opts.elidableComponents);
+    // The walk roots for BOTH preload passes are the BOOT's actually-shipped
+    // module set (`moduleUrls`, which already drops inert page/layout modules and
+    // substitutes an import-only page with its components), NOT the raw route
+    // entries `[route.file, ...route.layouts]`. Rooting at the raw entries would
+    // walk a dropped page's SSR-only subtree (a direct import OR a relative
+    // helper) and hint a `modulepreload` for a module nothing that ships imports,
+    // an over-fetch (#780, the app-module analog of the #754 vendor over-fetch).
+    const shippedRoots = moduleUrls.map((u) =>
+      resolve(opts.appDir, u.startsWith('/') ? u.slice(1) : u));
+    const preloads = deduplicatedPreloads(
+      eagerComponents,
+      moduleUrls,
+      opts.moduleGraph,
+      shippedRoots,
+      opts.appDir,
+      opts.serverFiles,
+      opts.elidableComponents,
+    );
+    // Vendor modulepreload (#754): flatten the npm CDN waterfall by hinting the
+    // vendor URLs the page's SHIPPED modules actually import, fetched in parallel
+    // instead of discovered level by level. Same shipped-module roots as the
+    // app-module walk above, so a vendor reached ONLY through a dropped module
+    // (a page's SSR-only direct import OR its SSR-only relative helper) is never
+    // preloaded (no over-fetch).
+    const vendorPreloads = vendorPreloadTargets(
+      reachedVendorSpecifiers(
+        opts.moduleGraph,
+        shippedRoots,
+        eagerComponents,
+        opts.appDir,
+        opts.elidableComponents,
+        opts.serverFiles,
+      ),
+    );
+    // Extract CSP nonce from request headers (if present).
+    const nonce = opts.req ? getNonce(opts.req) : undefined;
+    const wrapOpts = {
+      metadata,
+      moduleUrls,
+      dev: opts.dev,
+      streaming: suspenseCtx.pending.length > 0,
+      preloads,
+      vendorPreloads,
+      lazyComponents,
+      nonce,
+    };
+    // buildDocumentParts picks up a user-supplied <!doctype><html>…</html>
+    // shell from the body when present; otherwise auto-emits the framework
+    // shell. Either way the returned `prefix` ends just past the open <body>
+    // and `closer` is the matching `</body></html>`.
+    const { prefix, streamBody, closer } = buildDocumentParts(body, wrapOpts);
+    // Append the SSR action-seed payload (#472) to the non-streamed body so the
+    // client's first render reads it instead of re-issuing the RPC. Only for a
+    // fully-buffered (non-streaming) render: a streamed page's deferred
+    // boundaries resolve AFTER the first flush, so their seeds cannot ride this
+    // block (those slow regions keep the stale-while-revalidate refetch). An
+    // empty collector yields '' so the output stays byte-identical.
+    let outBody = streamBody;
+    // Dev-only seeding diagnostics (#1309). `off` (seeding disabled) is kept
+    // DISTINCT from `collected=0` on purpose: the counting lives with the
+    // collector rather than behind the seed gate, so a seeding-DISABLED app
+    // never looks like a seeding-BROKEN one.
+    let seedHeader = 'off';
+    const streamed = suspenseCtx.pending.length > 0;
+    if (seedCollector && streamed) {
+      // A streamed render's deferred boundaries resolve AFTER the first flush,
+      // so their results cannot ride this block and none is emitted in prod. In
+      // DEV emit the marker alone, so the client reports the CAUSE instead of
+      // leaving the developer to guess why every action call went to the network.
+      seedHeader = `collected=${seedCollector.size}, emitted=0, streamed`;
+      if (opts.dev) {
+        const marker = await buildSeedScript(null, { dev: true, reason: 'streamed' });
+        if (marker) outBody = streamBody + marker;
+      }
+    } else if (seedCollector) {
+      const seedScript = await buildSeedScript(seedCollector, { dev: opts.dev });
+      if (seedScript) outBody = streamBody + seedScript;
+      // `emitted` differs from `collected` exactly when the serializer threw and
+      // dropped the whole block, which is otherwise a completely invisible
+      // failure. In DEV that throw still emits a marker-only block, so the
+      // browser can name the cause; it carries no seeds, so it must NOT count as
+      // emitted or the header would report a total success on the very failure
+      // it exists to expose.
+      const dropped = seedScript === SEED_DROP_BLOCK;
+      seedHeader = `collected=${seedCollector.size}, emitted=${seedScript && !dropped ? seedCollector.size : 0}`;
+    }
+    const res = streamingHtmlResponse(
+      prefix,
+      outBody,
+      closer,
+      suspenseCtx,
+      // Normally 200. After a failed form-action submission the caller passes
+      // 422 (or another 4xx) so the re-rendered page with field errors carries
+      // the right status for both the no-JS reload and the enhanced swap (#244).
+      opts.status || 200,
+      opts.req,
+      url,
+      metadata,
+      nonce,
+      opts.dev,
+    );
+    // Dev-only seeding diagnostics (#1309). A miss is indistinguishable from a
+    // hit from the outside, so an app whose seeding silently broke looks exactly
+    // like one where it works. Dev only: a production header would publish how
+    // many server calls a page made, for no benefit.
+    if (opts.dev) res.headers.set('X-Webjs-Seed', seedHeader);
+    // REDUCED response (#1009): the X-Webjs-Have short-circuit omitted the
+    // outer-layout chrome, so these bytes are only valid for a request that
+    // sent a matching `have`. Left shared-cacheable, a CDN edge could store the
+    // reduced body under the URL and serve a chrome-less fragment to a fresh
+    // full-page navigation (measured live: GET / was 73,534 bytes, GET / + have
+    // was 57,035, byte-identical headers otherwise).
+    //
+    // TWO markings, and the order of trust matters (#1140). `privateFragment`
+    // is the guarantee: it forbids SHARED storage outright, so no CDN can hold
+    // this body at all. `Vary` is belt-and-braces for caches that honour it,
+    // NOT the protection, because Cloudflare and others honour only
+    // `Accept-Encoding`. Both are scoped to genuinely reduced responses, so a
+    // normal page's headers and cache key are unchanged.
+    //
+    // The internal #241 revalidate cache is already safe by construction:
+    // `cacheEligible` excludes any request that carries x-webjs-have, so a
+    // reduced body is never stored under the URL-only key.
+    if (reduced) {
+      res.headers.append('vary', 'X-Webjs-Have');
+      privateFragment(res);
+    }
+    // Server HTML cache write (#241). The page opted in via `revalidate`, so
+    // FLAG this candidate for the response funnel rather than writing here: the
+    // store decision must see the FINAL response (after segment middleware,
+    // which may append a per-user Set-Cookie this code can't see yet). The
+    // funnel re-checks every guard via isCacheableResponse, writes the cache,
+    // and strips this internal marker. The CSP guard is decided here (the SSR
+    // side knows whether a nonce was stamped into the body).
+    if (revalidateSeconds !== null && !opts.cspEnabled) {
+      res.headers.set(HTML_CACHE_MARKER, String(revalidateSeconds));
+    }
+    return res;
+  } catch (err) {
+    if (isRedirect(err)) {
+      const e = /** @type any */ (err);
+      // A redirect thrown during a GET page/layout render is a GET-to-GET
+      // navigation (an auth bounce, a gate). 302 Found is the conventional
+      // code there, so it is the default when the caller did not pick one. An
+      // explicit `redirect(url, status)` overrides it. (Action redirects, a
+      // POST, default to 307 in form-dispatch.js so the method is preserved.)
+      return new Response(null, { status: e.status || 302, headers: { location: e.url } });
+    }
+    if (isNotFound(err)) {
+      // Nearest not-found.{js,ts} in the page's chain wins (#848 fix: previously
+      // this always rendered the bare default, ignoring even a root not-found);
+      // fall back to a root global-not-found.{js,ts}, else the default page.
+      const html = await ssrNotFoundHtml(nearest(route.notFounds) || opts.globalNotFound || null, opts);
+      return htmlResponse(html, 404, opts.req, url);
+    }
+    // forbidden() / unauthorized() sentinels (#848, Next 15/16 parity): render
+    // the nearest forbidden.{js,ts} / unauthorized.{js,ts} boundary (innermost
+    // wins), else a default page, at 403 / 401.
+    if (isForbidden(err)) return ssrForbidden(route, { ...opts, url });
+    if (isUnauthorized(err)) return ssrUnauthorized(route, { ...opts, url });
+    // APM / Sentry sink (issue #239): a page render error that becomes a 500
+    // (an error.js boundary OR the default 500 page) is an unhandled error the
+    // app should see in its error tracker. Report it best-effort BEFORE
+    // rendering the boundary, so the sink gets the ORIGINAL error even if the
+    // boundary itself swallows or transforms it. notFound / redirect are
+    // sentinels (control flow), not errors, so they are excluded above.
+    if (typeof opts.onError === 'function') {
+      try { opts.onError(err); } catch { /* a throwing sink must not affect the response */ }
+    }
+    // Dev error overlay (#264): push a rich frame to the open tab so the
+    // overlay appears live. Dev-only + best-effort; never affects the response.
+    if (typeof opts.onDevError === 'function') {
+      try { opts.onDevError(err); } catch { /* a throwing sink must not affect the response */ }
+    }
+    // Error paths still need to honor the request's CSP nonce so the
+    // error page's boot scripts (when moduleUrls is non-empty) and
+    // the meta csp-nonce tag both pass strict-CSP enforcement.
+    const errNonce = opts.req ? getNonce(opts.req) : undefined;
+    // Try nearest error.js (innermost → outermost).
+    for (let i = route.errors.length - 1; i >= 0; i--) {
+      try {
+        const mod = await loadModule(route.errors[i], opts.dev);
+        if (!mod.default) continue;
+        const tree = await mod.default({ ...ctx, error: err });
+        const body = await renderToString(tree, { ssr: true, dev: opts.dev });
+        // Apply the SAME inert / import-only substitution as the happy-path
+        // boot (#963): the error page must not ship a page/layout module the
+        // normal render drops. Pre-substitution, an import-only page with a
+        // bare `.server.*` import (legal, it never loads client-side) would
+        // load here whole and crash the error page's boot on the throw-at-load
+        // stub, killing the sibling component registrations in the same
+        // module script.
+        const errModuleUrls = [];
+        {
+          const seen = new Set();
+          const push = (abs) => {
+            const u = toUrlPath(abs, opts.appDir);
+            if (!seen.has(u)) { seen.add(u); errModuleUrls.push(u); }
+          };
+          for (const f of [route.file, ...route.layouts]) {
+            if (opts.inertRouteModules && opts.inertRouteModules.has(f)) continue;
+            const emit = opts.importOnlyRouteModules && opts.importOnlyRouteModules.get(f);
+            if (emit) emit.forEach(push);
+            else push(f);
+          }
+        }
+        const html = wrapInDocument(body, { metadata, moduleUrls: errModuleUrls, dev: opts.dev, nonce: errNonce });
+        return htmlResponse(html, 500, opts.req, url);
+      } catch (nested) {
+        // fall through to next error boundary
+      }
+    }
+    // Root global-error.{js,ts} (#848): the app-wide catch-all, tried after the
+    // nested error boundaries are exhausted. It renders the FULL document (its
+    // own <!doctype><html><body>, like the root layout), since a root-layout
+    // failure is exactly when it fires, so its rendered output is returned
+    // verbatim without wrapInDocument. Status 500.
+    if (opts.globalError) {
+      try {
+        const mod = await loadModule(opts.globalError, opts.dev);
+        if (mod.default) {
+          const tree = await mod.default({ error: err });
+          const body = await renderToString(tree, { ssr: true, dev: opts.dev });
+          return htmlResponse(body, 500, opts.req, url);
+        }
+      } catch (nested) {
+        // fall through to the default 500 page
+      }
+    }
+    // Default: dev shows stack, prod shows a terse message (no stack trace leaks).
+    console.error('[webjs] unhandled render error:', err);
+    const body = opts.dev
+      ? `<h1>Server error</h1><pre style="white-space:pre-wrap">${escapeHtml(
+          err instanceof Error ? err.stack || err.message : String(err)
+        )}</pre>`
+      : `<h1>Server error</h1><p>Something went wrong. Please try again.</p>`;
+    return htmlResponse(
+      wrapInDocument(body, { metadata, moduleUrls: [], dev: opts.dev, nonce: errNonce }),
+      500,
+      opts.req,
+      url
+    );
+  }
+}
+
+/**
+ * 404 response for unmatched routes.
+ * @param {string | null} notFoundFile
+ * @param {{ dev: boolean, appDir: string, req?: Request, url?: URL }} opts
+ */
+export async function ssrNotFound(notFoundFile, opts) {
+  const html = await ssrNotFoundHtml(notFoundFile, opts);
+  return htmlResponse(html, 404, opts.req, opts.url);
+}
+
+/**
+ * 403 response for a thrown forbidden() (#848). Renders the nearest
+ * forbidden.{js,ts} in the page's chain, else a default 403 page. Shared by the
+ * page-render catch (ssr.js) and the form-action write path (form-dispatch.js) so
+ * both behave identically.
+ * @param {{ forbiddens?: string[] }} route
+ * @param {{ dev: boolean, appDir: string, req?: Request, url?: URL }} opts
+ */
+export async function ssrForbidden(route, opts) {
+  const html = await ssrBoundaryHtml(nearest(route.forbiddens), '403: Forbidden', opts);
+  return htmlResponse(html, 403, opts.req, opts.url);
+}
+
+/**
+ * 401 response for a thrown unauthorized() (#848). Renders the nearest
+ * unauthorized.{js,ts} in the page's chain, else a default 401 page.
+ * @param {{ unauthorizeds?: string[] }} route
+ * @param {{ dev: boolean, appDir: string, req?: Request, url?: URL }} opts
+ */
+export async function ssrUnauthorized(route, opts) {
+  const html = await ssrBoundaryHtml(nearest(route.unauthorizeds), '401: Unauthorized', opts);
+  return htmlResponse(html, 401, opts.req, opts.url);
+}

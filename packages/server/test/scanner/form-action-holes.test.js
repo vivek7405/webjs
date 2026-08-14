@@ -4,6 +4,7 @@ import assert from 'node:assert/strict';
 import { classifyActionHole } from '../../src/js-scan.js';
 import { PARSEABLE_ENCTYPES } from '../../../core/src/form-action.js';
 import { readFile } from 'node:fs/promises';
+import { readdirSync } from 'node:fs';
 
 /**
  * Tests for the form-action template primitives that outlived the
@@ -42,7 +43,17 @@ test('the enctype allowlist and the client guard do not drift apart', async () =
   // `router-client.js` and this test. Pin the client one, so the two halves of
   // the feature cannot drift into disagreeing on the same input (which is what
   // the allowlist did).
-  const clientSrc = await readFile(new URL('../../../core/src/router-client.js', import.meta.url), 'utf8');
+  // router-client.js is a barrel over router-client/ now, so read the barrel
+  // AND every module beneath it. The client guard this pins lives in
+  // form-encoder.js, and scanning only the barrel would turn the first
+  // assertion red and the second one vacuously green.
+  const clientDir = new URL('../../../core/src/router-client/', import.meta.url);
+  const clientSrc = (await Promise.all([
+    readFile(new URL('../../../core/src/router-client.js', import.meta.url), 'utf8'),
+    ...readdirSync(clientDir)
+      .filter((f) => f.endsWith('.js'))
+      .map((f) => readFile(new URL(f, clientDir), 'utf8')),
+  ])).join('\n');
   assert.match(clientSrc, /enctype\.toLowerCase\(\) === 'text\/plain'/,
     'the client guard uses the same one-keyword denylist, not the renderer allowlist');
   assert.doesNotMatch(clientSrc, /PARSEABLE_ENCTYPES/,
