@@ -20,7 +20,7 @@ function errorMessage(code: string | undefined): string | null {
 export default function LoginPage({ searchParams }: { searchParams: { error?: string } }) {
   const error = errorMessage(searchParams.error);
   return html`
-    <div class="max-w-[420px] mx-auto">
+    <div class="max-w-md mx-auto">
       <h1 class="text-h2 font-bold mb-2">Sign in</h1>
       <p class="text-muted-foreground mb-5">Welcome back: log in to continue.</p>
       ${error ? html`<p role="alert" class="mb-4 text-sm text-destructive">${error}</p>` : ''}
@@ -28,11 +28,11 @@ export default function LoginPage({ searchParams }: { searchParams: { error?: st
         <!-- createAuth reads redirectTo from the posted form and 302s there after a successful signin. -->
         <input type="hidden" name="redirectTo" value="/features/auth/dashboard">
         <div class="grid gap-1.5">
-          <label for="email" class="text-[13px] font-medium text-muted-foreground">Email</label>
+          <label for="email" class="text-sm font-medium text-muted-foreground">Email</label>
           <input id="email" name="email" type="email" required class=${inputCls} placeholder="ada@example.com" />
         </div>
         <div class="grid gap-1.5">
-          <label for="password" class="text-[13px] font-medium text-muted-foreground">Password</label>
+          <label for="password" class="text-sm font-medium text-muted-foreground">Password</label>
           <input id="password" name="password" type="password" required class=${inputCls} />
         </div>
         <button type="submit" class="${buttonClass()} justify-self-start">Sign in</button>

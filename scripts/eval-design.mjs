@@ -42,7 +42,8 @@ const COLOUR_UTILITIES = 'text|bg|border|ring|divide|outline|from|via|to';
  * The root layout is where the token block itself is declared, so it is the one
  * module whose whole job is to state literals.
  */
-const LITERAL_COLOUR_EXEMPT = /^app[\\/](layout\.[jt]s|(opengraph-image|twitter-image|icon|apple-icon|manifest)\.[jt]s)$/;
+const LITERAL_COLOUR_EXEMPT =
+  /^app[\\/](layout\.[jt]s|(opengraph-image|twitter-image|icon|apple-icon|manifest|global-error|global-not-found)\.[jt]s)$/;
 
 /**
  * Blank out comment bodies, preserving every offset and newline.
@@ -212,7 +213,10 @@ function arbitrarySpacing(files) {
  * here is of arbitrary sizes rather than of sizes in general.
  */
 function typeScaleAdherence(files) {
-  return scan(files, /\btext-\[/g);
+  // `text-[color:...]` is a COLOUR, not a size, and Tailwind's own type hint
+  // says so. Counting it charged an app for an arbitrary font size it never
+  // set. `text-[length:...]` IS a size and stays counted.
+  return scan(files, /\btext-\[(?!color:)/g);
 }
 
 /**
@@ -230,11 +234,18 @@ function headingHierarchy(files) {
     if (levels.length === 0) continue;
     const h1s = levels.filter((m) => m[1] === '1');
     let problem = '';
-    if (h1s.length !== 1) problem = `${h1s.length} <h1> elements, want exactly 1`;
+    // MORE than one `<h1>` is provably wrong. ZERO is not: the heading may come
+    // from a shared helper (`pageHeading()` returns an `<h1>`) or from the
+    // layout, and a static scan of the page module cannot see either. Flagging
+    // zero charged four correct pages in this repo's own gallery.
+    if (h1s.length > 1) problem = `${h1s.length} <h1> elements, want exactly 1`;
     if (!problem) {
       let previous = 0;
       for (const m of levels) {
         const level = Number(m[1]);
+        // Only compare levels present in THIS module, and skip the leading gap
+        // for the same reason: an `<h2>` first is normal when the `<h1>` came
+        // from a helper or a layout.
         if (previous && level > previous + 1) {
           problem = `<h${previous}> followed by <h${level}>, skipping a level`;
           break;
@@ -278,6 +289,11 @@ function emptyStatePresent(files) {
     // was always out of scope; the first implementation just could not tell.
     const list = [...file.text.matchAll(/\.map\(|\brepeat\(/g)].find((m) => {
       const before = file.text.slice(0, m.index).trimEnd();
+      // A SCREAMING_SNAKE receiver is a module constant by convention, so the
+      // list is a fixed table (six notification toggles, a set of tabs) rather
+      // than a query result, and it cannot be empty at runtime. Same reason as
+      // the inline-literal case below, one indirection further out.
+      if (/\b[A-Z][A-Z0-9_]{2,}$/.test(before)) return false;
       // Walk back over a balanced literal array immediately preceding `.map(`.
       if (!before.endsWith(']')) return true;
       let depth = 0;
@@ -340,18 +356,67 @@ function actionPyramid(files) {
 function labelValueAntipattern(files) {
   const hits = [];
   for (const file of files) {
-    for (const m of file.text.matchAll(/[A-Za-z][A-Za-z ]*:\s*\$\{/g)) {
-      const before = file.text.slice(Math.max(0, m.index - 200), m.index);
-      const lastTagOpen = before.lastIndexOf('<');
-      const lastTagClose = before.lastIndexOf('>');
-      // Inside a tag, so the match is an attribute value, not a text node.
-      if (lastTagOpen > lastTagClose) continue;
-      // A CSS declaration inside a `css` or `style` block is not a text node.
-      if (/(^|\n)\s*(css|style)`[^`]*$/.test(before)) continue;
-      hits.push(hitAt(file, m.index, m[0]));
+    // Scan only inside `html` template literals. The line's own definition is
+    // "text nodes inside an html template", and scanning the whole file
+    // charged a robots.txt line (`Sitemap: ${url}`) and a cache key
+    // (`hint:${key}`) as screen output.
+    for (const region of htmlTemplates(file.text)) {
+      for (const m of region.text.matchAll(/[A-Za-z][A-Za-z ]*:\s*\$\{/g)) {
+        const before = region.text.slice(0, m.index);
+        // Inside a tag means this is an attribute value, not a text node.
+        // Compare the last `<` against the last `>` that actually CLOSES a
+        // tag: an arrow function in an event binding puts a `>` inside the
+        // tag, and counting it made every attribute after an `@click=${() =>
+        // ...}` look like a text node.
+        const lastOpen = before.lastIndexOf('<');
+        const lastClose = lastTagClose(before);
+        if (lastOpen > lastClose) continue;
+        hits.push(hitAt(file, region.start + m.index, m[0]));
+      }
     }
   }
   return hits;
+}
+
+/**
+ * The `html` tagged-template regions of a file, as {start, text} pairs.
+ *
+ * Nesting is handled by tracking backtick depth, so an inner html`` inside a
+ * hole stays part of the outer region rather than truncating it.
+ */
+function htmlTemplates(text) {
+  const out = [];
+  const re = /\bhtml`/g;
+  let m;
+  while ((m = re.exec(text))) {
+    const start = m.index + m[0].length;
+    let i = start;
+    let depth = 1;
+    while (i < text.length && depth > 0) {
+      const c = text[i];
+      if (c === '\\') { i += 2; continue; }
+      if (c === '`') depth += text.slice(0, i).endsWith('${') ? 1 : 0;
+      if (c === '`' && depth === 1) break;
+      if (c === '`') depth -= 1;
+      i += 1;
+    }
+    out.push({ start, text: text.slice(start, i) });
+    re.lastIndex = i;
+  }
+  return out;
+}
+
+/**
+ * Index of the last `>` that closes a TAG, ignoring one inside an arrow
+ * function, a comparison, or an entity.
+ */
+function lastTagClose(before) {
+  for (let i = before.length - 1; i >= 0; i -= 1) {
+    if (before[i] !== '>') continue;
+    if (before[i - 1] === '=') continue; // `=>`
+    return i;
+  }
+  return -1;
 }
 
 /** The rubric, in order. Each line targets zero. */

@@ -24,6 +24,11 @@ import { cardClass } from '#components/ui/card.ts';
 import { buttonClass } from '#components/ui/button.ts';
 import { cn } from '#lib/utils/cn.ts';
 import { pageHeading, lede } from '#lib/utils/ui.ts';
+import {
+  emptyStateClass,
+  emptyStateTitleClass,
+  emptyStateDescriptionClass,
+} from '#components/ui/empty-state.ts';
 import type { Metadata } from '@webjsdev/core';
 import { filterTasks, normalizeStatus, type Status } from '#modules/frames/utils/tasks.ts';
 
@@ -64,7 +69,15 @@ export default function FramesExample({ searchParams }: { searchParams: Record<s
         ${filterTab(status, 'active', 'Active')}
         ${filterTab(status, 'done', 'Done')}
       </div>
-      <ul class="grid gap-2 m-0 p-0 list-none">
+      <!-- The filter can match nothing (pick Done before finishing anything),
+           so the empty branch is written beside the list rather than after
+           someone reports a blank frame. -->
+      ${tasks.length === 0
+        ? html`<div class=${emptyStateClass()}>
+            <p class=${emptyStateTitleClass()}>No ${status === 'all' ? '' : status} tasks</p>
+            <p class=${emptyStateDescriptionClass()}>Pick another filter, or add one above.</p>
+          </div>`
+        : html`<ul class="grid gap-2 m-0 p-0 list-none">
         ${tasks.map(
           (t) => html`
             <li class="flex items-center gap-2 text-foreground">
@@ -73,7 +86,7 @@ export default function FramesExample({ searchParams }: { searchParams: Record<s
             </li>
           `,
         )}
-      </ul>
+      </ul>`}
     </webjs-frame>
     <p class="text-muted-foreground text-sm mt-6">
       A frame can also self-load with <code class="font-mono">src</code>

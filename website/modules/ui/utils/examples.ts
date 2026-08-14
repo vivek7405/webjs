@@ -143,6 +143,28 @@ import {
 // "callable, returns a class string". `never[]` says exactly that: each
 // concrete helper is assignable to it, and it refuses a direct call with
 // invented arguments, which `any[]` would have waved through.
+import {
+  emptyStateClass, emptyStateMediaClass, emptyStateTitleClass,
+  emptyStateDescriptionClass, emptyStateActionsClass,
+} from '#modules/ui/components/empty-state.ts';
+import {
+  statGroupClass, statClass, statLabelClass, statValueClass, statDeltaClass,
+} from '#modules/ui/components/stat.ts';
+import {
+  pageHeaderClass, pageHeaderTitleClass, pageHeaderDescriptionClass, pageHeaderActionsClass,
+} from '#modules/ui/components/page-header.ts';
+import {
+  fieldSetClass, fieldLegendClass, fieldGroupClass, inputGroupClass,
+  inputGroupAddonClass, inputGroupTextClass, fieldErrorClass,
+} from '#modules/ui/components/field-group.ts';
+import {
+  descriptionListClass, descriptionRowClass, descriptionTermClass, descriptionDetailsClass,
+} from '#modules/ui/components/description-list.ts';
+import {
+  timelineClass, timelineItemClass, timelineMarkerClass, timelineConnectorClass,
+  timelineContentClass, timelineTitleClass, timelineTimeClass,
+} from '#modules/ui/components/timeline.ts';
+
 const HELPERS: Record<string, (...args: never[]) => string> = {
   accordionClass, accordionContentClass, accordionItemClass, accordionTriggerClass,
   alertClass, alertDescriptionClass, alertTitleClass,
@@ -166,6 +188,17 @@ const HELPERS: Record<string, (...args: never[]) => string> = {
   tableBodyClass, tableCellClass, tableClass, tableContainerClass, tableHeadClass, tableHeaderClass, tableRowClass,
   tableCaptionClass,
   tabsListClass, textareaClass, toggleClass,
+  // #1116. A helper missing from this map is not an error: evalHole fails soft
+  // to an empty class, so the preview renders unstyled and still returns 200.
+  emptyStateClass, emptyStateMediaClass, emptyStateTitleClass,
+  emptyStateDescriptionClass, emptyStateActionsClass,
+  statGroupClass, statClass, statLabelClass, statValueClass, statDeltaClass,
+  pageHeaderClass, pageHeaderTitleClass, pageHeaderDescriptionClass, pageHeaderActionsClass,
+  fieldSetClass, fieldLegendClass, fieldGroupClass, inputGroupClass,
+  inputGroupAddonClass, inputGroupTextClass, fieldErrorClass,
+  descriptionListClass, descriptionRowClass, descriptionTermClass, descriptionDetailsClass,
+  timelineClass, timelineItemClass, timelineMarkerClass, timelineConnectorClass,
+  timelineContentClass, timelineTitleClass, timelineTimeClass,
 };
 
 // Evaluate one authored call expression such as buttonClass({ variant: 'x' })

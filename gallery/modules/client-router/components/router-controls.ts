@@ -45,7 +45,7 @@ export class RouterControls extends WebComponent {
             class=${buttonClass({ variant: 'link', size: 'none' })}>refreshPage() this page</button>
           <button
             @click=${() => this.toggleRouter()}
-            class=${buttonClass({ variant: 'link', size: 'none' })}>${soft ? 'disableClientRouter()' : 'enableClientRouter()'} (soft nav: ${soft ? 'on' : 'off'})</button>
+            class=${buttonClass({ variant: 'link', size: 'none' })}>${soft ? 'disableClientRouter()' : 'enableClientRouter()'} (soft nav ${soft ? 'on' : 'off'})</button>
         </div>
         <p class="text-sm text-muted-foreground">
           refreshPage() re-renders THIS url on the server and swaps it in.

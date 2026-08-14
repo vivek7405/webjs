@@ -194,7 +194,7 @@ function borderGroups(): Array<[RegExp, string]> {
 
 /**
  * An arbitrary value may carry a Tailwind TYPE HINT: `bg-[image:var(--g)]`,
- * `text-[length:14px]`, `shadow-[color:red]`, and in the v4 paren shorthand
+ * `text-sm`, `shadow-[color:red]`, and in the v4 paren shorthand
  * `bg-(image:--g)`, `shadow-(color:--x)`. The hint exists precisely because
  * the utility prefix is ambiguous, so the PREFIX cannot decide the group and
  * the hint must. Letting a hinted value fall into the prefix's default group

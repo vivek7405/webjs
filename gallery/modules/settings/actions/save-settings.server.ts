@@ -8,16 +8,7 @@
 // typed. Losing the other fifteen fields because one was wrong is the thing
 // that makes people abandon a settings form.
 import type { ActionResult } from '@webjsdev/server';
-
-/** The six notification toggles, by their form field names. */
-export const NOTIFICATION_KEYS = [
-  'appointment-booked',
-  'appointment-cancelled',
-  'reminder-sent',
-  'payment-received',
-  'staff-added',
-  'weekly-summary',
-] as const;
+import { NOTIFICATION_KEYS } from '../types.ts';
 
 export interface SettingsInput {
   displayName: string;

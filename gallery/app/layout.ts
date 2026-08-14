@@ -148,10 +148,15 @@ export default function RootLayout({ children }: { children: unknown }) {
           /* Elevation. The shadow COLOUR is a var because Tailwind inlines a
              --shadow-* value into the utility, so a per-theme shadow has to
              carry its colour through a var inside the value. In dark the lift
-             is the surface rather than the shadow, which is why the surfaces
-             step up and the ambient gets stronger rather than weaker. */
-          --elevation-ambient: light-dark(oklch(0 0 0 / 0.10), oklch(0 0 0 / 0.5));
-          --elevation-contact: light-dark(oklch(0 0 0 / 0.10), oklch(0 0 0 / 0.6));
+             comes from the SURFACE being lighter than the page, which --card
+             and --popover above already express; the shadow is stronger than
+             in light only so the edge still separates against a dark ground.
+             Kept identical to the registry theme, which is what the webjs ui
+             init command writes into an app. (No backticks in here: invariant
+             9, a backtick inside an html template body closes the literal at
+             parse time, even inside a CSS comment.) */
+          --elevation-ambient: light-dark(oklch(0 0 0 / 0.10), oklch(0 0 0 / 0.3));
+          --elevation-contact: light-dark(oklch(0 0 0 / 0.10), oklch(0 0 0 / 0.4));
 
           --primary-tint:   color-mix(in oklch, var(--ring) 22%, transparent);
           --accent-tint:    color-mix(in oklch, var(--ring) 14%, transparent);

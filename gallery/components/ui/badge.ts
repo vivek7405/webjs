@@ -30,7 +30,7 @@ const VARIANTS = {
   default: 'rounded-full bg-primary/15 text-primary px-2.5 py-1 text-xs font-medium',
   // A tiny, quiet outline tag. Used to label a kind of thing ("Example app").
   outline:
-    'rounded border border-border text-muted-foreground px-1.5 py-0.5 text-[0.6rem] font-semibold uppercase tracking-wider',
+    'rounded border border-border text-muted-foreground px-1.5 py-0.5 text-xs font-semibold uppercase tracking-wider',
 } as const;
 
 export type BadgeVariant = keyof typeof VARIANTS;

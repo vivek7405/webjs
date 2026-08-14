@@ -634,10 +634,12 @@ into the utility rather than emitting a `var()` reference, so redeclaring
 `--shadow-e1` under `.dark` would silently do nothing. In dark mode the LIFT comes from the surface being
 lighter than the page, which `--card` and `--popover` already express; the
 shadow only separates the edge, and it is stronger in dark than in light
-because the contrast against a dark ground is smaller to begin with. A
-bare shadow name it does not list falls through to the `shadow-color` group, so
-without that entry an elevation utility and a real shadow colour evict each
-other silently.
+because the contrast against a dark ground is smaller to begin with.
+
+`cn()`'s shadow classifier lists `e1` through `e4` in its size alternation, and
+it has to. A bare shadow name that alternation does not list falls through to
+the `shadow-color` catch-all, so without those entries an elevation utility and
+a real shadow colour evict each other silently.
 
 ## Layout + typography helpers (the design system)
 

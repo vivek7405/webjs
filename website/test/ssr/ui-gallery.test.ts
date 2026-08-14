@@ -332,3 +332,37 @@ test('the old /docs/ui page is gone, permanently redirected to the gallery', asy
   assert.ok([301, 308].includes(res.status), `expected a permanent redirect, got ${res.status}`);
   assert.equal(new URL(res.headers.get('location')!, 'http://localhost').pathname, '/ui');
 });
+
+test('a component with a live preview renders it STYLED, not with empty classes (#1116)', async () => {
+  // `evalHole` resolves each `${helperClass(...)}` in an example against the
+  // HELPERS map and FAILS SOFT to an empty string. So a helper missing from
+  // that map yields `class=""`, a preview that renders unstyled, and a page
+  // that still returns 200. Six components shipped exactly that way, and the
+  // only assertion covering them was the 200.
+  //
+  // Every component that HAS an example must therefore prove its preview
+  // carries real classes, not just that the route answers.
+  const { loadRegistryIndex } = await import('#modules/ui/queries/registry.server.ts');
+  const { getExample } = await import('#modules/ui/utils/examples.ts');
+  const components = (await loadRegistryIndex()).filter((i: any) => i.type === 'registry:ui');
+
+  const withExample = components.filter((c: any) => getExample(c.name));
+  assert.ok(withExample.length > 30, `sanity: expected most of the kit to have an example, got ${withExample.length}`);
+
+  const unstyled: string[] = [];
+  for (const c of withExample) {
+    const res = await handle(`/ui/${c.name}`);
+    assert.equal(res.status, 200, `/ui/${c.name} should render`);
+    const html = await res.text();
+    // Scope to the `.ui-preview` panes only. `class=""` occurs legitimately
+    // elsewhere on the page (shell chrome, highlighted source), so a
+    // whole-document scan flags every component and proves nothing.
+    for (const pane of html.matchAll(/<div\s+class="ui-preview[^"]*"[^>]*>([\s\S]*?)<\/div>\s*<\/div>/g)) {
+      if (/class=""/.test(pane[1])) {
+        unstyled.push(c.name);
+        break;
+      }
+    }
+  }
+  assert.deepEqual(unstyled, [], `these previews render with an empty class attribute: ${unstyled.join(', ')}`);
+});

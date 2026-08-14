@@ -46,6 +46,11 @@ import {
   descriptionDetailsClass,
 } from '#components/ui/description-list.ts';
 import { saveSettings } from '#modules/settings/actions/save-settings.server.ts';
+import {
+  NOTIFICATION_KEYS,
+  NOTIFICATION_LABELS,
+  NOTIFICATION_DEFAULTS,
+} from '#modules/settings/types.ts';
 
 export const metadata: Metadata = {
   title: 'Settings (design exemplar) | examples',
@@ -142,7 +147,7 @@ export default function SettingsExample({ searchParams, actionData }: PageProps)
   const checked: string[] =
     data.values?.notifications !== undefined
       ? data.values.notifications.split(',').filter(Boolean)
-      : ['appointment-booked', 'weekly-summary'];
+      : NOTIFICATION_DEFAULTS;
   const saved = searchParams?.saved === '1' && !data.fieldErrors;
 
   return html`
@@ -204,15 +209,8 @@ export default function SettingsExample({ searchParams, actionData }: PageProps)
              Without it a screen reader announces six options with no idea what
              question they answer. -->
         <div class="grid gap-3">
-          ${[
-            ['appointment-booked', 'An appointment is booked'],
-            ['appointment-cancelled', 'An appointment is cancelled'],
-            ['reminder-sent', 'A reminder goes out'],
-            ['payment-received', 'A payment arrives'],
-            ['staff-added', 'Someone joins the practice'],
-            ['weekly-summary', 'The weekly summary'],
-          ].map(
-            ([name, label]) => html`
+          ${NOTIFICATION_KEYS.map(
+            (name) => html`
               <div class="flex items-center gap-3">
                 <!-- Restored from the action's returned values, exactly like
                      the text fields above. An unchecked box submits nothing, so
@@ -223,7 +221,7 @@ export default function SettingsExample({ searchParams, actionData }: PageProps)
                        ?checked=${checked.includes(name)}>
                 <!-- Positive wording. "Do not email me" makes the reader work
                      out what ticking it means. -->
-                <label class="text-sm" for=${name}>${label}</label>
+                <label class="text-sm" for=${name}>${NOTIFICATION_LABELS[name]}</label>
               </div>
             `,
           )}

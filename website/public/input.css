@@ -233,8 +233,8 @@
   --info-foreground:          light-dark(oklch(0.977 0.013 236.62), oklch(0.293 0.066 243.157));
   --info-subtle:              light-dark(oklch(0.977 0.013 236.62), oklch(0.293 0.066 243.157));
   --info-subtle-foreground:   light-dark(oklch(0.443 0.11 240.79), oklch(0.828 0.111 230.318));
-  --elevation-ambient:        light-dark(oklch(0 0 0 / 0.1), oklch(0 0 0 / 0.5));
-  --elevation-contact:        light-dark(oklch(0 0 0 / 0.1), oklch(0 0 0 / 0.6));
+  --elevation-ambient:        light-dark(oklch(0 0 0 / 0.1), oklch(0 0 0 / 0.3));
+  --elevation-contact:        light-dark(oklch(0 0 0 / 0.1), oklch(0 0 0 / 0.4));
   --border:                   light-dark(oklch(0.922 0 0),         oklch(1 0 0 / 10%));
   --input:                    light-dark(oklch(0.922 0 0),         oklch(1 0 0 / 15%));
   --ring:                     light-dark(oklch(0.708 0 0),         oklch(0.556 0 0));

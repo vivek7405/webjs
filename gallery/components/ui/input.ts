@@ -26,7 +26,7 @@ import { cn } from '#lib/utils/cn.ts';
 // One surface for every text field. `focus:border-primary` is the whole focus
 // affordance (no ring), to match this app's quiet, token-driven chrome.
 const BASE =
-  'w-full bg-background border border-border rounded-xl px-3 py-2 text-[15px] text-foreground outline-none transition-colors focus:border-primary placeholder:text-muted-foreground disabled:cursor-not-allowed disabled:opacity-60';
+  'w-full bg-background border border-border rounded-xl px-3 py-2 text-sm text-foreground outline-none transition-colors focus:border-primary placeholder:text-muted-foreground disabled:cursor-not-allowed disabled:opacity-60';
 
 /**
  * Compose the Tailwind classes for a text input or textarea. Append your own
@@ -42,7 +42,7 @@ export function inputClass(extra?: string): string {
 // inputClass (a standalone bordered field); a bordered input inside a bordered
 // card would be a box-in-a-box.
 const BARE =
-  'flex-1 min-w-0 bg-transparent border-0 outline-none py-1.5 text-[15px] text-foreground placeholder:text-muted-foreground';
+  'flex-1 min-w-0 bg-transparent border-0 outline-none py-1.5 text-sm text-foreground placeholder:text-muted-foreground';
 
 /** Compose the classes for a borderless text field composed inside a card pill. */
 export function bareInputClass(extra?: string): string {
