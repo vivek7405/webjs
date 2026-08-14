@@ -48,10 +48,11 @@ What they mean in practice, in a buildless framework whose source IS what runs:
 ## File size: target 800, ceiling around 1000
 
 **A source module targets 800 lines and should stay around 1000 at the most.**
-The ceiling is approximate on purpose. A module at 1040 is fine; one at 1900 is
-not, and the question to ask at that size is which responsibility it has picked
-up rather than how many lines it has. A barrel is exempt entirely, because its
-length is a function of how many names it re-exports.
+The ceiling is approximate on purpose. A module at 1040 is fine; one at 1900
+needs either a split or a named exemption (below), and the question to ask at
+that size is which responsibility it has picked up rather than how many lines
+it has. A barrel is exempt entirely, because its length is a function of how
+many names it re-exports.
 
 **Where this number comes from.** It was set by measuring the frameworks this
 project takes its cues from, not by picking a round figure:
@@ -79,28 +80,36 @@ There is also a runtime cost. In dev the browser fetches core source files
 individually rather than the bundle, so N modules is N requests at one more
 level of import-graph depth.
 
-**A CI guard enforces the ceiling over the trees the #1365 split produced**
-(`test/architecture/module-size.test.mjs`), and nothing else. The objection to a
-line-count gate is real, that it is a proxy metric which fights cohesion, so the
-guard is scoped rather than global: it binds only those ten trees. Everywhere
-else in the repo the ceiling stays a review-time check.
+**The ceiling is measured with a RAW line count** (the number `wc -l` prints,
+the number you see when you open the file), because that is how #1365 specified
+it and because a metric a reader cannot reproduce by looking at the file invites
+argument about the metric instead of the module. The tension with dense
+documentation is real: this repo's comment style can put a well-factored module
+at twice its code size, and a raw ceiling must never become a reason to delete
+explanation. The answer to that tension is the exemption list, not a different
+metric.
 
-**It counts CODE lines, not raw lines**, and that distinction is load-bearing.
-The ceiling exists to stop a module doing too much, and a comment does not make
-a module do more. Counting comments has an actively harmful incentive, because
-the cheapest way back under a raw ceiling is to delete the explanation. #1365 is
-the proof: its splits dropped roughly 1,800 explanatory comment lines, and
-restoring them pushed two files back over a raw ceiling they had only been under
-because the documentation was missing.
+**A module that genuinely cannot or should not go under the ceiling gets a
+NAMED exemption**, recorded in `test/architecture/module-size.test.mjs` with its
+cap and its reason, and the guard fails when an exempt module shrinks under the
+ceiling so the list cannot carry stale entries. The three current exemptions
+show what a valid reason looks like:
 
-Measured in code, every module in those trees is under 1000, including the two
-that needed an exemption under a raw count (`render-client/parts.js` and
-`component/lifecycle.js`, both well over 1000 raw and comfortably under it in
-code), so there is no exemption list at all. The guard asserts that relationship
-for those two files rather than restating their sizes here, because a figure in
-prose goes stale on the next commit that touches them. Exceeding 1000 CODE lines is still allowed only when
-splitting further would create an artificial seam, and only when the exemption
-is named in the guard with the measured size and the reason.
+- **lit parity** (`component/lifecycle.js`): the file tracks lit's
+  `reactive-element.ts`, which lit keeps WHOLE at 1754 lines, and the project's
+  standing decision is to keep lit-derived code close to lit rather than
+  restructure it.
+- **mutual recursion** (`render-client/parts.js`): the apply and instance group
+  calls back into itself, so a real split creates the import cycle the D4 rule
+  forbids, and the escape (a runtime dispatch registry) is a worse trade.
+- **a single closure over shared request state** (`dev/handler.js`): splitting
+  means threading that state through a context object, a high-risk rewrite of
+  every app's boot path for zero behaviour gain.
+
+The guard is scoped to the ten #1365 trees and nothing else. Everywhere else in
+the repo the ceiling stays a review-time judgment, because a global line-count
+gate is a proxy metric that fights cohesion (it would red on the WHATWG entity
+table forever).
 
 ---
 

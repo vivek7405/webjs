@@ -1,26 +1,43 @@
 /**
  * D3: a module produced by the #1365 split targets 800 lines and must not
- * exceed 1000, counted in CODE lines.
+ * exceed 1000, measured with a RAW line count, exactly as the issue's own
+ * acceptance command (`wc -l`) measures it.
  *
  * The criterion binds ONLY the ten trees below and the modules produced from
  * them. Nothing else in the repo is in scope, which matters because several
  * files outside it were already over the line before this work started.
  *
- * **Why code lines and not raw lines.** The ceiling is a proxy for cohesion:
- * the thing it is trying to prevent is a module that does too much. Comments do
- * not make a module do more, and counting them has an actively harmful
- * incentive, because the cheapest way to get back under a raw-line ceiling is
- * to delete the explanation. This PR is the proof: restoring the ~1,300
- * explanatory comment lines its splits had dropped pushed two files back over a
- * raw-line ceiling they had only been under BECAUSE the documentation was
- * missing. A gate that reads that as a regression is measuring the wrong thing.
+ * An earlier revision of this guard counted CODE lines (comments and blanks
+ * skipped), which put every module under the ceiling with no exemptions. That
+ * redefinition was reverted: #1365 specifies raw `wc -l` plus a NAMED exemption
+ * for a module that genuinely cannot be split, and changing the metric so a
+ * failing criterion passes is not meeting it. The number this guard reports is
+ * the number you see when you open the file.
  *
- * Measured in code lines, every module in these trees is under 1000, including
- * the two that needed an exemption under the raw count. So there is no
- * exemption list here at all, which is the outcome the plan wanted and the one
- * a raw count could not reach. The last test below ASSERTS that relationship
- * for those two files rather than quoting figures in prose, because the figures
- * quoted here went stale within three commits of being written.
+ * The exemptions below are the project's decided answer (2026-08-14), each
+ * with the reason it cannot or should not go under the ceiling:
+ *
+ * - `component/lifecycle.js`: lit parity. It is the one core tree whose code
+ *   genuinely tracks lit (`reactive-element.ts`, kept WHOLE upstream at 1754
+ *   lines), and the project's standing decision is to keep lit-derived code as
+ *   close to lit as possible. The WebJs-original parts (the factory, the SSR
+ *   element shim) are already split out beside it.
+ * - `render-client/parts.js`: mutual recursion. The apply and instance group
+ *   calls back into itself (applyPart -> applyChild -> updateInstance /
+ *   buildDetached -> applyPart), so any real split creates the import cycle D4
+ *   forbids, and the escape (a runtime dispatch registry) trades a static
+ *   import edge for a mutable slot. lit keeps its equivalent (`lit-html.ts`)
+ *   whole at 2303 lines for the same reason.
+ * - `dev/handler.js`: one closure. `createRequestHandler` is a single closure
+ *   over shared mutable request state (rebuildInFlight, readyDone, the base
+ *   path); decomposing it means threading that state through a context object,
+ *   a high-risk rewrite of the boot path of every app for zero behaviour gain.
+ *   #1365's P9 itself calls it "the only file whose main function must be
+ *   decomposed rather than moved".
+ *
+ * Each exemption carries a CAP a little above its current size, so an exempt
+ * module can still grow a little without churn here, while unbounded growth
+ * (the thing an exemption must not become) still fails.
  *
  * A barrel is exempt from the whole check: its length is a function of its
  * export count, and router-client.js alone re-exports 68 names.
@@ -49,41 +66,18 @@ const TREES = [
 const CEILING = 1000;
 
 /**
- * Modules allowed past the ceiling, each with its measured size and reason.
- * Empty on purpose: nothing in these trees needs one once size is measured in
- * code. Adding an entry means arguing that a module genuinely cannot be split,
- * having tried.
+ * The named exemptions, per the header. Key is the repo-relative path, value
+ * is the cap raw-line growth must stay under.
  */
-const EXEMPT = new Map();
+const EXEMPT = new Map([
+  ['packages/core/src/render-client/parts.js', 2100],
+  ['packages/core/src/component/lifecycle.js', 1600],
+  ['packages/server/src/dev/handler.js', 1500],
+]);
 
-/** Lines that are neither blank nor comment-only. */
-function codeLines(src) {
-  let inBlock = false;
-  let n = 0;
-  for (const raw of src.split('\n')) {
-    const line = raw.trim();
-    if (inBlock) {
-      if (line.includes('*/')) {
-        inBlock = false;
-        // code trailing a block-comment close still counts
-        const after = line.slice(line.indexOf('*/') + 2).trim();
-        if (after) n += 1;
-      }
-      continue;
-    }
-    if (!line) continue;
-    if (line.startsWith('//')) continue;
-    if (line.startsWith('/*')) {
-      if (!line.includes('*/')) inBlock = true;
-      else {
-        const after = line.slice(line.lastIndexOf('*/') + 2).trim();
-        if (after) n += 1;
-      }
-      continue;
-    }
-    n += 1;
-  }
-  return n;
+/** Raw line count, the same number `wc -l` prints. */
+function rawLines(src) {
+  return src.split('\n').length;
 }
 
 /** @param {string} dir @returns {string[]} absolute paths of .js files */
@@ -97,7 +91,7 @@ function jsFiles(dir) {
   return out;
 }
 
-test('D3: no split module exceeds 1000 code lines', () => {
+test('D3: no split module exceeds 1000 raw lines, save the named exemptions', () => {
   /** @type {string[]} */
   const over = [];
   for (const tree of TREES) {
@@ -112,13 +106,13 @@ test('D3: no split module exceeds 1000 code lines', () => {
 
     for (const file of jsFiles(abs)) {
       const rel = relative(REPO, file).split('\\').join('/');
-      const n = codeLines(readFileSync(file, 'utf8'));
+      const n = rawLines(readFileSync(file, 'utf8'));
       const cap = EXEMPT.get(rel) ?? CEILING;
       if (n > cap) {
         over.push(
           EXEMPT.has(rel)
-            ? `${rel}: ${n} code lines, over its exemption cap of ${cap}`
-            : `${rel}: ${n} code lines, over the ${CEILING} ceiling`,
+            ? `${rel}: ${n} lines, over its exemption cap of ${cap}`
+            : `${rel}: ${n} lines, over the ${CEILING} ceiling`,
         );
       }
     }
@@ -127,45 +121,14 @@ test('D3: no split module exceeds 1000 code lines', () => {
 });
 
 test('D3: every exemption still exists and still needs to be one', () => {
+  // An exempt module that shrinks under the ceiling must lose its entry, so
+  // the list can only ever name modules that genuinely need it.
   for (const [rel, cap] of EXEMPT) {
-    const n = codeLines(readFileSync(join(REPO, rel), 'utf8'));
+    const n = rawLines(readFileSync(join(REPO, rel), 'utf8'));
     assert.ok(
       n > CEILING,
-      `${rel} is now ${n} code lines, under the ${CEILING} ceiling. Drop its exemption.`,
+      `${rel} is now ${n} lines, under the ${CEILING} ceiling. Drop its exemption.`,
     );
-    assert.ok(cap >= n, `${rel} is ${n} code lines but its cap is ${cap}`);
+    assert.ok(cap >= n, `${rel} is ${n} lines but its cap is ${cap}`);
   }
-});
-
-test('D3: the two densest modules are over the raw ceiling and under the code one', () => {
-  // The whole raw-lines-to-code-lines argument rests on these two files being
-  // in exactly that position. Asserted, not quoted: an earlier version of this
-  // header stated their sizes as prose and was wrong three commits later.
-  for (const rel of [
-    'packages/core/src/render-client/parts.js',
-    'packages/core/src/component/lifecycle.js',
-  ]) {
-    const src = readFileSync(join(REPO, rel), 'utf8');
-    const raw = src.split('\n').length;
-    const n = codeLines(src);
-    assert.ok(raw > CEILING, `${rel}: ${raw} raw lines, expected over ${CEILING}`);
-    assert.ok(n <= CEILING, `${rel}: ${n} code lines, expected at most ${CEILING}`);
-  }
-});
-
-test('D3: the measurement ignores comments, which is the point', () => {
-  // A guard on the guard. If this ever starts counting comment lines again, the
-  // incentive flips back to deleting explanation to stay under the ceiling,
-  // which is exactly the defect the #1365 splits shipped.
-  const src = [
-    'function a() {',
-    '  // one',
-    '  // two',
-    '  /* three',
-    '     four */',
-    '  return 1;',
-    '}',
-    '',
-  ].join('\n');
-  assert.equal(codeLines(src), 3, 'signature, return and closing brace only');
 });
