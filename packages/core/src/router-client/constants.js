@@ -44,8 +44,13 @@ export const STREAM_MIME = 'text/vnd.webjs-stream.html';
  *   4. A poisoned scan or no shared boundary degrades to a FULL PAGE LOAD:
  *      bounded and correct, never a guessed recovery.
  *   5. Commit, in this order: `history.pushState`, then merge head, then apply
- *      the replace/morph from step 3, then re-run scripts and upgrade custom
- *      elements. The push leads because WebKit binds a same-document entry's
+ *      the replace/morph from step 3, then re-run scripts, then a final
+ *      custom-element upgrade pass. That last pass is a SAFETY NET, not the
+ *      first upgrade: an element whose definition is already registered
+ *      upgrades as a custom-element reaction the moment the swap inserts it,
+ *      so the pass exists for what is left, which is chiefly an element a
+ *      just-re-executed script has only now defined. The push leads because
+ *      WebKit binds a same-document entry's
  *      back-forward gesture snapshot to the page state when the entry is
  *      recorded, so recording it after the content swap makes an iOS
  *      back-swipe preview the destination instead of the page being returned
