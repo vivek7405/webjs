@@ -227,8 +227,10 @@ suite('Client router: frame-dimensioned link prefetch (#1407)', () => {
   test('a full-document answer to a framed prefetch is not stored, but the refusal is memoed', async () => {
     // The server's frame branch has two fall-throughs (a streamed render, an
     // absent frame id) that answer with a whole document and no marker. Storing
-    // one under a frame key would swap an entire document into the frame region
-    // on the click.
+    // one under a frame key risks a DEAD click: the swap looks for
+    // `webjs-frame#<id>` in the body and may not find it (an absent id was never
+    // rendered, and a streamed page's content sits in a template the swap does
+    // not descend into), leaving the region unchanged instead of fetching.
     setup('/tasks?status=streamed');
     try {
       window.fetch = async (url, init) => {

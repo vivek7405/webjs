@@ -348,7 +348,9 @@ export function prefetch(href, frameId) {
   const existing = prefetchCache.get(key);
   if (existing && (nowMs() - existing.at) < PREFETCH_TTL) return;
   // Refused recently, so re-asking would be refused again (#1407). Bounds the
-  // retry to one request per TTL, the same bound a successful entry gets.
+  // retry to about one request per TTL. Not exactly one: the memo map is itself
+  // LRU-capped and nothing ever consumes a memo, so a page with more distinct
+  // refused keys than the cap evicts the oldest inside the window.
   if (prefetchRefusedRecently(key)) return;
   if (prefetchInflight.size >= PREFETCH_CONCURRENCY) {
     // Gate full: queue rather than drop, bounded so a huge link list
@@ -435,8 +437,10 @@ export function prefetch(href, frameId) {
       // render never had the frame, and a streamed page carries its resolved
       // content inside a `<template data-webjs-resolve>` that `querySelector`
       // does not descend into. Then the swap dispatches `webjs:frame-missing`
-      // and leaves the region unchanged, so consuming the entry turns the click
-      // into a silent no-op instead of a network fetch. It cannot be filed under
+      // and leaves the region unchanged (warning to the console), so consuming
+      // the entry turns the click into a dead one rather than a network fetch,
+      // and it must not be applied blind either, since a frame OUTSIDE a streamed
+      // boundary does arrive in the shell and would be found. It cannot be filed under
       // the page key either, since it was fetched with a header the response
       // varies on.
       //

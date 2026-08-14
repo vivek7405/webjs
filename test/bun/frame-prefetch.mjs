@@ -11,7 +11,8 @@
  * speculative cache keys a prefetched body by the frame it asked for, and the
  * ONLY thing telling a sliced subtree apart from one of the two full-document
  * fall-throughs is this header, so a runtime that dropped it would let a whole
- * document be cached under a frame key and swapped into a frame region.
+ * document be cached under a frame key, and a click consuming that entry can
+ * find no frame in it and leave the region unchanged instead of fetching.
  *
  * Asserts on a real app boot + real GETs, identically on both runtimes:
  *   - a GET carrying `x-webjs-frame` for an id IN the render returns only the
