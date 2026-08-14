@@ -1538,6 +1538,13 @@ test('preloadCrossOriginAttr: adds crossorigin=anonymous for cross-origin URLs o
   assert.equal(preloadCrossOriginAttr('/__webjs/vendor/dayjs@1.11.20.js'), '');
 });
 
+/** Run `fn` with console.error muted: several cases provoke a real crash. */
+const SILENT = async (fn) => {
+  const prev = console.error;
+  console.error = () => {};
+  try { return await fn(); } finally { console.error = prev; }
+};
+
 /* ------------ ssrNotFound + not-found.js rendering ------------ */
 
 test('ssrNotFound: no notFound file → plain 404 fallback', async () => {
@@ -1569,13 +1576,15 @@ test('ssrNotFound: not-found.js that throws falls back to an inline error body',
   writeFileSync(notFoundFile,
     `export default function NotFound() { throw new Error('boom'); }\n`);
 
-  const dev = await ssrNotFound(notFoundFile, { dev: true, appDir: sub });
+  // SILENT: the boundary crash is REPORTED to console.error as of #1298, and
+  // this test provokes it deliberately.
+  const dev = await SILENT(() => ssrNotFound(notFoundFile, { dev: true, appDir: sub }));
   assert.equal(dev.status, 404);
   const devBody = await dev.text();
   assert.ok(devBody.includes('404: Not found'));
   assert.ok(devBody.includes('boom'), 'dev still shows the failure');
 
-  const prod = await ssrNotFound(notFoundFile, { dev: false, appDir: sub });
+  const prod = await SILENT(() => ssrNotFound(notFoundFile, { dev: false, appDir: sub }));
   assert.equal(prod.status, 404);
   const prodBody = await prod.text();
   assert.ok(prodBody.includes('404: Not found'), 'prod still identifies the status');
@@ -1815,12 +1824,6 @@ function assertPaired(html) {
   }
   assert.equal(stack.length, 0, 'no marker left open');
 }
-
-const SILENT = async (fn) => {
-  const prev = console.error;
-  console.error = () => {};
-  try { return await fn(); } finally { console.error = prev; }
-};
 
 const HTML_IMPORT = `import { html } from ${JSON.stringify(HTML_MODULE_URL)};\n`;
 
@@ -2460,6 +2463,36 @@ test('boundary: a 404 boundary that fails to LOAD is reported too', async () => 
   }));
   assert.equal(resp.status, 404);
   assert.equal(seen.length, 1, 'a boundary that cannot even be imported is not silent either');
+});
+
+test('boundary: a boundary whose own TREE fails is reported ONCE, and not as a layout', async () => {
+  // The standalone fallback re-renders the SAME tree, so a tree-level failure
+  // throws twice: once from the wrapped attempt and once from the fallback.
+  // Reporting before the fallback ran would report it twice and label the
+  // first one a layout crash, when no layout threw at all.
+  const { route, appDir } = makeBoundaryApp({
+    files: {
+      'layout.js': HTML_IMPORT + `export default function Root({ children }) { return html\`<div>\${children}</div>\`; }\n`,
+      // Fails while the tree is RENDERED, not while it is built, so the
+      // wrapped attempt and the standalone fallback fail identically on the
+      // same tree. A rejected promise in a hole is the simplest such shape:
+      // renderToString awaits it.
+      'admin/forbidden.js': HTML_IMPORT + `export default function F() {
+        return html\`<p>\${Promise.reject(new Error('TREE_RENDER_BOOM'))}</p>\`;
+      }\n`,
+      'admin/page.js': `import { forbidden } from ${JSON.stringify(WEBJS_MODULE_URL)};\nexport default function Page() { forbidden(); }\n`,
+    },
+    page: 'admin/page.js',
+    layouts: ['layout.js'],
+    forbiddens: ['admin/forbidden.js'],
+  });
+  const seen = [];
+  const resp = await SILENT(() => ssrPage(route, {}, new URL('http://localhost/admin'), {
+    dev: false, appDir, onError: (e) => seen.push(e),
+  }));
+  assert.equal(resp.status, 403, 'it still answers with the boundary status');
+  const hits = seen.filter((e) => /TREE_RENDER_BOOM/.test(String(e && e.message)));
+  assert.equal(hits.length, 1, 'reported once, not once per render attempt');
 });
 
 test('boundary: a boundary response is never storable and never reduced', async () => {

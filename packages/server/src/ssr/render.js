@@ -668,15 +668,25 @@ async function ssrBoundaryHtml(file, heading, opts) {
             body = await renderToString(tree, { ssr: true, dev: opts.dev });
           }
         } catch (layoutErr) {
-          // A wrapped layout threw. Degrade to the standalone render this has
-          // always produced, and to its empty boot set with it. REPORT it
-          // first: these paths execute layout modules for the first time since
-          // #1298, so a genuine layout crash would otherwise vanish, leaving a
-          // developer looking at a chrome-less boundary page with nothing
-          // saying why, and an APM sink that never heard about it.
+          // Degrade to the standalone render this has always produced, and to
+          // its empty boot set with it.
+          //
+          // The standalone attempt is also what tells us WHAT failed, so it
+          // runs before anything is reported. If it succeeds, the fault was in
+          // the layout chain: report it, because these paths execute layout
+          // modules for the first time since #1298 and a genuine layout crash
+          // would otherwise vanish, leaving a developer looking at a
+          // chrome-less boundary page with nothing saying why. If it throws
+          // too, the boundary's OWN tree is what is broken, so rethrow and let
+          // the outer catch report it once, under the right label. Reporting
+          // here first would report a tree failure twice and call it a layout.
+          try {
+            body = await renderToString(tree, { ssr: true, dev: opts.dev });
+            moduleUrls = [];
+          } catch {
+            throw layoutErr;
+          }
           reportBoundaryLayoutError(layoutErr, opts, { overlay: true });
-          body = await renderToString(tree, { ssr: true, dev: opts.dev });
-          moduleUrls = [];
         }
       }
     } catch (e) {
@@ -737,10 +747,15 @@ async function ssrNotFoundHtml(notFoundFile, opts) {
             body = await renderToString(tree, { ssr: true, dev: opts.dev });
           }
         } catch (layoutErr) {
-          // Same degradation, and the same reporting, as ssrBoundaryHtml above.
+          // Same degradation, and the same report-only-if-the-fault-was-the-
+          // chain rule, as ssrBoundaryHtml above.
+          try {
+            body = await renderToString(tree, { ssr: true, dev: opts.dev });
+            moduleUrls = [];
+          } catch {
+            throw layoutErr;
+          }
           reportBoundaryLayoutError(layoutErr, opts, { overlay: true });
-          body = await renderToString(tree, { ssr: true, dev: opts.dev });
-          moduleUrls = [];
         }
       }
     } catch (e) {

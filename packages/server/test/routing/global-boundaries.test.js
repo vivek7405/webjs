@@ -110,3 +110,31 @@ test('global-error renders its OWN full document at 500 when a page throws a rea
   // It rendered its own <html>, returned verbatim (not double-wrapped).
   assert.equal((body.match(/<html/g) || []).length, 1, 'exactly one <html> (no double wrap)');
 });
+
+/* ------------ boundary crashes reach the APM sink (#1298) ------------ */
+
+test('an unrouted 404 whose not-found THROWS reaches the onError sink', async () => {
+  // The wiring, not the capability: this goes through the real unmatched-URL
+  // path in dev/serve.js rather than calling ssrNotFound directly. That path
+  // used to build its own options object without the sinks, so a root
+  // not-found that crashed reported to the console and nothing else.
+  const appDir = makeApp({
+    'package.json': pkg,
+    'app/page.js': page('export default function H() { return html`<main>home</main>`; }'),
+    'app/not-found.js':
+      `export default function NF() { throw new Error('ROOT_NF_BOOM'); }\n`,
+  });
+  const captured = [];
+  const app = await createRequestHandler({
+    appDir, dev: true, onError: (e) => captured.push(e),
+  });
+  const prev = console.error;
+  console.error = () => {};
+  let resp;
+  try {
+    resp = await app.handle(new Request('http://x/nothing-here'));
+  } finally { console.error = prev; }
+  assert.equal(resp.status, 404, 'it still answers 404 rather than failing');
+  assert.equal(captured.length, 1, 'the crash reached the APM sink through the real path');
+  assert.match(String(captured[0].message), /ROOT_NF_BOOM/);
+});

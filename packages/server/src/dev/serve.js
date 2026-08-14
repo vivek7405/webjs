@@ -495,7 +495,22 @@ export async function handleCore(req, ctx) {
   }
   // Unmatched anywhere: prefer the root not-found.{js,ts}, then a
   // global-not-found.{js,ts} (#848), else the default 404 page.
-  return ssrNotFound(state.routeTable.notFound || state.routeTable.globalNotFound, { dev, appDir, req, url });
+  // The APM / overlay sinks ride along here too: a root not-found that throws
+  // or fails to load must reach them, not only the console (#1298). Built
+  // inline rather than reused, because the ssrOpts above is scoped to the
+  // matched-page branch, which this path did not take.
+  //
+  // No `route` is passed on purpose: nothing matched, so there is no layout
+  // chain to render the boundary inside, and the response stays a bare
+  // document with no boot script.
+  return ssrNotFound(state.routeTable.notFound || state.routeTable.globalNotFound, {
+    dev,
+    appDir,
+    req,
+    url,
+    onError: reportError ? (e) => reportError(e, req, 'ssr') : undefined,
+    onDevError: dev ? (e) => reportDevError(e, { kind: 'render', url: url.pathname }) : undefined,
+  });
 }
 
 /** @param {Request} req @param {string} path */
