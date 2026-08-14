@@ -726,6 +726,22 @@ export function refreshPrefetchObservers() {
   }
 }
 
+/**
+ * Drop the speculative entry for one url in one dimension (#1407). Used by
+ * `loadFrame`: a `<webjs-frame src>` self-load refuses to CONSUME a warm entry
+ * because it is a freshness request, and the other half of that is dropping the
+ * copy it has just superseded. Without this the self-load paints fresh bytes
+ * over the network and leaves an older entry consumable, so the next click on
+ * that frame's link repaints the panel with content strictly staler than what is
+ * already on screen. `refreshPage` gets the same pairing from `revalidate()`.
+ *
+ * @param {string} href
+ * @param {string | null} [frameId]
+ */
+export function prefetchEvict(href, frameId) {
+  prefetchCache.delete(cacheKey(href, frameId));
+}
+
 /** Test-only: peek the speculative cache for a href without consuming it. */
 export function _prefetchPeek(href, frameId) { return prefetchCache.get(cacheKey(href, frameId)) || null; }
 

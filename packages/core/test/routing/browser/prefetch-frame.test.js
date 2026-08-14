@@ -101,6 +101,10 @@ suite('Client router: frame-dimensioned link prefetch (#1407)', () => {
       '<span id="outside-sentinel">OUTSIDE</span>' +
       '<webjs-frame id="tasks">' +
         `<a id="tab-done" href="${href}">Done</a>` +
+        '<form id="tab-form" method="get" action="/tasks">' +
+          '<input type="hidden" name="status" value="formget">' +
+          '<button type="submit">Filter</button>' +
+        '</form>' +
         '<span id="frame-body">ORIGINAL</span>' +
       '</webjs-frame>';
     document.body.appendChild(container);
@@ -225,6 +229,27 @@ suite('Client router: frame-dimensioned link prefetch (#1407)', () => {
     } finally { teardown(); }
   });
 
+  test('a SAFE (GET) form submission targeting a frame consumes the framed entry (#1407)', async () => {
+    // A GET submission is a read, not a write: `performSubmission` sends it as
+    // method GET with a null body, so it passes the same consume gate a link
+    // click does. Dropping the blanket `!frameId` guard made that true in the
+    // FRAME dimension too, which is correct and was uncovered.
+    setup('/tasks?status=unused');
+    try {
+      const target = location.origin + '/tasks?status=formget';
+      _prefetch(target, 'tasks');
+      await afterPrefetchAttempt();
+      assert.ok(_prefetchPeek(target, 'tasks'), 'precondition: the framed entry is warm');
+
+      const before = calls.length;
+      document.getElementById('tab-form').requestSubmit();
+      await settle();
+
+      assert.equal(calls.length, before, 'the submission consumed the warm entry: no request');
+      assert.equal(document.getElementById('frame-body').textContent, 'UPDATED', 'and the frame swapped');
+    } finally { teardown(); }
+  });
+
   test('a <webjs-frame src> SELF-load never consumes a speculative entry (#1407)', async () => {
     // Out of scope by design. Dropping the blanket `!frameId` guard from the
     // consume check made `loadFrame` eligible for the first time, and it should
@@ -244,7 +269,10 @@ suite('Client router: frame-dimensioned link prefetch (#1407)', () => {
       await settle();
 
       assert.equal(calls.length, before + 1, 'the self-load went to the network');
-      assert.ok(_prefetchPeek(target, 'tasks'), 'and left the warm entry for a real click');
+      // And it EVICTS the copy it just superseded. Leaving it would let the next
+      // click on this frame's link repaint the panel with bytes older than what
+      // the self-load has already put on screen.
+      assert.equal(_prefetchPeek(target, 'tasks'), null, 'and dropped the entry it superseded');
     } finally { teardown(); }
   });
 

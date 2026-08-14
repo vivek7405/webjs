@@ -89,8 +89,10 @@ export async function fetchAndApply(href, frameId, recordHistory, optimisticStat
   try {
     // Warm-cache fast path: a hover/focus/viewport prefetch may already hold
     // this page. Consume it instead of going to the network, so the click
-    // resolves with no round-trip. Only for plain GET navs. A form submission
-    // always hits the server (it is a write). A FRAME nav consumes only an entry
+    // resolves with no round-trip. Only for GET navs carrying no body. A
+    // MUTATING form submission is a write and always hits the server; a SAFE
+    // (GET) submission is a read like a link click, so it consumes like one,
+    // including in a frame dimension. A FRAME nav consumes only an entry
     // fetched under the SAME frame id (#1407): the key carries that dimension,
     // so a page fragment can never be applied into a frame region, nor a frame
     // subtree into a page swap, and a `<webjs-frame src>` SELF-load opts out

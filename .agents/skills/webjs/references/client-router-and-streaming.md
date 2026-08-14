@@ -136,7 +136,7 @@ One consequence to know when reading a network tab: dedupe is per dimension, so 
 html`<webjs-frame id="activity">…contents…</webjs-frame>`
 ```
 
-On click the router walks `closest('webjs-frame')` from the target. If a frame is found and the response carries a matching `<webjs-frame id>`, the swap is scoped to that frame's children, and the server returns ONLY that subtree. A link that drives a frame participates in link prefetch like any other, in that frame's own dimension (#1407), so a hovered or viewport-warmed frame link swaps on click with no round trip. See the prefetch section above for the frame dimension's rules.
+On click the router walks `closest('webjs-frame')` from the target. If a frame is found and the response carries a matching `<webjs-frame id>`, the swap is scoped to that frame's children, and the server returns ONLY that subtree. A link that drives a frame participates in link prefetch like any other, in that frame's own dimension (#1407), so a hovered or viewport-warmed frame link swaps on click with no round trip. A `<webjs-frame src>` SELF-load is the exception: it neither reads nor keeps that cache, since asking a frame to load its own src is a freshness request rather than a hover being followed. See the prefetch section above for the frame dimension's rules.
 
 **External targeting.** A trigger does not have to be nested inside the frame. An `<a>` or `<form>` carrying `data-webjs-frame="<id>"` drives that frame from anywhere (an explicit `data-webjs-frame` wins over the enclosing-frame default). `data-webjs-frame="_top"` is a reserved token forcing a full-page navigation that breaks out of the frame.
 

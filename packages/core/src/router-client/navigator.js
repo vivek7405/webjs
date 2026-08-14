@@ -13,7 +13,7 @@ import { parseHTML } from './dom-parse.js';
 import { onClick, onPopState, onSubmit } from './events.js';
 import { fetchAndApply } from './fetch-apply.js';
 import { clearFormBusy, markFormBusy } from './frames.js';
-import { clearPrefetchHover, clearPrefetchRefused, clearPrefetchViewTimers, onPrefetchIntent, onPrefetchOut, prefetchCache, refreshPrefetchObservers, teardownPrefetchViewObserver } from './prefetch.js';
+import { clearPrefetchHover, clearPrefetchRefused, clearPrefetchViewTimers, onPrefetchIntent, onPrefetchOut, prefetchCache, prefetchEvict, refreshPrefetchObservers, teardownPrefetchViewObserver } from './prefetch.js';
 // `restoreGeneration` is imported READ-ONLY: the deferred restore captures it
 // and re-compares after the frame, so it must be the live binding. Writes go
 // through bumpRestoreGeneration(), since ESM forbids assigning an import.
@@ -178,7 +178,13 @@ export async function navigate(url, opts) {
  *
  * This is NOT a page navigation: it records no history entry, takes no page
  * snapshot, and shows no optimistic loading skeleton (it swaps one region, not
- * the page). It runs under a fresh nav token + AbortController so it interleaves
+ * the page). It also stands entirely outside the speculative prefetch cache
+ * (#1407): it EVICTS the warm entry for this url in this frame's dimension and
+ * passes `noPrefetch` so it cannot consume one, because a `src` self-load or
+ * `src` mutation is the app asking for THIS frame's content now, a freshness
+ * request rather than a hover being followed. Refusing without evicting would
+ * leave a copy this load is about to supersede, so a later click on that
+ * frame's link would repaint it with staler bytes than are already on screen. It runs under a fresh nav token + AbortController so it interleaves
  * safely with real navigations and with a superseding `src` change on the same
  * frame (the later load's token wins; the earlier one's teardown never clears
  * the newer load's busy state, see `frameBusyTokens`).
@@ -210,6 +216,13 @@ export async function loadFrame(frameEl, url) {
   activeAbortController = new AbortController();
   const signal = activeAbortController.signal;
   const myToken = bumpNavToken();
+
+  // A self-load is a freshness request, so it does BOTH halves (#1407): it drops
+  // the warm copy for this url in this frame's dimension, and it declines to
+  // consume one below. Refusing without evicting would leave an entry the load
+  // is about to supersede, and the next click on that frame's link would repaint
+  // the panel with bytes staler than what this load just put on screen.
+  prefetchEvict(target.href, id);
 
   return fetchAndApply(
     target.href,
