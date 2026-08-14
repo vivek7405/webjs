@@ -258,7 +258,34 @@ export async function fetchAndApply(href, frameId, recordHistory, optimisticStat
   // recover in place rather than a destructive full reload.
   if (!doc) { restoreOptimistic(optimisticState); handleNavigationError(href, null, new Error('navigation response did not parse as HTML')); return { ok: false, status: respStatus, aborted: false, applied: false }; }
 
-  const disposition = applySwap(doc, frameId, !!revalidating, finalUrl, incomingBuild, incomingSrc, refresh);
+  // #1406: the history entry this navigation records is what the iOS back-swipe
+  // gesture later previews, and WebKit binds a same-document entry's snapshot to
+  // the page state at the moment the entry is recorded. Recording it after the
+  // swap finalizes it against the DESTINATION document at a scroll offset the
+  // browser has already clamped to that document's height (measured on the
+  // gallery: 1600 to 252), so the gesture previews a page that never existed and
+  // renders blank. So the push rides into `applySwap` as a COMMIT-time callback
+  // and fires while the outgoing page is still live, which is Turbo Drive's
+  // ordering (`PageView.renderPage` calls `visit.changeHistory()` ahead of
+  // `this.render(renderer)`).
+  //
+  // One-shot, exactly like Turbo's `historyChanged` guard, so calling it here
+  // AND on the fall-through below is safe. The fall-through is required, not
+  // belt-and-braces: `applySwap` can return `'none'` after hard-navigating or
+  // after a `webjs:frame-missing` dispatch, and those paths record history today
+  // (see the `applied` comment below). Keeping the tail call preserves them byte
+  // for byte, so this commit changes the ORDER on committing swaps and nothing
+  // else.
+  let historyRecorded = false;
+  const recordHistoryNow = recordHistory
+    ? () => {
+      if (historyRecorded) return;
+      historyRecorded = true;
+      history.pushState(null, '', finalUrl);
+    }
+    : null;
+
+  const disposition = applySwap(doc, frameId, !!revalidating, finalUrl, incomingBuild, incomingSrc, refresh, recordHistoryNow);
   // `'none'` means applySwap returned WITHOUT committing anything: the frame the
   // response was for is missing, or it degraded to a hard navigation (an
   // importmap/build mismatch, a poisoned boundary scan). The page is not left
@@ -281,7 +308,7 @@ export async function fetchAndApply(href, frameId, recordHistory, optimisticStat
     return { ok: respOk, status: respStatus, aborted: false, applied: false };
   }
 
-  if (recordHistory) history.pushState(null, '', finalUrl);
+  if (recordHistoryNow) recordHistoryNow();
 
   // Scroll only for foreground (history-recording) navigations. When
   // `recordHistory` is false we're either:
