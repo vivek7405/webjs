@@ -51,20 +51,25 @@ export let _swapCommit = Promise.resolve();
  *   DOM mutation, for the same reason `ingestSeeds` is: this function can still
  *   decide to throw the response away after parsing it, and a `pushState`
  *   issued for a swap that never happened is worse than a late one. It runs
- *   BEFORE the mutation, because WebKit binds a same-document entry's
- *   back-forward gesture snapshot to the page state at the moment the entry is
- *   recorded, and a snapshot taken against the incoming (often shorter)
- *   document previews blank.
+ *   BEFORE the incoming document replaces what is on screen, because WebKit
+ *   binds a same-document entry's back-forward gesture snapshot to the page
+ *   state at the moment the entry is recorded, and a snapshot taken against
+ *   the incoming (often shorter) document previews blank.
  *
- *   What that buys is bounded by what is on screen when it fires, and on one
- *   route class that is NOT the outgoing page: where a `loading.{js,ts}`
- *   covers the deepest live boundary, `applyOptimisticLoading` has already
- *   replaced that range with the skeleton and let the engine clamp the offset
- *   before the fetch was issued. There the snapshot is of this route's own
- *   shell plus a skeleton, which still beats the destination document, but it
- *   is not the page the reader left. Fixing that means recording the entry
- *   ahead of the optimistic swap too, which is a separate change on a path
- *   nothing here measured.
+ *   "Before the content swap" is the precise claim, NOT "before anything on
+ *   the page has changed", which is false twice over. The app-source-drift
+ *   branch above rewrites `data-webjs-src` on the importmap tag ahead of every
+ *   commit point. And on a route whose innermost boundary WITH a
+ *   `loading.{js,ts}` template is in the live chain, `applyOptimisticLoading`
+ *   has already swapped that range for the skeleton and let the engine clamp
+ *   the offset, before the fetch was even issued. (That is the innermost
+ *   LAYOUT boundary carrying a template, which is usually not the deepest
+ *   boundary at all: the deepest is normally the page's own, and it has no
+ *   template, so the walk skips over it.) The snapshot there is of this
+ *   route's shell plus a skeleton, which still beats the destination
+ *   document, but it is not the page the reader left. Fixing that class means
+ *   recording the entry ahead of the optimistic swap too, which is a separate
+ *   change on a path nothing here measured.
  *
  *   The caller's thunk is one-shot, so it is safe to call here AND on the
  *   caller's fall-through. Omitted or null on every path that records no

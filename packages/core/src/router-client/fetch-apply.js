@@ -269,12 +269,13 @@ export async function fetchAndApply(href, frameId, recordHistory, optimisticStat
   // (`PageView.renderPage` calls `visit.changeHistory()` ahead of
   // `this.render(renderer)`).
   //
-  // One route class gets less than the full benefit: where a `loading.{js,ts}`
-  // covers the deepest live boundary, `applyOptimisticLoading` replaced that
-  // range with the skeleton before this function ever ran, so the entry is
-  // recorded against the shell plus a skeleton rather than the outgoing page.
-  // Better than the destination document, still not the page the reader left.
-  // See the `recordHistoryNow` JSDoc in `swap.js`.
+  // One route class gets less than the full benefit: where the innermost
+  // boundary carrying a `loading.{js,ts}` template is in the live chain,
+  // `applyOptimisticLoading` replaced that range with the skeleton before this
+  // function ever ran, so the entry is recorded against the shell plus a
+  // skeleton rather than the outgoing page. Better than the destination
+  // document, still not the page the reader left. See the `recordHistoryNow`
+  // JSDoc in `swap.js` for the full statement of what is and is not claimed.
   //
   // One-shot, exactly like Turbo's `historyChanged` guard, so calling it here
   // AND on the fall-through below is safe. The fall-through is required, not

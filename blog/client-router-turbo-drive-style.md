@@ -13,7 +13,7 @@ The page flickered white between navigations.
 
 That white flash is the browser repainting between document loads. Chromium has the "paint holding" feature, but it still happens noticeably for ~100ms on most navigations. On a slow connection it is longer. The page feels janky even when the server is fast.
 
-The fix is to intercept link clicks, fetch the next page over fetch(), and patch the DOM in place. Hotwire calls this Turbo Drive. WebJs's version is at `packages/core/src/router-client.js`. The docstring at the top spells out the design; the rest of this post is the commentary.
+The fix is to intercept link clicks, fetch the next page over fetch(), and patch the DOM in place. Hotwire calls this Turbo Drive. WebJs's version lives under `packages/core/src/router-client/`, behind the `router-client.js` barrel. The docstring at the top of `router-client/constants.js` spells out the design; the rest of this post is the commentary.
 
 
 # The mechanism
@@ -23,8 +23,8 @@ The client router turns itself on as soon as `@webjsdev/core` loads, which any p
 1. SSR injects `<!--wj:children:<segment-path>:<route-key>-->...<!--/wj:children:<segment-path>-->` comment markers around each layout's `${children}` interpolation, one pair per layout in the chain, plus one around the page itself (skipped when the page's segment would collide with the innermost layout's). The route key is the resolved path with param values filled in.
 2. On link click, walk both the live DOM and the incoming HTML for these markers and build a path-to-range map.
 3. Compare the two maps. A shared boundary whose route key CHANGED wins first, and the swap is anchored at the parent of the shallowest such change, which remounts that layout the way Next does. Only when no key changed does the deepest shared boundary become the target.
-4. Apply the swap. A replace tears the live range out and inserts the incoming nodes, which is a real remount, and only elements marked `data-webjs-permanent` are carried across. A morph instead reconciles the two ranges with a keyed reconciler that preserves DOM identity, input values, scroll, and popover state; it is the more expensive path and it exists precisely to keep that state. Morphing is chosen only when the target boundary is the leaf on both sides and no route key changed.
-5. Merge head tags, re-run scripts, upgrade custom elements, `history.pushState`.
+4. Record the history entry with `history.pushState`, then merge head tags, then apply the swap. The push leads on purpose: WebKit binds a same-document history entry's back-forward gesture snapshot to the page state at the moment the entry is recorded, so recording it after the content swap makes an iOS back-swipe preview the destination instead of the page being returned to. A replace then tears the live range out and inserts the incoming nodes, which is a real remount, and only elements marked `data-webjs-permanent` are carried across. A morph instead reconciles the two ranges with a keyed reconciler that preserves DOM identity, input values, scroll, and popover state; it is the more expensive path and it exists precisely to keep that state. Morphing is chosen only when the target boundary is the leaf on both sides and no route key changed.
+5. Re-run the scripts the swap brought in and upgrade custom elements.
 
 The whole loop runs in a microtask. The body never repaints between pages.
 
