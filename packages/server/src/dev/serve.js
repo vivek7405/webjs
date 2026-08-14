@@ -509,7 +509,26 @@ export async function handleCore(req, ctx) {
     req,
     url,
     onError: reportError ? (e) => reportError(e, req, 'ssr') : undefined,
-    onDevError: dev ? (e) => reportDevError(e, { kind: 'render', url: url.pathname }) : undefined,
+    // The frame's url must be stamped exactly as the matched-page branch
+    // stamps it, or the overlay's scope gate refuses it: the browser compares
+    // against `location.pathname + location.search`, so dropping the query
+    // suppresses the overlay on any unrouted url that carries one, and
+    // dropping the base path suppresses it on EVERY url of a sub-path deploy
+    // (the ingress strip already removed the prefix from `url`, while the
+    // browser's location still has it). A refused frame goes to the pending
+    // slot and is then discarded, so the overlay simply never paints.
+    //
+    // Dropped for a speculative prefetch, on the same #1047 rule the
+    // matched-page branch follows: hovering a link to a broken page must not
+    // raise an overlay on the page you are actually on, nor become
+    // `state.lastDevError` for the SSE to replay into a fresh tab. Prefetch is
+    // on by default and fetches unrouted hrefs too, so this is reachable.
+    onDevError: dev && req.headers.get('x-webjs-prefetch') !== '1'
+      ? (e) => reportDevError(e, {
+        kind: 'render',
+        url: withBasePath(url.pathname, basePath()) + url.search,
+      })
+      : undefined,
   });
 }
 

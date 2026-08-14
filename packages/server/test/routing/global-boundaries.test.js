@@ -138,3 +138,52 @@ test('an unrouted 404 whose not-found THROWS reaches the onError sink', async ()
   assert.equal(captured.length, 1, 'the crash reached the APM sink through the real path');
   assert.match(String(captured[0].message), /ROOT_NF_BOOM/);
 });
+
+test('an unrouted 404 stamps its dev frame the way the overlay gate expects', async () => {
+  // The browser compares the frame url against `location.pathname +
+  // location.search`. A stamp missing the query is refused for any unrouted
+  // url carrying one, and the frame is then dropped, so the overlay never
+  // paints. This asserts the stamp, which is the half a render test cannot see.
+  const appDir = makeApp({
+    'package.json': pkg,
+    'app/page.js': page('export default function H() { return html`<main>home</main>`; }'),
+    'app/not-found.js':
+      `export default function NF() { throw new Error('NF_FRAME_BOOM'); }\n`,
+  });
+  const frames = [];
+  const app = await createRequestHandler({
+    appDir, dev: true, onDevError: (frame) => frames.push(frame),
+  });
+  const prev = console.error;
+  console.error = () => {};
+  try {
+    await app.handle(new Request('http://x/missing?page=2'));
+  } finally { console.error = prev; }
+  assert.equal(frames.length, 1, 'a frame was pushed');
+  assert.equal(frames[0].url, '/missing?page=2', 'and it carries the search, as the gate requires');
+});
+
+test('a PREFETCH of an unrouted url raises no dev overlay frame (#1047)', async () => {
+  // Hovering a link to a broken url must not raise an overlay on the page the
+  // user is actually looking at, nor become the frame the SSE replays.
+  const appDir = makeApp({
+    'package.json': pkg,
+    'app/page.js': page('export default function H() { return html`<main>home</main>`; }'),
+    'app/not-found.js':
+      `export default function NF() { throw new Error('NF_PREFETCH_BOOM'); }\n`,
+  });
+  const frames = [];
+  const errors = [];
+  const app = await createRequestHandler({
+    appDir, dev: true,
+    onDevError: (frame) => frames.push(frame),
+    onError: (e) => errors.push(e),
+  });
+  const prev = console.error;
+  console.error = () => {};
+  try {
+    await app.handle(new Request('http://x/missing', { headers: { 'x-webjs-prefetch': '1' } }));
+  } finally { console.error = prev; }
+  assert.equal(frames.length, 0, 'no overlay frame from a speculative fetch');
+  assert.equal(errors.length, 1, 'but the APM sink still hears about it, since the render really threw');
+});

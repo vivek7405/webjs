@@ -339,7 +339,18 @@ async function renderBoundaryInChain(tree, route, boundaryFile, ctx, dev) {
   const pageSeg = pageSegmentPath(route.file);
   const layoutSegs = new Set((route.layouts || []).map(layoutSegmentPath));
   if (!layoutSegs.has(pageSeg)) tree = wrapWithChildrenMarker(tree, pageSeg, params);
-  const chain = await wrapLayoutChain(tree, wrapLayouts, ctx, dev, params, null);
+  // MARK a layout-phase failure. The caller has to tell "a wrapped layout
+  // threw" apart from "the boundary's own tree is broken", and it cannot infer
+  // it by re-rendering: when BOTH are broken the standalone attempt throws too,
+  // and an inference would report the layout error under the boundary's label
+  // and lose the tree's entirely. The phase is known exactly here, so it is
+  // recorded rather than guessed.
+  let chain;
+  try {
+    chain = await wrapLayoutChain(tree, wrapLayouts, ctx, dev, params, null);
+  } catch (e) {
+    throw markLayoutPhase(e);
+  }
   return renderToString(chain.tree, { ssr: true, dev });
 }
 
@@ -412,6 +423,28 @@ async function renderChain(route, ctx, dev, suspenseCtx, have, pageModule) {
   const chain = await wrapLayoutChain(tree, route.layouts, ctx, dev, params, have);
   const body = await renderToString(chain.tree, { ssr: true, suspenseCtx });
   return { html: body + (await loadingTemplates(route, ctx, dev)), reduced: chain.reduced };
+}
+
+/**
+ * Marker for a throw that came from the LAYOUT-wrapping phase of a boundary
+ * render, as opposed to the boundary's own tree (#1298). Non-enumerable, so it
+ * never shows up in a serialized error, and best-effort: a frozen or primitive
+ * throw simply goes unmarked and is treated as a tree failure, which reports it
+ * once under the boundary label rather than dropping it.
+ */
+const LAYOUT_PHASE = Symbol('webjs.boundaryLayoutPhase');
+
+/** @param {unknown} err @returns {unknown} */
+function markLayoutPhase(err) {
+  if (err && typeof err === 'object') {
+    try { Object.defineProperty(err, LAYOUT_PHASE, { value: true, enumerable: false }); } catch { /* frozen */ }
+  }
+  return err;
+}
+
+/** @param {unknown} err @returns {boolean} */
+function isLayoutPhase(err) {
+  return !!(err && typeof err === 'object' && /** @type {any} */ (err)[LAYOUT_PHASE]);
 }
 
 /**
@@ -668,25 +701,26 @@ async function ssrBoundaryHtml(file, heading, opts) {
             body = await renderToString(tree, { ssr: true, dev: opts.dev });
           }
         } catch (layoutErr) {
-          // Degrade to the standalone render this has always produced, and to
-          // its empty boot set with it.
-          //
-          // The standalone attempt is also what tells us WHAT failed, so it
-          // runs before anything is reported. If it succeeds, the fault was in
-          // the layout chain: report it, because these paths execute layout
-          // modules for the first time since #1298 and a genuine layout crash
-          // would otherwise vanish, leaving a developer looking at a
-          // chrome-less boundary page with nothing saying why. If it throws
-          // too, the boundary's OWN tree is what is broken, so rethrow and let
-          // the outer catch report it once, under the right label. Reporting
-          // here first would report a tree failure twice and call it a layout.
+          // A TREE failure is not this catch's business: the standalone
+          // fallback would re-render the same tree and fail the same way, so
+          // rethrow and let the outer catch report it ONCE under the boundary
+          // label. Reporting here as well would double-report it and call it a
+          // layout crash.
+          if (!isLayoutPhase(layoutErr)) throw layoutErr;
+          // A wrapped layout threw. Degrade to the standalone render this has
+          // always produced, and to its empty boot set with it. Report it
+          // either way: these paths execute layout modules for the first time
+          // since #1298, so a genuine layout crash would otherwise vanish.
+          reportBoundaryLayoutError(layoutErr, opts, { overlay: true });
           try {
             body = await renderToString(tree, { ssr: true, dev: opts.dev });
             moduleUrls = [];
-          } catch {
-            throw layoutErr;
+          } catch (treeErr) {
+            // BOTH are broken. The layout crash is already reported above, so
+            // hand the outer catch the TREE error: it is a second, distinct
+            // failure, and it is the one whose text the dev body should show.
+            throw treeErr;
           }
-          reportBoundaryLayoutError(layoutErr, opts, { overlay: true });
         }
       }
     } catch (e) {
@@ -747,15 +781,15 @@ async function ssrNotFoundHtml(notFoundFile, opts) {
             body = await renderToString(tree, { ssr: true, dev: opts.dev });
           }
         } catch (layoutErr) {
-          // Same degradation, and the same report-only-if-the-fault-was-the-
-          // chain rule, as ssrBoundaryHtml above.
+          // Same phase rule as ssrBoundaryHtml above.
+          if (!isLayoutPhase(layoutErr)) throw layoutErr;
+          reportBoundaryLayoutError(layoutErr, opts, { overlay: true });
           try {
             body = await renderToString(tree, { ssr: true, dev: opts.dev });
             moduleUrls = [];
-          } catch {
-            throw layoutErr;
+          } catch (treeErr) {
+            throw treeErr;
           }
-          reportBoundaryLayoutError(layoutErr, opts, { overlay: true });
         }
       }
     } catch (e) {

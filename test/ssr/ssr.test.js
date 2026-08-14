@@ -2495,6 +2495,36 @@ test('boundary: a boundary whose own TREE fails is reported ONCE, and not as a l
   assert.equal(hits.length, 1, 'reported once, not once per render attempt');
 });
 
+test('boundary: when the layout AND the tree are broken, BOTH are reported', async () => {
+  // The previous shape inferred the phase by re-rendering, so with both broken
+  // the standalone attempt threw too, the tree error was discarded, and the
+  // LAYOUT error was reported under the boundary label. Two failures, one
+  // report, wrong name. The phase is recorded at its source now.
+  const { route, appDir } = makeBoundaryApp({
+    files: {
+      'layout.js': `export default function Root() { throw new Error('LAYOUT_HALF_BOOM'); }\n`,
+      'admin/forbidden.js': HTML_IMPORT + `export default function F() {
+        return html\`<p>\${Promise.reject(new Error('TREE_HALF_BOOM'))}</p>\`;
+      }\n`,
+      'admin/page.js': `import { forbidden } from ${JSON.stringify(WEBJS_MODULE_URL)};\nexport default function Page() { forbidden(); }\n`,
+    },
+    page: 'admin/page.js',
+    layouts: ['layout.js'],
+    forbiddens: ['admin/forbidden.js'],
+  });
+  const seen = [];
+  const resp = await SILENT(() => ssrPage(route, {}, new URL('http://localhost/admin'), {
+    dev: true, appDir, onError: (e) => seen.push(e),
+  }));
+  assert.equal(resp.status, 403, 'it still answers with the boundary status');
+  const messages = seen.map((e) => String(e && e.message));
+  assert.ok(messages.includes('LAYOUT_HALF_BOOM'), 'the layout crash is reported');
+  assert.ok(messages.includes('TREE_HALF_BOOM'), 'and the tree crash is not lost behind it');
+  // The dev body shows the TREE error, since that is the one that defeated the
+  // fallback and left the page with nothing to render.
+  assert.match(await resp.text(), /TREE_HALF_BOOM/);
+});
+
 test('boundary: a boundary response is never storable and never reduced', async () => {
   // Two independent guarantees. The HTML cache refuses a non-200 outright, and
   // the reduced X-Webjs-Have path is structurally unreachable: the boundary
