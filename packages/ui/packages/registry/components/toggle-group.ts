@@ -77,7 +77,7 @@ import { cn } from '../lib/utils.ts';
 import { toggleClass, type ToggleVariant, type ToggleSize } from './toggle.ts';
 
 const ROOT_BASE =
-  'group/toggle-group flex w-fit items-center rounded-md data-[spacing=default]:data-[variant=outline]:shadow-xs data-[orientation=vertical]:flex-col data-[orientation=vertical]:items-stretch';
+  'group/toggle-group flex w-fit items-center rounded-md data-[spacing=default]:data-[variant=outline]:shadow-e1 data-[orientation=vertical]:flex-col data-[orientation=vertical]:items-stretch';
 
 // The `disabled:` variants inside toggleClass() key on the :disabled pseudo,
 // which only ever matches a real form control. An item's host IS the button

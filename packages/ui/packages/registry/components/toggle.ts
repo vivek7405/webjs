@@ -82,7 +82,7 @@ const BASE =
 const VARIANTS = {
   default: 'bg-transparent',
   outline:
-    'border border-input bg-transparent shadow-xs hover:bg-accent hover:text-accent-foreground',
+    'border border-input bg-transparent shadow-e1 hover:bg-accent hover:text-accent-foreground',
 } as const;
 
 const SIZES = {

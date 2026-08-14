@@ -52,7 +52,7 @@ import { cn } from '../lib/utils.ts';
 export const switchInputClass = (): string => 'peer sr-only';
 
 const TRACK_BASE =
-  'inline-flex shrink-0 cursor-pointer items-center rounded-full border border-transparent shadow-xs transition-all outline-none peer-focus-visible:border-ring peer-focus-visible:ring-[3px] peer-focus-visible:ring-ring/50 peer-disabled:cursor-not-allowed peer-disabled:opacity-50 bg-input dark:bg-input/80 peer-checked:bg-primary relative';
+  'inline-flex shrink-0 cursor-pointer items-center rounded-full border border-transparent shadow-e1 transition-all outline-none peer-focus-visible:border-ring peer-focus-visible:ring-[3px] peer-focus-visible:ring-ring/50 peer-disabled:cursor-not-allowed peer-disabled:opacity-50 bg-input dark:bg-input/80 peer-checked:bg-primary relative';
 
 const TRACK_SIZES = {
   default: 'h-[1.15rem] w-8',

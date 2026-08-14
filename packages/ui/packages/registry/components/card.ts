@@ -77,7 +77,7 @@ export type CardSize = 'default' | 'sm';
 export const cardClass = (opts: { size?: CardSize } = {}): string => {
   const size = opts.size ?? 'default';
   const base =
-    'group/card flex flex-col rounded-xl border bg-card text-card-foreground shadow-sm';
+    'group/card flex flex-col rounded-xl border bg-card text-card-foreground shadow-e1';
   return size === 'sm' ? base + ' gap-3 py-3' : base + ' gap-6 py-6';
 };
 

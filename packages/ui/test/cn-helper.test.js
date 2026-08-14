@@ -502,3 +502,21 @@ test('cn: the memoised table is built once (#1320)', () => {
   assert.equal(cn('p-2', 'px-4'), cn('p-2', 'px-4'));
   assert.equal(cn('border-border', 'border-accent'), cn('border-border', 'border-accent'));
 });
+
+test('cn: role-named elevation is a shadow, not a shadow COLOUR (#1116)', () => {
+  // `shadow-e1` reaches the classifier as a bare name the size scale did not
+  // list, and the catch-all below the size entry routes any such name to
+  // `shadow-color`. So before the size alternation learned e1 through e4, an
+  // elevation utility and a real shadow colour evicted each other, and the
+  // failure was silent: the class list simply came back missing one of them.
+  assert.equal(cn('shadow-e1', 'shadow-primary/20'), 'shadow-e1 shadow-primary/20');
+  assert.equal(cn('shadow-primary/20', 'shadow-e3'), 'shadow-primary/20 shadow-e3');
+
+  // Two elevations are the same property, so the later one still wins.
+  assert.equal(cn('shadow-e1', 'shadow-e3'), 'shadow-e3');
+  assert.equal(cn('shadow-e4', 'shadow-none'), 'shadow-none');
+
+  // The size scale keeps working, since an app that has not migrated still
+  // writes it and both copies of this classifier ship into user projects.
+  assert.equal(cn('shadow-md', 'shadow-e2'), 'shadow-e2');
+});

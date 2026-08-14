@@ -163,14 +163,14 @@ const POSITIONS = {
 export type SonnerPosition = keyof typeof POSITIONS;
 
 const TOAST_ITEM_BASE =
-  'pointer-events-auto flex w-80 items-start gap-3 rounded-md border bg-popover p-4 text-sm text-popover-foreground shadow-md transition-all';
+  'pointer-events-auto flex w-80 items-start gap-3 rounded-md border bg-popover p-4 text-sm text-popover-foreground shadow-e4 transition-all';
 
 const TYPE_ICON_COLOR: Record<ToastType, string> = {
   default: 'text-foreground',
-  success: 'text-emerald-500',
+  success: 'text-success',
   error: 'text-destructive',
-  info: 'text-sky-500',
-  warning: 'text-amber-500',
+  info: 'text-info',
+  warning: 'text-warning',
   loading: 'text-muted-foreground',
 };
 

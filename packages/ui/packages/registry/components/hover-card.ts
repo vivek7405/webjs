@@ -79,7 +79,7 @@ import { positionFloating, type PopoverSide, type PopoverAlign } from './popover
 // visual layer sits on top. UA `[popover]:not(:popover-open) {
 // display: none }` handles closed-state hiding.
 export const hoverCardContentClass = (): string =>
-  'fixed z-50 w-64 m-0 rounded-md border bg-popover p-4 text-popover-foreground shadow-md outline-hidden';
+  'fixed z-50 w-64 m-0 rounded-md border bg-popover p-4 text-popover-foreground shadow-e2 outline-hidden';
 
 // --------------------------------------------------------------------------
 // <ui-hover-card>
