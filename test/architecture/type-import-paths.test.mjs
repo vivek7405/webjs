@@ -36,10 +36,17 @@ const TREES = [
 
 /**
  * Specifiers that appear inside PROSE as illustrations of what an app author
- * would write, not as type references to anything in this repo. They are
- * matched exactly, so a real reference cannot hide behind one.
+ * would write, not as type references to anything in this repo.
+ *
+ * Keyed by FILE, not by specifier alone. A bare specifier list would excuse the
+ * same string anywhere in the ten trees, so a genuinely broken
+ * `import('./x.ts')` in some other module would be waved through by an
+ * exemption earned in this one.
  */
-const PROSE_EXAMPLES = new Set(['./x.ts', './widget.ts', './x.server.ts']);
+const PROSE_EXAMPLES = new Map([
+  ['packages/server/src/dev/serve.js', new Set(['./x.ts'])],
+  ['packages/server/src/check/runner-support.js', new Set(['./widget.ts', './x.server.ts'])],
+]);
 
 /** @param {string} dir @returns {string[]} */
 function jsFiles(dir) {
@@ -61,9 +68,9 @@ test('every relative type import in a split module resolves', () => {
       lines.forEach((line, i) => {
         for (const m of line.matchAll(/import\((['"])(\.[^'"]+)\1\)/g)) {
           const spec = m[2];
-          if (PROSE_EXAMPLES.has(spec)) continue;
-          if (existsSync(resolve(dirname(file), spec))) continue;
           const rel = relative(REPO, file).split('\\').join('/');
+          if (PROSE_EXAMPLES.get(rel)?.has(spec)) continue;
+          if (existsSync(resolve(dirname(file), spec))) continue;
           broken.push(`${rel}:${i + 1}  import('${spec}') does not resolve`);
         }
       });
