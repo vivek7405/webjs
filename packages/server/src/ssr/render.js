@@ -415,8 +415,30 @@ async function renderChain(route, ctx, dev, suspenseCtx, have, pageModule) {
 }
 
 /**
- * A per-request dedup key for a secondary boundary failure: the error's name,
- * message and FULL stack. Identity cannot be used, because a layout that
+ * Render a thrown value as text for a DEV error page, safely.
+ *
+ * `String(err)` is not total: `String(Object.create(null))` throws on both
+ * runtimes, and a getter on a subclass can throw too. Every caller here is
+ * already inside a catch whose job is to keep the response alive, so an
+ * uncaught throw while FORMATTING the failure escapes the handler and takes
+ * the error page down with it, turning a handled 500 into an unhandled one.
+ *
+ * @param {unknown} err
+ * @returns {string}
+ */
+function safeErrorText(err) {
+  try {
+    if (err instanceof Error) return String(err.stack || err.message);
+    return String(err);
+  } catch {
+    return '[unprintable value]';
+  }
+}
+
+/**
+ * A per-request dedup key for a secondary boundary failure: the STAGE it came
+ * from plus the error's name, message and construction site. Identity cannot
+ * be used, because a layout that
  * constructs its error yields a fresh object each time it is re-run, and the
  * whole point is to collapse exactly those repeats while letting a genuinely
  * different failure through.
@@ -443,6 +465,7 @@ async function renderChain(route, ctx, dev, suspenseCtx, have, pageModule) {
  * escape `ssrPage` and take the 500 page with it.
  *
  * @param {unknown} err
+ * @param {string} stage  Which attempt produced this throw. Part of the key.
  * @returns {string | null}
  */
 function boundaryErrorKey(err, stage) {
@@ -656,7 +679,13 @@ async function ssrBoundaryHtml(file, heading, opts) {
         }
       }
     } catch (e) {
-      body = `<h1>${heading}</h1><pre>${escapeHtml(String(e))}</pre>`;
+      // Dev shows the failure; prod shows only the heading. The 500 path has
+      // always drawn that line (a thrown error's message is not
+      // author-controlled and must not reach the client), and these pages were
+      // rendering it in production.
+      body = opts.dev
+        ? `<h1>${heading}</h1><pre>${escapeHtml(safeErrorText(e))}</pre>`
+        : `<h1>${heading}</h1>`;
       moduleUrls = [];
     }
   }
@@ -708,7 +737,9 @@ async function ssrNotFoundHtml(notFoundFile, opts) {
         }
       }
     } catch (e) {
-      body = `<h1>404: Not found</h1><pre>${escapeHtml(String(e))}</pre>`;
+      body = opts.dev
+        ? `<h1>404: Not found</h1><pre>${escapeHtml(safeErrorText(e))}</pre>`
+        : '<h1>404: Not found</h1>';
       moduleUrls = [];
     }
   }
@@ -1233,9 +1264,7 @@ export async function ssrPage(route, params, url, opts) {
     // Default: dev shows stack, prod shows a terse message (no stack trace leaks).
     console.error('[webjs] unhandled render error:', err);
     const body = opts.dev
-      ? `<h1>Server error</h1><pre style="white-space:pre-wrap">${escapeHtml(
-          err instanceof Error ? err.stack || err.message : String(err)
-        )}</pre>`
+      ? `<h1>Server error</h1><pre style="white-space:pre-wrap">${escapeHtml(safeErrorText(err))}</pre>`
       : `<h1>Server error</h1><p>Something went wrong. Please try again.</p>`;
     return htmlResponse(
       wrapInDocument(body, { metadata, moduleUrls: [], dev: opts.dev, nonce: errNonce }),

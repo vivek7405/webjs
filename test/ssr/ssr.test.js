@@ -2186,7 +2186,8 @@ test('boundary: one throwing layout is reported ONCE, not once per boundary', as
   // The walk tries each boundary in the chain, and layoutsForBoundary selects
   // by segment ancestry rather than boundary depth, so a root layout that
   // throws fails EVERY attempt. Identity dedup would not help: a layout that
-  // constructs its error yields a fresh object per attempt, so the key is its name, message and stack.
+  // constructs its error yields a fresh object per attempt, so the key is the
+  // STAGE plus its name, message and construction site.
   const { route, appDir } = makeBoundaryApp({
     files: {
       'layout.js': `export default function Root() { throw new Error('root-layout-boom'); }\n`,
@@ -2334,9 +2335,10 @@ test('boundary: a throw whose value cannot be stringified still degrades, never 
 });
 
 test('boundary: two boundaries failing through ONE shared helper are both reported', async () => {
-  // The key is the whole stack, not just the frame where the Error was
-  // constructed. Keying on that one frame would make these two collide, and
-  // global-error's own crash would be swallowed by the earlier boundary's.
+  // These two share a construction site, so the error alone cannot separate
+  // them: it is the STAGE in the key (the boundary walk versus the
+  // global-error attempt) that keeps global-error's own crash from being
+  // swallowed by the earlier boundary's.
   const { route, appDir } = makeBoundaryApp({
     files: {
       'boom.js': `export function boom() { throw new Error('shared-helper-boom'); }\n`,
@@ -2355,6 +2357,59 @@ test('boundary: two boundaries failing through ONE shared helper are both report
   assert.equal(resp.status, 500);
   const hits = seen.filter((e) => /shared-helper-boom/.test(String(e && e.message)));
   assert.equal(hits.length, 2, 'the boundary and global-error each report, despite one construction site');
+});
+
+test('boundary: an unprintable throw degrades in DEV too, and never escapes', async () => {
+  // The prod path was covered; dev formats the error into the page, and that
+  // formatting is itself inside the catch that keeps the response alive.
+  const { route, appDir } = makeBoundaryApp({
+    files: {
+      'page.js': `export default function Page() { throw Object.create(null); }\n`,
+    },
+    page: 'page.js',
+    layouts: [],
+    errors: [],
+  });
+  const resp = await SILENT(() => ssrPage(route, {}, new URL('http://localhost/'), { dev: true, appDir }));
+  assert.equal(resp.status, 500, 'dev degrades to the 500 page rather than throwing out of ssrPage');
+  assert.match(await resp.text(), /unprintable value/, 'and says so instead of crashing while formatting');
+});
+
+test('boundary: a crashing 403 boundary does not leak its error to the client in prod', async () => {
+  // The 500 path has always drawn this line; these pages were rendering the
+  // thrown message into the response body in production.
+  const { route, appDir } = makeBoundaryApp({
+    files: {
+      'admin/forbidden.js': `export default function F() { throw new Error('SECRET_DB_DSN_LEAK'); }\n`,
+      'admin/page.js': `import { forbidden } from ${JSON.stringify(WEBJS_MODULE_URL)};\nexport default function Page() { forbidden(); }\n`,
+    },
+    page: 'admin/page.js',
+    layouts: [],
+    forbiddens: ['admin/forbidden.js'],
+  });
+  const prod = await SILENT(() => ssrPage(route, {}, new URL('http://localhost/admin'), { dev: false, appDir }));
+  assert.equal(prod.status, 403);
+  const prodBody = await prod.text();
+  assert.ok(!prodBody.includes('SECRET_DB_DSN_LEAK'), 'prod never renders the thrown message');
+  assert.ok(prodBody.includes('403'), 'but still identifies the status');
+
+  const dev = await SILENT(() => ssrPage(route, {}, new URL('http://localhost/admin'), { dev: true, appDir }));
+  assert.match(await dev.text(), /SECRET_DB_DSN_LEAK/, 'dev still shows it, which is the point of dev');
+});
+
+test('boundary: an unprintable throw from a 403 boundary degrades, never escapes', async () => {
+  const { route, appDir } = makeBoundaryApp({
+    files: {
+      'admin/forbidden.js': `export default function F() { throw Object.create(null); }\n`,
+      'admin/page.js': `import { forbidden } from ${JSON.stringify(WEBJS_MODULE_URL)};\nexport default function Page() { forbidden(); }\n`,
+    },
+    page: 'admin/page.js',
+    layouts: [],
+    forbiddens: ['admin/forbidden.js'],
+  });
+  const resp = await SILENT(() => ssrPage(route, {}, new URL('http://localhost/admin'), { dev: true, appDir }));
+  assert.equal(resp.status, 403, 'it degrades rather than escaping ssrBoundaryHtml and ssrPage');
+  assert.match(await resp.text(), /unprintable value/);
 });
 
 test('boundary: a boundary response is never storable and never reduced', async () => {
