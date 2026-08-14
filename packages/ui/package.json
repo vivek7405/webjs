@@ -21,7 +21,8 @@
   ],
   "scripts": {
     "test": "node --test test/*.test.js",
-    "test:e2e:touch": "node test/e2e/touch.e2e.mjs"
+    "test:e2e:touch": "node test/e2e/touch.e2e.mjs",
+    "test:e2e:a11y-tree": "node test/e2e/a11y-tree.e2e.mjs"
   },
   "dependencies": {
     "commander": "^14.0.0",
