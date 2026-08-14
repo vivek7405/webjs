@@ -2182,6 +2182,84 @@ test('boundary: a layout that throws on the 500 path is reported, not lost', asy
   assert.ok(messages.includes('layout-boom-500'), 'and so is the layout crash that used to vanish');
 });
 
+test('boundary: one throwing layout is reported ONCE, not once per boundary', async () => {
+  // The walk tries each boundary in the chain, and layoutsForBoundary selects
+  // by segment ancestry rather than boundary depth, so a root layout that
+  // throws fails EVERY attempt. Identity dedup would not help: a layout that
+  // constructs its error yields a fresh object per attempt. Hence the latch.
+  const { route, appDir } = makeBoundaryApp({
+    files: {
+      'layout.js': `export default function Root() { throw new Error('root-layout-boom'); }\n`,
+      'error.js': HTML_IMPORT + `export default function Err() { return html\`<p>outer</p>\`; }\n`,
+      'docs/error.js': HTML_IMPORT + `export default function Err() { return html\`<p>inner</p>\`; }\n`,
+      'docs/page.js': `export default function Page() { throw new Error('page-boom'); }\n`,
+    },
+    page: 'docs/page.js',
+    layouts: ['layout.js'],
+    // Both boundaries resolve to the SAME wrapped set (the root layout), which
+    // is the shape that produced the duplicate report.
+    errors: ['error.js', 'docs/error.js'],
+  });
+  const seen = [];
+  const resp = await SILENT(() => ssrPage(route, {}, new URL('http://localhost/docs'), {
+    dev: false, appDir, onError: (e) => seen.push(e),
+  }));
+  assert.equal(resp.status, 500);
+  const layoutHits = seen.filter((e) => /root-layout-boom/.test(String(e && e.message)));
+  assert.equal(layoutHits.length, 1, 'the layout crash is reported exactly once for the request');
+  assert.equal(
+    seen.filter((e) => /page-boom/.test(String(e && e.message))).length, 1,
+    'and the original page error is still reported exactly once',
+  );
+});
+
+test('boundary: a secondary failure never steals the dev overlay from the root cause', async () => {
+  // The overlay holds ONE retained frame per URL and the dev handler's slot is
+  // last-write-wins, so pushing the secondary failure after the page error
+  // would replace the root cause with a symptom, and it would survive a
+  // reconnect (#1047 scopes that slot per URL).
+  const { route, appDir } = makeBoundaryApp({
+    files: {
+      'layout.js': `export default function Root() { throw new Error('layout-boom'); }\n`,
+      'error.js': HTML_IMPORT + `export default function Err() { return html\`<p>outer</p>\`; }\n`,
+      'page.js': `export default function Page() { throw new Error('page-boom'); }\n`,
+    },
+    page: 'page.js',
+    layouts: ['layout.js'],
+    errors: ['error.js'],
+  });
+  const devSeen = [];
+  await SILENT(() => ssrPage(route, {}, new URL('http://localhost/'), {
+    dev: true, appDir, onDevError: (e) => devSeen.push(e),
+  }));
+  assert.equal(devSeen.length, 1, 'exactly one frame reached the overlay');
+  assert.match(String(devSeen[0].message), /page-boom/, 'and it is the ROOT CAUSE, not the secondary failure');
+});
+
+test('boundary: a broken global-error is reported, not silently swallowed', async () => {
+  // The app's last-resort boundary failing used to reach no sink, no overlay
+  // and no console line, leaving only the generic default 500 page.
+  const { route, appDir } = makeBoundaryApp({
+    files: {
+      'global-error.js': `export default function GE() { throw new Error('global-error-boom'); }\n`,
+      'page.js': `export default function Page() { throw new Error('page-boom'); }\n`,
+    },
+    page: 'page.js',
+    layouts: [],
+    errors: [],
+  });
+  const seen = [];
+  const resp = await SILENT(() => ssrPage(route, {}, new URL('http://localhost/'), {
+    dev: false, appDir, globalError: join(appDir, 'global-error.js'), onError: (e) => seen.push(e),
+  }));
+  assert.equal(resp.status, 500);
+  const body = await resp.text();
+  assert.ok(body.includes('Something went wrong'), 'it still degrades to the default 500 page');
+  const messages = seen.map((e) => String(e && e.message));
+  assert.ok(messages.includes('global-error-boom'), 'the global-error crash reached the sink');
+  assert.ok(messages.includes('page-boom'), 'alongside the original page error');
+});
+
 test('boundary: a boundary response is never storable and never reduced', async () => {
   // Two independent guarantees. The HTML cache refuses a non-200 outright, and
   // the reduced X-Webjs-Have path is structurally unreachable: the boundary

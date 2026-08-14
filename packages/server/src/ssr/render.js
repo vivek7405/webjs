@@ -435,16 +435,39 @@ async function renderChain(route, ctx, dev, suspenseCtx, have, pageModule) {
  * standalone boundary body, exactly as it does for a real layout crash, and
  * the status the boundary carries is preserved.
  *
+ * REPORTED AT MOST ONCE PER REQUEST, via the caller's `once` latch. The 500
+ * path tries each boundary in the chain, and a throwing layout that is an
+ * ancestor of several of them fails EVERY attempt: `layoutsForBoundary` selects
+ * by segment ancestry rather than by boundary depth, so two boundaries at
+ * different segments can resolve to the same layout set. Without the latch a
+ * root layout that throws is reported once per boundary in the chain. Identity
+ * deduplication would not do, because a layout that constructs its error
+ * (`throw new Error(...)`) yields a fresh object per attempt.
+ *
+ * `overlay` says whether this failure may claim the DEV OVERLAY. The overlay
+ * holds one retained frame per URL and the dev handler's slot is last-write
+ * wins, so a secondary failure pushed after the original page error would
+ * replace the root cause with a symptom, and the replacement would survive a
+ * reconnect. So the 500 path passes false (the page error already claimed the
+ * slot and is what the developer needs to see), while the 403 / 401 / 404
+ * paths pass true, since nothing else claimed it there: their trigger is a
+ * control-flow sentinel, which is never reported.
+ *
  * @param {unknown} err
  * @param {{ onError?: (e: unknown) => void, onDevError?: (e: unknown) => void }} opts
- * @param {string} what  Where the throw came from, for the log line.
+ * @param {{ what?: string, once?: { reported: boolean }, overlay?: boolean }} [cfg]
  */
-function reportBoundaryLayoutError(err, opts, what = 'a layout threw while wrapping a boundary page') {
+function reportBoundaryLayoutError(err, opts, cfg = {}) {
   if (isRedirect(err) || isNotFound(err) || isForbidden(err) || isUnauthorized(err)) return;
+  if (cfg.once) {
+    if (cfg.once.reported) return;
+    cfg.once.reported = true;
+  }
+  const what = cfg.what || 'a layout threw while wrapping a boundary page';
   if (typeof opts.onError === 'function') {
     try { opts.onError(err); } catch { /* a throwing sink must not affect the response */ }
   }
-  if (typeof opts.onDevError === 'function') {
+  if (cfg.overlay !== false && typeof opts.onDevError === 'function') {
     try { opts.onDevError(err); } catch { /* a throwing sink must not affect the response */ }
   }
   console.error(`[webjs] ${what}:`, err);
@@ -570,7 +593,7 @@ async function ssrBoundaryHtml(file, heading, opts) {
           // #1298, so a genuine layout crash would otherwise vanish, leaving a
           // developer looking at a chrome-less boundary page with nothing
           // saying why, and an APM sink that never heard about it.
-          reportBoundaryLayoutError(layoutErr, opts);
+          reportBoundaryLayoutError(layoutErr, opts, { overlay: true });
           body = await renderToString(tree, { ssr: true, dev: opts.dev });
           moduleUrls = [];
         }
@@ -622,7 +645,7 @@ async function ssrNotFoundHtml(notFoundFile, opts) {
           }
         } catch (layoutErr) {
           // Same degradation, and the same reporting, as ssrBoundaryHtml above.
-          reportBoundaryLayoutError(layoutErr, opts);
+          reportBoundaryLayoutError(layoutErr, opts, { overlay: true });
           body = await renderToString(tree, { ssr: true, dev: opts.dev });
           moduleUrls = [];
         }
@@ -1047,6 +1070,9 @@ export async function ssrPage(route, params, url, opts) {
     // error page's boot scripts (when moduleUrls is non-empty) and
     // the meta csp-nonce tag both pass strict-CSP enforcement.
     const errNonce = opts.req ? getNonce(opts.req) : undefined;
+    // One latch for the whole 500 path: the walk below, and the global-error
+    // attempt after it, report at most ONE secondary failure between them.
+    const secondary = { reported: false };
     // Try nearest error.js (innermost → outermost).
     for (let i = route.errors.length - 1; i >= 0; i--) {
       try {
@@ -1097,7 +1123,11 @@ export async function ssrPage(route, params, url, opts) {
         // handling it would vanish completely. A control-flow sentinel is
         // filtered out by the reporter, since a boundary throwing notFound() is
         // a routing decision rather than a crash.
-        reportBoundaryLayoutError(nested, opts, 'an error boundary or its layout threw while handling a render error');
+        reportBoundaryLayoutError(nested, opts, {
+          what: 'an error boundary or its layout threw while handling a render error',
+          once: secondary,
+          overlay: false,
+        });
       }
     }
     // Root global-error.{js,ts} (#848): the app-wide catch-all, tried after the
@@ -1119,7 +1149,16 @@ export async function ssrPage(route, params, url, opts) {
           return htmlResponse(body, 500, opts.req, url);
         }
       } catch (nested) {
-        // fall through to the default 500 page
+        // Fall through to the default 500 page, but do not lose this. A broken
+        // global-error.{js,ts} is the app's LAST-RESORT boundary failing, and
+        // the developer would otherwise see only the generic default page and
+        // the original error, with nothing naming the boundary as the thing
+        // that failed.
+        reportBoundaryLayoutError(nested, opts, {
+          what: 'global-error threw while handling a render error',
+          once: secondary,
+          overlay: false,
+        });
       }
     }
     // Default: dev shows stack, prod shows a terse message (no stack trace leaks).
