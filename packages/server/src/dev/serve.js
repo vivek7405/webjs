@@ -32,7 +32,7 @@ import { basePath } from '../importmap.js';
 import { withBasePath } from '../base-path.js';
 import { versionModuleImports } from '../asset-hash.js';
 import { BUFFERED_MARKER } from '../conditional-get.js';
-import { MIME, TS_CACHE_MAX, exists } from './helpers.js';
+import { MIME, TS_CACHE_MAX, exists, reloadClientJs, reloadWorkerJs } from './helpers.js';
 
 /**
  * Serve framework-internal static assets that depend on NEITHER the whole-app
@@ -110,6 +110,27 @@ export async function tryServeFrameworkStatic(path, method, { coreDir, appDir, d
       return new Response(null, { status: resp.status, headers: resp.headers });
     }
     return resp;
+  }
+
+  // Dev live-reload client, and its SharedWorker (one shared connection for all
+  // tabs, #887). The `!dev` arm answers 404 rather than falling through, so the
+  // path is dead in production instead of being routed like an app url.
+  //
+  // These live HERE, in the shared helper, rather than inline at the early
+  // `handle()` call site, for the same reason `tryServePublicAsset` was
+  // extracted in #1397: both callers then run ONE implementation and the two
+  // cannot drift. It also keeps the `handleCore` fallback below honest, whose
+  // comment promises these assets still serve if a future caller ever bypasses
+  // the early path. `basePath()` is the value `setBasePath()` recorded at
+  // handler construction, so it is the same base path the inline copy read.
+  if (path === '/__webjs/reload.js' || path === '/__webjs/reload-worker.js') {
+    if (!dev) return new Response('Not found', { status: 404 });
+    const src = path === '/__webjs/reload.js'
+      ? reloadClientJs(basePath())
+      : reloadWorkerJs(basePath());
+    return new Response(src, {
+      headers: { 'content-type': 'application/javascript; charset=utf-8' },
+    });
   }
 
   return null;

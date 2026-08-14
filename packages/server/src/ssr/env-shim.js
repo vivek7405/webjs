@@ -33,7 +33,7 @@ import { escapeAttr } from './escape.js';
  * @returns {string}
  */
 export function publicEnvShim(opts) {
-  const source = opts?.env || process.env;
+  const source = opts.env || process.env;
   /** @type {Record<string, string>} */
   const env = {};
   for (const [k, v] of Object.entries(source)) {
@@ -41,8 +41,8 @@ export function publicEnvShim(opts) {
       env[k] = String(v);
     }
   }
-  env.NODE_ENV = opts?.dev ? 'development' : 'production';
-  const n = opts?.nonce ? ` nonce="${escapeAttr(opts.nonce)}"` : '';
+  env.NODE_ENV = opts.dev ? 'development' : 'production';
+  const n = opts.nonce ? ` nonce="${escapeAttr(opts.nonce)}"` : '';
   return `<script${n}>`
     + `window.process=window.process||{};`
     + `window.process.env=Object.assign(window.process.env||{},${jsonForScriptTag(env)});`

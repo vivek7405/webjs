@@ -286,7 +286,7 @@ export function wrapHead(opts) {
   // (basePath then `?v`).
   const fp = (u) => withAssetHash(withBasePath(u, bp), bp);
 
-  const moduleUrls = opts.moduleUrls || [];
+  const moduleUrls = opts.moduleUrls;
   const imports = moduleUrls
     .map((u) => `import ${jsonForScriptTag(fp(u))};`)
     .join('\n');
@@ -616,7 +616,7 @@ export function wrapHead(opts) {
     }
   }
 
-  for (const url of opts.moduleUrls || []) {
+  for (const url of opts.moduleUrls) {
     linkTags.push(
       `<link rel="modulepreload" href="${escapeAttr(fp(url))}"` +
       `${preloadCrossOriginAttr(url)}${integrityAttr(url)}${noncePreload}>`,
@@ -636,7 +636,7 @@ export function wrapHead(opts) {
   // same-origin pinned `/__webjs/vendor/*` url gets none). Deduped against the
   // app module/component preloads already emitted above.
   const emittedPreloadHrefs = new Set([
-    ...(opts.moduleUrls || []).map((u) => fp(u)),
+    ...opts.moduleUrls.map((u) => fp(u)),
     ...(opts.preloads || []).map((u) => fp(u)),
   ]);
   for (const v of opts.vendorPreloads || []) {

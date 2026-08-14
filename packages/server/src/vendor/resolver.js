@@ -2,7 +2,7 @@ import { readFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { sha384Integrity } from './integrity.js';
 import { vendorImportMapEntries, isLastLiveResolveFailed, setLastLiveResolveFailed } from './jspm.js';
-import { readPinFile } from './pins.js';
+import { readPinFile, pinDir } from './pins.js';
 import { BUFFERED_MARKER } from '../conditional-get.js';
 
 /**
@@ -40,10 +40,6 @@ const INTEGRITY_FETCH_CONCURRENCY = 6;
 // without integrity (the same fail-open fallback as a fetch failure) instead of
 // waiting out a 10s timeout each. A healthy CDN finishes in well under this.
 const INTEGRITY_TOTAL_BUDGET_MS = 15_000;
-
-function pinDir(appDir) {
-  return join(appDir, '.webjs', 'vendor');
-}
 
 /**
  * Fetch a single cross-origin URL with a bounded timeout and return its

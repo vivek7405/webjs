@@ -62,7 +62,7 @@ import {
 } from './config.js';
 import {
   exists, kebab, resolveRequestId, shouldAccessLog, loadAppEnv, collectRouteModules,
-  appTopLevelDirs, locateCoreDir, reloadClientJs, reloadWorkerJs,
+  appTopLevelDirs, locateCoreDir,
 } from './helpers.js';
 import {
   handleCore, loadMiddleware, tryServeFrameworkStatic, tryServePublicAsset,
@@ -1195,24 +1195,6 @@ export async function createRequestHandler(opts) {
         }
       }
       return Response.json({ status: 'ok' }, { headers: noStore });
-    }
-
-    // Dev live-reload client. The `!dev` arm answers 404 rather than falling
-    // through, so the path is dead in production instead of being routed like
-    // an app url.
-    if (path === '/__webjs/reload.js') {
-      if (!dev) return new Response('Not found', { status: 404 });
-      return new Response(reloadClientJs(basePathValue), {
-        headers: { 'content-type': 'application/javascript; charset=utf-8' },
-      });
-    }
-
-    // Dev live-reload SharedWorker: one shared connection for all tabs (#887).
-    if (path === '/__webjs/reload-worker.js') {
-      if (!dev) return new Response('Not found', { status: 404 });
-      return new Response(reloadWorkerJs(basePathValue), {
-        headers: { 'content-type': 'application/javascript; charset=utf-8' },
-      });
     }
 
     // Framework-internal static assets (the @webjsdev/core runtime, the dev

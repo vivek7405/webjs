@@ -11,8 +11,16 @@ import { jspmGenerate } from './jspm.js';
 const PIN_DIR_REL = ['.webjs', 'vendor'];
 const PIN_FILE = 'importmap.json';
 
-/** Compute the absolute path of the pin directory for an app. */
-function pinDir(appDir) {
+/**
+ * Compute the absolute path of the pin directory for an app.
+ *
+ * Exported because `vendor/resolver.js` READS the pinned bundles this module
+ * WRITES. A second copy of this path there would let a change to
+ * `PIN_DIR_REL` move the write without moving the read, and the resolver would
+ * then miss every pinned bundle and silently fall back to a live resolve. One
+ * owner, so the two sides cannot drift.
+ */
+export function pinDir(appDir) {
   return join(appDir, ...PIN_DIR_REL);
 }
 
