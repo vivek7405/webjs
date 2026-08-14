@@ -33,9 +33,44 @@ WebJs is an AI-first, web-components-first framework with **no build step**: sou
 - Answering "how should this be structured in WebJs?"
 - Finding the right export, reference doc, or default pattern for a task
 
+## Reach For The Right Primitive
+
+Scan this BEFORE deciding how to build something, while the shape of the code is still open. WebJs ships a primitive for most of the jobs below, and the failure to avoid is not picking the wrong one, it is not knowing one exists and hand-rolling the React-shaped version instead. That version compiles, passes `webjs check`, and ships, so nothing catches it. The "reflex to resist" column is what the hand-rolled version usually looks like.
+
+Rows point rather than explain. The reference is the authority on the rule, and it is the durable half: the demo lives in the scaffold gallery, which an app deletes with `npm run gallery:clear` once it has outgrown it.
+
+| I need to... | Reach for | Reflex to resist | Reference | Demo |
+| --- | --- | --- | --- | --- |
+| add a URL, static or with a dynamic segment | a file at `app/<path>/page.ts`, `[id]` for a param | registering the route in a table or config | `references/routing-and-pages.md` | `app/features/routing` |
+| abandon a render because something is missing or not allowed | throw `notFound()` / `forbidden()` / `unauthorized()` | returning an error object and branching in the template | `references/routing-and-pages.md` | `app/features/boundaries` |
+| set a page's title, description, or social preview | `export const metadata` or `generateMetadata()` | writing `<head>` tags in the page | `references/routing-and-pages.md` | `app/features/metadata` |
+| make part of the page respond to a click or hold state | a `WebComponent` custom element | expecting the page's own markup to hydrate | `references/components.md` | `app/features/components` |
+| render a keyed list, or swap one node when state changes | `repeat()` / `watch()` from `/directives` | re-rendering the component or diffing by hand | `references/components.md` | `app/features/directives` |
+| get server data into a component's first paint | `async render()` awaiting an action | fetching in `connectedCallback`, which SSR never calls | `references/components.md` | `app/features/async-render` |
+| call server code from the browser | import the `'use server'` function and call it | hand-writing `fetch()` against an endpoint | `references/data-and-actions.md` | `app/features/server-actions` |
+| expose JSON to a caller outside the app | `route.ts` with named `GET` / `POST` exports | a server action, which is the in-app path | `references/routing-and-pages.md` | `app/features/route-handler` |
+| write data from a form, JS off included | `<form action=${importedAction}>` | an `@submit` handler calling `fetch()` | `references/data-and-actions.md` | `app/features/forms` |
+| make a mutation feel instant | `optimistic()` | a manual try-catch that restores a cached copy | `references/optimistic-ui.md` | `app/features/optimistic-ui` |
+| navigate without a full page reload | nothing, the router is already on | importing or configuring a router | `references/client-router-and-streaming.md` | `app/features/client-router` |
+| cross-fade a navigation instead of snapping | the `view-transition` meta, via page metadata | animating the swap yourself | `references/client-router-and-streaming.md` | `app/features/view-transitions` |
+| show tokens or progress as the server produces them | an action returning an async generator | polling, or a socket for a one-shot answer | `references/client-router-and-streaming.md` | `app/features/streaming` |
+| change ONE element after a write | `<webjs-stream>` | redrawing the whole list around it | `references/client-router-and-streaming.md` | `app/features/stream` |
+| paint the page before a slow region is ready | `<webjs-suspense>` with a fallback | blocking the whole page on the slow await | `references/client-router-and-streaming.md` | `app/features/suspense` |
+| refresh one region on its own, with no navigation | `<webjs-frame>` | a stateful component that fetches and re-renders | `references/client-router-and-streaming.md` | `app/features/frames` |
+| hold a live two-way connection | a `WS()` route export plus `connectWS()` | polling on an interval | `references/client-router-and-streaming.md` | `app/features/websockets` |
+| push one event to every open tab | `broadcast()` | every client polling for changes | `references/client-router-and-streaming.md` | `app/features/broadcast` |
+| add login and a signed-in-only route | `createAuth` plus a redirect in the page | rolling password hashing and session cookies | `references/auth-and-sessions.md` | `app/features/auth` |
+| remember something per visitor across requests | `getSession()` on a signed cookie | a module-level map keyed by user | `references/auth-and-sessions.md` | `app/features/sessions` |
+| stop re-rendering a page identical for everyone | `export const revalidate` | caching by hand in a module variable | `references/built-ins.md` | `app/features/caching` |
+| read config or a secret at runtime | `process.env` server-side, `WEBJS_PUBLIC_` for the browser | importing a config module into a component | `references/built-ins.md` | `app/features/env` |
+| stop one caller hammering an endpoint | the `rateLimit()` middleware | counting requests inside the handler | `references/built-ins.md` | `app/features/rate-limit` |
+| accept an upload and serve it back | `FileStore` plus a streaming route | buffering the file in memory or writing to `public/` | `references/built-ins.md` | `app/features/file-storage` |
+| keep the app usable offline | the opt-in service worker | caching responses in `localStorage` | `references/service-worker.md` | `app/features/service-worker` |
+| see these composed in one real feature | the todo example app | stitching the single-feature demos together | `references/optimistic-ui.md` | `app/examples/todo` |
+
 ## Load Only The References You Need
 
-Classify the task first, then load the smallest useful reference set. Each reference starts with a "What This Covers" section; read that to confirm relevance before reading the rest. Loading more than two or three at once usually means the task is not narrowed yet.
+The table above routes by the job; this one routes by the topic, for when you already know which surface you are working on. Classify the task first, then load the smallest useful reference set. Each reference starts with a "What This Covers" section; read that to confirm relevance before reading the rest. Loading more than two or three at once usually means the task is not narrowed yet.
 
 | Task involves...                                                            | Start with                                    |
 | --------------------------------------------------------------------------- | --------------------------------------------- |
