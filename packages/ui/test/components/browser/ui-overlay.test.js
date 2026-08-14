@@ -121,6 +121,13 @@ suite('ui-dialog', () => {
     const contentInner = dialog.querySelector('ui-dialog-content [data-slot="dialog-content"]');
     assert.ok(contentInner, 'inner content element exists in DOM');
     assert.equal(contentInner.getAttribute('data-state'), 'closed');
+    // Re-pointing the locator above removed this file's only implicit proof
+    // that the role exists at all, so assert it directly on the element that
+    // owns it. Otherwise the dialog could lose its role entirely and every
+    // browser-layer test here would still pass.
+    const nativeDialog = dialog.querySelector('dialog[data-slot="dialog-native"]');
+    assert.equal(nativeDialog.getAttribute('role'), 'dialog', 'native <dialog> carries role=dialog');
+    assert.equal(contentInner.hasAttribute('role'), false, 'and the content panel carries no second dialog role');
     assert.equal(getComputedStyle(dialog.querySelector('ui-dialog-content')).display, 'none', 'host hidden when closed');
     root.remove();
   });
@@ -1022,6 +1029,13 @@ suite('ui-alert-dialog', () => {
     // ref()/createRef() handle, so the native element is actually open.
     const native = ad.querySelector('dialog[data-slot="alert-dialog-native"]');
     assert.ok(native && native.open, 'ref()-driven showModal opened the native <dialog>');
+    // The role lives on the native <dialog>, which is what this test's name is
+    // about. Asserted here rather than through a role-based locator, so the
+    // check is on the element and cannot quietly become a lookup that passes
+    // because it found some other node. This is the browser layer's only
+    // assertion of the alertdialog role.
+    assert.equal(native.getAttribute('role'), 'alertdialog', 'native <dialog> carries role=alertdialog');
+    assert.equal(inner.hasAttribute('role'), false, 'and the content panel carries no second dialog role');
     ad.hide();
     root.remove();
   });
