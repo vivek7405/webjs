@@ -416,20 +416,48 @@ async function renderChain(route, ctx, dev, suspenseCtx, have, pageModule) {
 
 /**
  * A per-request dedup key for a secondary boundary failure: the error's name,
- * message and throw site. Identity cannot be used, because a layout that
+ * message and FULL stack. Identity cannot be used, because a layout that
  * constructs its error yields a fresh object each time it is re-run, and the
  * whole point is to collapse exactly those repeats while letting a genuinely
- * different failure through. The first stack frame is the throw site, so two
- * different layouts raising the same message still read as distinct causes.
+ * different failure through.
+ *
+ * The CONSTRUCTION SITE (the first stack frame), not the whole stack. The
+ * frames below it record how the throw was reached, and the same layout
+ * re-rendered around a different boundary is reached differently every time,
+ * so a full-stack key would never collapse the repeats it exists for.
+ *
+ * That leaves the construction site shared by two genuinely different
+ * failures that go through one helper, which is why the caller's STAGE is part
+ * of the key rather than the error alone: the boundary walk and the
+ * `global-error` attempt are different stages, so a shared helper failing in
+ * both is reported twice, while one layout failing repeatedly INSIDE the walk
+ * is reported once. The stage is what distinguishes them; the stack cannot.
+ *
+ * Returns null when no safe key can be derived, which means DO NOT DEDUPE.
+ * Failing open is the only acceptable direction here: a duplicate report is
+ * noise, a dropped one is a crash nobody hears about. That covers a non-Error
+ * throw (two unrelated plain objects would otherwise share `[object Object]`)
+ * and anything whose property access or stringification throws, which is a
+ * real shape: `String(Object.create(null))` throws, and this runs INSIDE the
+ * catch that is supposed to keep the response alive, so a throw here would
+ * escape `ssrPage` and take the 500 page with it.
  *
  * @param {unknown} err
- * @returns {string}
+ * @returns {string | null}
  */
-function boundaryErrorKey(err) {
-  if (!(err instanceof Error)) return `raw:${String(err)}`;
-  const site = String(err.stack || '').split('\n')[1] || '';
-  return `${err.name}:${err.message}:${site.trim()}`;
+function boundaryErrorKey(err, stage) {
+  if (!(err instanceof Error)) return null;
+  try {
+    const site = String(err.stack || '').split('\n')[1] || '';
+    return `${stage}\u0000${String(err.name)}:${String(err.message)}:${site.trim()}`;
+  } catch {
+    return null;
+  }
 }
+
+/** Stage labels, which are part of the dedup key (see boundaryErrorKey). */
+const STAGE_WALK = 'an error boundary or its layout threw while handling a render error';
+const STAGE_GLOBAL_ERROR = 'global-error threw while handling a render error';
 
 /**
  * Report a throw from a layout wrapped around a boundary page (#1298) to the
@@ -484,9 +512,13 @@ function boundaryErrorKey(err) {
 function reportBoundaryLayoutError(err, opts, cfg = {}) {
   if (isRedirect(err) || isNotFound(err) || isForbidden(err) || isUnauthorized(err)) return;
   if (cfg.seen) {
-    const key = boundaryErrorKey(err);
-    if (cfg.seen.has(key)) return;
-    cfg.seen.add(key);
+    const key = boundaryErrorKey(err, cfg.what || '');
+    // A null key means no safe key could be derived, so report rather than
+    // risk dropping. See boundaryErrorKey.
+    if (key !== null) {
+      if (cfg.seen.has(key)) return;
+      cfg.seen.add(key);
+    }
   }
   const what = cfg.what || 'a layout threw while wrapping a boundary page';
   if (typeof opts.onError === 'function') {
@@ -1099,7 +1131,17 @@ export async function ssrPage(route, params, url, opts) {
     // global-error attempt after it collapse REPEATS of the same cause (a
     // shared layout that fails every attempt) while still reporting a
     // genuinely different failure, including global-error's own.
+    //
+    // SEEDED with the original error, which was just reported above. When a
+    // LAYOUT is what threw, the walk re-runs that same layout around each
+    // boundary it wraps (the root layout wraps every boundary), so the cause
+    // that produced this 500 is about to arrive again as a secondary failure.
+    // Without the seed the commonest layout crash of all is reported twice.
     const secondary = new Set();
+    {
+      const originalKey = boundaryErrorKey(err, STAGE_WALK);
+      if (originalKey !== null) secondary.add(originalKey);
+    }
     // Try nearest error.js (innermost → outermost).
     for (let i = route.errors.length - 1; i >= 0; i--) {
       try {
@@ -1151,7 +1193,7 @@ export async function ssrPage(route, params, url, opts) {
         // filtered out by the reporter, since a boundary throwing notFound() is
         // a routing decision rather than a crash.
         reportBoundaryLayoutError(nested, opts, {
-          what: 'an error boundary or its layout threw while handling a render error',
+          what: STAGE_WALK,
           seen: secondary,
           overlay: false,
         });
@@ -1182,7 +1224,7 @@ export async function ssrPage(route, params, url, opts) {
         // the original error, with nothing naming the boundary as the thing
         // that failed.
         reportBoundaryLayoutError(nested, opts, {
-          what: 'global-error threw while handling a render error',
+          what: STAGE_GLOBAL_ERROR,
           seen: secondary,
           overlay: false,
         });

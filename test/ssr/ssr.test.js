@@ -2186,7 +2186,7 @@ test('boundary: one throwing layout is reported ONCE, not once per boundary', as
   // The walk tries each boundary in the chain, and layoutsForBoundary selects
   // by segment ancestry rather than boundary depth, so a root layout that
   // throws fails EVERY attempt. Identity dedup would not help: a layout that
-  // constructs its error yields a fresh object per attempt. Hence the latch.
+  // constructs its error yields a fresh object per attempt, so the key is its name, message and stack.
   const { route, appDir } = makeBoundaryApp({
     files: {
       'layout.js': `export default function Root() { throw new Error('root-layout-boom'); }\n`,
@@ -2289,6 +2289,72 @@ test('boundary: dedup collapses REPEATS of one cause, not distinct failures', as
   const messages = seen.map((e) => String(e && e.message));
   assert.ok(messages.includes('inner-boundary-boom'), 'the inner boundary crash is reported');
   assert.ok(messages.includes('shared-layout-boom'), 'and the LATER, unrelated layout crash is not swallowed by it');
+});
+
+test('boundary: a LAYOUT crash that produced the 500 is reported once, not twice', async () => {
+  // The commonest shape of all, and the one the dedup set has to be SEEDED for.
+  // When the layout is what threw, it becomes the original error AND is re-run
+  // around every boundary it wraps, so the same cause arrives twice.
+  const { route, appDir } = makeBoundaryApp({
+    files: {
+      'layout.js': `export default function Root() { throw new Error('only-layout-boom'); }\n`,
+      'error.js': HTML_IMPORT + `export default function Err() { return html\`<p id="b">boundary</p>\`; }\n`,
+      // The page renders fine: the LAYOUT is the sole failure.
+      'page.js': HTML_IMPORT + `export default function Page() { return html\`<p>ok</p>\`; }\n`,
+    },
+    page: 'page.js',
+    layouts: ['layout.js'],
+    errors: ['error.js'],
+  });
+  const seen = [];
+  const resp = await SILENT(() => ssrPage(route, {}, new URL('http://localhost/'), {
+    dev: false, appDir, onError: (e) => seen.push(e),
+  }));
+  assert.equal(resp.status, 500);
+  const hits = seen.filter((e) => /only-layout-boom/.test(String(e && e.message)));
+  assert.equal(hits.length, 1, 'reported once, not once as the original and again as a secondary');
+});
+
+test('boundary: a throw whose value cannot be stringified still degrades, never escapes', async () => {
+  // The dedup key runs INSIDE the catch that keeps the response alive, so it
+  // must be total. `String(Object.create(null))` throws, and a key computation
+  // that throws would take ssrPage's 500 page down with it.
+  const { route, appDir } = makeBoundaryApp({
+    files: {
+      'error.js': `export default function Err() { throw Object.create(null); }\n`,
+      'page.js': `export default function Page() { throw Object.create(null); }\n`,
+    },
+    page: 'page.js',
+    layouts: [],
+    errors: ['error.js'],
+  });
+  const resp = await SILENT(() => ssrPage(route, {}, new URL('http://localhost/'), { dev: false, appDir }));
+  assert.equal(resp.status, 500, 'it degraded to the default 500 rather than throwing out of ssrPage');
+  assert.ok((await resp.text()).includes('Something went wrong'));
+});
+
+test('boundary: two boundaries failing through ONE shared helper are both reported', async () => {
+  // The key is the whole stack, not just the frame where the Error was
+  // constructed. Keying on that one frame would make these two collide, and
+  // global-error's own crash would be swallowed by the earlier boundary's.
+  const { route, appDir } = makeBoundaryApp({
+    files: {
+      'boom.js': `export function boom() { throw new Error('shared-helper-boom'); }\n`,
+      'error.js': `import { boom } from './boom.js';\nexport default function Err() { boom(); }\n`,
+      'global-error.js': `import { boom } from './boom.js';\nexport default function GE() { boom(); }\n`,
+      'page.js': `export default function Page() { throw new Error('page-boom'); }\n`,
+    },
+    page: 'page.js',
+    layouts: [],
+    errors: ['error.js'],
+  });
+  const seen = [];
+  const resp = await SILENT(() => ssrPage(route, {}, new URL('http://localhost/'), {
+    dev: false, appDir, globalError: join(appDir, 'global-error.js'), onError: (e) => seen.push(e),
+  }));
+  assert.equal(resp.status, 500);
+  const hits = seen.filter((e) => /shared-helper-boom/.test(String(e && e.message)));
+  assert.equal(hits.length, 2, 'the boundary and global-error each report, despite one construction site');
 });
 
 test('boundary: a boundary response is never storable and never reduced', async () => {
