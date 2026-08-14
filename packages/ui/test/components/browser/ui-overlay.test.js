@@ -1004,7 +1004,7 @@ suite('ui-alert-dialog', () => {
     }
   });
 
-  test('trigger click opens via show(); content has role="alertdialog"', async () => {
+  test('trigger click opens via show(); native <dialog> has role="alertdialog"', async () => {
     const root = await mount(html`
       <ui-alert-dialog>
         <ui-alert-dialog-trigger><button>Delete</button></ui-alert-dialog-trigger>
