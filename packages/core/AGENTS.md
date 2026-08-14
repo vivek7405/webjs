@@ -110,7 +110,7 @@ return instead of a silent wire loss. All are pure declaration files (erased at
 runtime, zero build cost). A page imports them with `import type { Metadata,
 PageProps } from '@webjsdev/core'`. The `Metadata` and `PageProps` /
 `LayoutProps` shapes MUST stay in lockstep with what
-`packages/server/src/ssr.js` actually reads / constructs, never Next.js's
+`packages/server/src/ssr/head.js` actually reads / constructs, never Next.js's
 superset. `routes.d.ts`'s `WebjsRoutes` / `RouteParamMap` are EMPTY by default
 (so `Route = string`); `webjs types` generates `.webjs/routes.d.ts` to augment
 them per app.
