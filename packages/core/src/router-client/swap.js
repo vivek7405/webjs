@@ -50,13 +50,24 @@ export let _swapCommit = Promise.resolve();
  *   history entry (#1406). Called at each COMMIT point, immediately BEFORE the
  *   DOM mutation, for the same reason `ingestSeeds` is: this function can still
  *   decide to throw the response away after parsing it, and a `pushState`
- *   issued for a swap that never happened is worse than a late one. It must run
- *   while the OUTGOING page is still in the DOM and still holds its scroll
- *   offset, because WebKit binds a same-document entry's back-forward gesture
- *   snapshot to the page state at the moment the entry is recorded, and a
- *   snapshot taken against the incoming (often shorter) document previews
- *   blank. The caller's thunk is one-shot, so it is safe to call here AND on
- *   the caller's fall-through. Omitted or null on every path that records no
+ *   issued for a swap that never happened is worse than a late one. It runs
+ *   BEFORE the mutation, because WebKit binds a same-document entry's
+ *   back-forward gesture snapshot to the page state at the moment the entry is
+ *   recorded, and a snapshot taken against the incoming (often shorter)
+ *   document previews blank.
+ *
+ *   What that buys is bounded by what is on screen when it fires, and on one
+ *   route class that is NOT the outgoing page: where a `loading.{js,ts}`
+ *   covers the deepest live boundary, `applyOptimisticLoading` has already
+ *   replaced that range with the skeleton and let the engine clamp the offset
+ *   before the fetch was issued. There the snapshot is of this route's own
+ *   shell plus a skeleton, which still beats the destination document, but it
+ *   is not the page the reader left. Fixing that means recording the entry
+ *   ahead of the optimistic swap too, which is a separate change on a path
+ *   nothing here measured.
+ *
+ *   The caller's thunk is one-shot, so it is safe to call here AND on the
+ *   caller's fall-through. Omitted or null on every path that records no
  *   history (a revalidation, a refresh, the popstate restore).
  */
 export function applySwap(doc, frameId, revalidating, href, incomingBuild, incomingSrc, refresh, recordHistoryNow) {

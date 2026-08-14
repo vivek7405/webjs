@@ -42,7 +42,9 @@ export const STREAM_MIME = 'text/vnd.webjs-stream.html';
  *      state, and node identity) at the deepest shared boundary.
  *   4. A poisoned scan or no shared boundary degrades to a FULL PAGE LOAD:
  *      bounded and correct, never a guessed recovery.
- *   5. Merge head, re-run scripts, upgrade custom elements, pushState.
+ *   5. pushState FIRST (before any mutation, so the back-forward gesture
+ *      snapshot is of the page being left), then merge head, re-run scripts,
+ *      upgrade custom elements.
  *
  * Optimizations bundled into the same response cycle:
  *   - `X-Webjs-Have` request header lists `segment:route-key` entries for

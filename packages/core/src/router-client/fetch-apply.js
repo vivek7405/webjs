@@ -265,9 +265,16 @@ export async function fetchAndApply(href, frameId, recordHistory, optimisticStat
   // browser has already clamped to that document's height (measured on the
   // gallery: 1600 to 252), so the gesture previews a page that never existed and
   // renders blank. So the push rides into `applySwap` as a COMMIT-time callback
-  // and fires while the outgoing page is still live, which is Turbo Drive's
-  // ordering (`PageView.renderPage` calls `visit.changeHistory()` ahead of
+  // and fires ahead of the mutation, which is Turbo Drive's ordering
+  // (`PageView.renderPage` calls `visit.changeHistory()` ahead of
   // `this.render(renderer)`).
+  //
+  // One route class gets less than the full benefit: where a `loading.{js,ts}`
+  // covers the deepest live boundary, `applyOptimisticLoading` replaced that
+  // range with the skeleton before this function ever ran, so the entry is
+  // recorded against the shell plus a skeleton rather than the outgoing page.
+  // Better than the destination document, still not the page the reader left.
+  // See the `recordHistoryNow` JSDoc in `swap.js`.
   //
   // One-shot, exactly like Turbo's `historyChanged` guard, so calling it here
   // AND on the fall-through below is safe. The fall-through is required, not
