@@ -37,9 +37,75 @@ const PREFETCH_HOVER_DELAY = 100;
  */
 const PREFETCH_VIEWPORT_DELAY = 250;
 
-/** @typedef {{ html: string, build: string | null, src: string | null, finalUrl: string, frameId: string | null, unusable?: boolean, at: number }} PrefetchEntry */
+/** @typedef {{ html: string, build: string | null, src: string | null, finalUrl: string, frameId: string | null, at: number }} PrefetchEntry */
 /** @type {Map<string, PrefetchEntry>} */
 export const prefetchCache = new Map();
+
+/**
+ * Keys whose last speculative answer was REFUSED, with the time it was refused
+ * (#1407). Only a framed request can be refused: the server marks its sliced
+ * subtree, so an unmarked answer is one of the two full-document fall-throughs
+ * (a streamed render, or an id absent from the output) and is not the shape the
+ * entry claims.
+ *
+ * This exists so a refusal is not the same as forgetting. With no record, the
+ * TTL dedupe would have nothing to match and `prefetchInflight` is released the
+ * moment the fetch settles, so every later hover or dwell on that link would
+ * re-issue the same useless request for as long as the page lives. A route with
+ * a `loading.{js,ts}` or a Suspense boundary streams, so it answers EVERY framed
+ * request unmarked, which would make that the normal case there and strictly
+ * worse than before this feature (an unframed prefetch was at least cached and
+ * deduped for the TTL).
+ *
+ * It is deliberately NOT an entry in `prefetchCache`. That cache holds fragments
+ * a click can consume, it is capped at `PREFETCH_CAP`, and an entry leaves it as
+ * soon as a click takes it. A memo holds no fragment and can never serve a
+ * click, so filing one there would let a streaming route's framed links occupy
+ * slots that genuinely warm fragments are competing for, and hold them longer
+ * than any real entry, since nothing consumes a memo. Its own cap bounds it
+ * instead.
+ *
+ * @type {Map<string, number>}
+ */
+const prefetchRefused = new Map();
+
+/** Max refusal memos held at once (LRU), independent of the fragment cache. */
+const PREFETCH_REFUSED_CAP = 16;
+
+/**
+ * Whether this key's last answer was refused recently enough that re-asking
+ * would just be refused again. Prunes on read, so an expired memo never
+ * suppresses a legitimate retry.
+ *
+ * @param {string} key
+ */
+function prefetchRefusedRecently(key) {
+  const at = prefetchRefused.get(key);
+  if (at == null) return false;
+  if ((nowMs() - at) >= PREFETCH_TTL) { prefetchRefused.delete(key); return false; }
+  return true;
+}
+
+/**
+ * Forget every refusal (#1407). Called wherever a DEPLOY is detected, alongside
+ * the cache clears: a new build can change whether a route streams, so a memo
+ * recorded against the old one says nothing about the new one. A targeted
+ * `revalidate(url)` deliberately does NOT clear these, because a memo holds no
+ * content and so can never serve anything stale; the worst a surviving one costs
+ * is one skipped speculative warm-up until its TTL runs out.
+ */
+export function clearPrefetchRefused() {
+  prefetchRefused.clear();
+}
+
+/** @param {string} key */
+function notePrefetchRefused(key) {
+  if (prefetchRefused.has(key)) prefetchRefused.delete(key);
+  prefetchRefused.set(key, nowMs());
+  while (prefetchRefused.size > PREFETCH_REFUSED_CAP) {
+    prefetchRefused.delete(prefetchRefused.keys().next().value);
+  }
+}
 
 /** Keys with a fetch currently in flight (dedupe + concurrency gate). */
 const prefetchInflight = new Set();
@@ -269,6 +335,9 @@ export function prefetch(href, frameId) {
   if (prefetchQueued.has(key)) return;
   const existing = prefetchCache.get(key);
   if (existing && (nowMs() - existing.at) < PREFETCH_TTL) return;
+  // Refused recently, so re-asking would be refused again (#1407). Bounds the
+  // retry to one request per TTL, the same bound a successful entry gets.
+  if (prefetchRefusedRecently(key)) return;
   if (prefetchInflight.size >= PREFETCH_CONCURRENCY) {
     // Gate full: queue rather than drop, bounded so a huge link list
     // cannot grow the queue without limit (oldest queued entry is shed).
@@ -333,6 +402,9 @@ export function prefetch(href, frameId) {
       if ((build && pageBuild && build !== pageBuild) || (src && pageSrc && src !== pageSrc)) {
         snapshotCache.clear();
         prefetchCache.clear();
+        // A new build can change whether a route streams, so a refusal recorded
+        // against the old one says nothing about the new one (#1407).
+        clearPrefetchRefused();
         // Deliberately do NOT advance the page's data-webjs-src here (only the
         // foreground `applySwap` does). A prefetch is speculative; leaving the
         // reference id on the old deploy keeps applySwap the single authority
@@ -349,23 +421,12 @@ export function prefetch(href, frameId) {
       // frame region on the click, and it cannot be filed under the page key
       // either, since it was fetched with a header the response varies on.
       //
-      // Discarding is not the same as forgetting. Returning here without
-      // storing anything would leave the TTL dedupe below with nothing to
-      // match, and `prefetchInflight` is released in the `finally`, so EVERY
-      // later hover or viewport dwell on that link would re-issue the same
-      // useless request, forever. That is not a corner case: a route with a
-      // `loading.{js,ts}` or a Suspense boundary streams, so it answers every
-      // framed request unmarked, and it would be strictly worse than before
-      // this feature (an unframed prefetch was at least cached and deduped for
-      // the TTL). So record a TOMBSTONE instead: an entry carrying no body,
-      // which the dedupe treats like any other entry and `prefetchTake`
-      // refuses, bounding the retry to one request per TTL exactly like a
-      // successful one.
+      // Discarding is not the same as FORGETTING, so the refusal is memoed (see
+      // `prefetchRefused`) to stop the request being re-issued on every hover
+      // until the TTL runs out. The body is still never stored.
       const servedFrame = resp.headers.get('x-webjs-frame');
       if ((servedFrame || null) !== (frameId || null)) {
-        prefetchStore(key, {
-          html: '', build, src, finalUrl: href, frameId: frameId || null, unusable: true, at: nowMs(),
-        });
+        notePrefetchRefused(key);
         return;
       }
       const finalUrl = resp.redirected && resp.url ? resp.url : href;
@@ -410,10 +471,7 @@ function prefetchStore(key, entry) {
     const oldest = prefetchCache.keys().next().value;
     prefetchCache.delete(oldest);
   }
-  // A tombstone is not a cached fragment (#1407), so it announces nothing: the
-  // event's contract is "a fragment is now consumable", which app code
-  // instruments for hit rate and tests await before clicking.
-  if (typeof document !== 'undefined' && !entry.unusable) {
+  if (typeof document !== 'undefined') {
     document.dispatchEvent(new CustomEvent('webjs:prefetch', {
       detail: { url: entry.finalUrl, key, from: 'prefetch' },
     }));
@@ -466,12 +524,6 @@ export function prefetchTake(href, liveKeysOverride, frameId) {
   const entry = prefetchCache.get(key);
   if (!entry) return null;
   if ((nowMs() - entry.at) >= PREFETCH_TTL) { prefetchCache.delete(key); return null; }
-  // A tombstone (#1407): the server answered this dimension with something that
-  // is not the shape the entry claims, and it is held ONLY to stop the request
-  // being re-issued on every hover until its TTL runs out. It is never
-  // consumable, and it is deliberately NOT deleted here, since deleting it on
-  // the first click would reopen the retry loop it exists to close.
-  if (entry.unusable) return null;
   // A FRAME entry's validity question is a different one (#1407). Its body is a
   // `<webjs-frame>` subtree with no `wj:children` boundary in it, so
   // `prefetchAnchor` returns null, and null means "no constraint" below: falling
@@ -654,6 +706,7 @@ export function _prefetchInflightSize() { return prefetchInflight.size; }
 /** Test-only: clear all prefetch state between cases. */
 export function _resetPrefetch() {
   prefetchCache.clear();
+  prefetchRefused.clear();
   prefetchInflight.clear();
   prefetchQueue.length = 0;
   prefetchQueued.clear();

@@ -4138,7 +4138,8 @@ test('prefetch: a full-document answer to a framed request is not stored (#1407)
   // The server's frame branch has two fall-throughs (a streamed render, an
   // absent frame id) that answer with a whole document. It marks the sliced
   // case with `x-webjs-frame`, so an unmarked body is not the shape this entry
-  // claims and must not be filed under EITHER key.
+  // claims and its BODY is filed under neither key. The refusal itself is
+  // memoed separately, which the sibling test below covers.
   const calls = [];
   await withPrefetchEnv(async () => {
     _prefetch('http://localhost/streamed', 'tasks');
@@ -4150,14 +4151,17 @@ test('prefetch: a full-document answer to a framed request is not stored (#1407)
   }, { fetchImpl: frameFetchImpl(calls, null) });
 });
 
-test('prefetch: a discarded framed answer is REMEMBERED, so it does not re-request every hover (#1407)', async () => {
-  // Discarding is not forgetting. With nothing cached, the TTL dedupe has
-  // nothing to match and `prefetchInflight` is released when the fetch settles,
-  // so every later hover would re-issue the same useless request forever. A
-  // route with a `loading.{js,ts}` or a Suspense boundary streams, so it answers
-  // EVERY framed request unmarked, which would make that the normal case there
-  // and strictly worse than before this feature (an unframed prefetch was at
-  // least cached and deduped for the TTL).
+test('prefetch: a REFUSED framed answer is memoed, so it does not re-request every hover (#1407)', async () => {
+  // Discarding the body is not the same as forgetting the refusal. With no
+  // record, the TTL dedupe has nothing to match and `prefetchInflight` is
+  // released when the fetch settles, so every later hover would re-issue the
+  // same useless request forever. A route with a `loading.{js,ts}` or a Suspense
+  // boundary streams, so it answers EVERY framed request unmarked, which would
+  // make that the normal case there and strictly worse than before this feature
+  // (an unframed prefetch was at least cached and deduped for the TTL).
+  //
+  // The memo lives OUTSIDE `prefetchCache`, so it cannot occupy a slot that a
+  // consumable fragment is competing for.
   const calls = [];
   await withPrefetchEnv(async () => {
     _prefetch('http://localhost/streamy', 'tasks');
@@ -4170,18 +4174,20 @@ test('prefetch: a discarded framed answer is REMEMBERED, so it does not re-reque
       assert.equal(calls.length, 1, `hover ${attempt} did not re-request within the TTL`);
     }
 
-    // The tombstone is never consumable, and a take does not clear it (which
-    // would reopen the retry loop it exists to close).
+    // Nothing is consumable, and a take does not clear the memo (which would
+    // reopen the retry loop it exists to close).
     assert.equal(_prefetchTake('http://localhost/streamy', undefined, 'tasks'), null, 'never consumable');
+    assert.equal(_prefetchPeek('http://localhost/streamy', 'tasks'), null,
+      'and the fragment cache holds nothing, so no slot is consumed');
     _prefetch('http://localhost/streamy', 'tasks');
     await new Promise((r) => setTimeout(r, 0));
     assert.equal(calls.length, 1, 'and a take did not reopen the retry loop');
   }, { fetchImpl: frameFetchImpl(calls, null) });
 });
 
-test('prefetch: a tombstone announces no webjs:prefetch event (#1407)', async () => {
+test('prefetch: a refused answer announces no webjs:prefetch event (#1407)', async () => {
   // The event means "a fragment is now consumable", which app code instruments
-  // for hit rate and tests await before clicking. A tombstone is neither.
+  // for hit rate and tests await before clicking. A refusal is neither.
   const calls = [];
   await withPrefetchEnv(async () => {
     let fired = 0;

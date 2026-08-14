@@ -12,7 +12,7 @@ import { reportFallback } from './diagnostics.js';
 import { blurOutgoingFocus, diffChildren, replaceBoundaryRange, resyncEnclosingHostSlots, swapMarkerRange } from './dom-differ.js';
 import { trackedReloadSignature } from './frames.js';
 import { addNewHeadElements, mergeHead } from './head-merge.js';
-import { prefetchCache } from './prefetch.js';
+import { clearPrefetchRefused, prefetchCache } from './prefetch.js';
 import { snapshotCache } from './snapshot-cache.js';
 import { hardNavigate } from './state.js';
 import { forwardSuspenseResolvers } from './stream.js';
@@ -162,6 +162,7 @@ export function applySwap(doc, frameId, revalidating, href, incomingBuild, incom
       // pull a pre-deploy fragment out of the cache).
       snapshotCache.clear();
       prefetchCache.clear();
+      clearPrefetchRefused();
       // Infinite-reload guard: if the importmap appears to genuinely
       // change EVERY navigation (e.g. a developer is live-editing the
       // pin file in dev, or a misbehaving CDN returns different
@@ -206,6 +207,7 @@ export function applySwap(doc, frameId, revalidating, href, incomingBuild, incom
       if (incomingSrc && currentSrc && incomingSrc !== currentSrc) {
         snapshotCache.clear();
         prefetchCache.clear();
+        clearPrefetchRefused();
         // Advance the page's reference id. The importmap <script> is preserved
         // across soft navs (an importmap cannot be re-registered), so without
         // this the tag would keep its OLD id and EVERY later nav in the new
