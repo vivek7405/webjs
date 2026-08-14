@@ -58,7 +58,7 @@ Rows point rather than explain. The reference is the authority on the rule, and 
 | paint the page before a slow region is ready | `<webjs-suspense>` with a fallback | blocking the whole page on the slow await | `references/client-router-and-streaming.md` | `app/features/suspense` |
 | refresh one region on its own, with no navigation | `<webjs-frame>` | a stateful component that fetches and re-renders | `references/client-router-and-streaming.md` | `app/features/frames` |
 | hold a live two-way connection | a `WS()` route export plus `connectWS()` | polling on an interval | `references/client-router-and-streaming.md` | `app/features/websockets` |
-| push one event to every open tab | `broadcast()` | every client polling for changes | `references/client-router-and-streaming.md` | `app/features/broadcast` |
+| push one update to every client on a socket path | `broadcast()` | every client polling for changes | `references/client-router-and-streaming.md` | `app/features/broadcast` |
 | add login and a signed-in-only route | `createAuth` plus a redirect in the page | rolling password hashing and session cookies | `references/auth-and-sessions.md` | `app/features/auth` |
 | remember something per visitor across requests | `getSession()` on a signed cookie | a module-level map keyed by user | `references/auth-and-sessions.md` | `app/features/sessions` |
 | stop re-rendering a page identical for everyone | `export const revalidate` | caching by hand in a module variable | `references/built-ins.md` | `app/features/caching` |

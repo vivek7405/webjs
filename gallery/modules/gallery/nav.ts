@@ -57,7 +57,7 @@ export const FEATURE_GROUPS: NavGroup[] = [
     label: 'Real-time',
     items: [
       { href: '/features/websockets', title: 'WebSockets', blurb: 'Hold a live two-way connection instead of polling. A WS(ws, req) route export on the server, connectWS() on the client.' },
-      { href: '/features/broadcast', title: 'Broadcast', blurb: 'Push one event to every open tab at once, so a change made in one client shows up in the others.' },
+      { href: '/features/broadcast', title: 'Broadcast', blurb: 'Push one update to every client connected on a WebSocket path, so a change made in one of them shows up in the rest. Optionally excluding the sender.' },
     ],
   },
   {

@@ -18,7 +18,7 @@
  */
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { existsSync, readFileSync } from 'node:fs';
+import { existsSync, readdirSync, readFileSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -67,9 +67,27 @@ function navDemoPaths() {
   return [...src.matchAll(/href: '\/((?:features|examples)\/[a-z0-9-]+)'/g)].map((m) => `app/${m[1]}`);
 }
 
+/**
+ * Every demo that EXISTS on disk, read from the filesystem rather than from
+ * either index.
+ *
+ * Comparing the cheat sheet against `nav.ts` alone would compare two hand-kept
+ * lists with no anchor: a demo directory added to neither leaves both sets equal
+ * and the parity assertion green, which is exactly the drift this test exists to
+ * catch. The directories are the ground truth, so they are the third set.
+ */
+function diskDemoPaths() {
+  return ['features', 'examples'].flatMap((kind) =>
+    readdirSync(join(repoRoot, 'gallery/app', kind), { withFileTypes: true })
+      .filter((e) => e.isDirectory())
+      .map((e) => `app/${kind}/${e.name}`),
+  );
+}
+
 test('every gallery demo has exactly one cheat-sheet row', () => {
   const rows = cheatSheetRows();
   const demos = navDemoPaths();
+  const onDisk = diskDemoPaths();
   assert.ok(demos.length >= 20, `expected the gallery index to list its demos, found ${demos.length}`);
 
   const rowDemos = rows.map((r) => r.demo);
@@ -82,6 +100,11 @@ test('every gallery demo has exactly one cheat-sheet row', () => {
     rowDemos.slice().sort(),
     demos.slice().sort(),
     'the cheat sheet and the gallery index list different demos',
+  );
+  assert.deepEqual(
+    onDisk.slice().sort(),
+    demos.slice().sort(),
+    'the gallery has demo directories that neither index lists (or lists one that is gone)',
   );
 });
 
