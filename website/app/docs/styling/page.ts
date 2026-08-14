@@ -182,6 +182,8 @@ Card.register('my-card');</code-block>
 
     <p>Writing <code>text-emerald-500</code> instead is what makes an app un-rethemable: the app that sets its own tokens still gets that one hardcoded green. Every token is declared in both the light and dark value blocks <strong>and</strong> mapped in <code>@theme inline</code>, because a token with no mapping entry emits no utility at all.</p>
 
+    <p><strong>A <code>-foreground</code> token assumes a solid fill.</strong> A component that dilutes its fill with an opacity modifier is painting a different colour, and the pair no longer holds. The kit's destructive button paints <code>dark:bg-destructive/60</code>, against which <code>--destructive-foreground</code> measures 2.49:1 while plain <code>text-white</code> measures 6.48:1, so that one variant keeps <code>text-white</code>. If you dilute a fill, re-measure the foreground against the composite rather than assuming the token still applies.</p>
+
     <h3>Elevation is named by role</h3>
     <p><code>shadow-e1</code> is a card at rest, <code>shadow-e2</code> a menu, <code>shadow-e3</code> a dialog, <code>shadow-e4</code> a toast. The geometry is Tailwind's own, so this is naming rather than new numbers, and it means the z-axis says something: <code>shadow-md</code> on a card and <code>shadow-md</code> on a dropdown puts two different things on the same plane.</p>
 

@@ -48,8 +48,14 @@ weight, never inline with a colon between them.
 Every screen has exactly one primary action. Not two.
 
 - **Primary**, one per view: `buttonClass()`, the default variant.
-- **Secondary**, a few: `buttonClass({ variant: 'outline' })` or `'secondary'`.
+- **Secondary**, a few: `buttonClass({ variant: 'secondary' })`, or `'outline'`
+  where your copy of the kit has it.
 - **Tertiary**, as many as needed: `'ghost'` or `'link'`.
+
+The variant NAMES are whatever your `components/ui/button.ts` declares. It is
+copied into your repo and yours to edit, so check it rather than assuming the
+set: an app that has trimmed or renamed a variant gets a type error, or an
+unstyled button, from a name that was right in someone else's app.
 
 Two default-variant buttons side by side tell the reader nothing about which to
 press, so they choose by position. If two actions genuinely feel equal, the
@@ -104,6 +110,15 @@ type sizes has usually confused variety with hierarchy.
 `--success`, `--warning` and `--info`, each with a foreground and a subtle
 surface pair. An app that names a palette family cannot be rethemed, and the
 reader gets one hardcoded green that no longer matches anything around it.
+
+**The one exception, and the rule it teaches.** A `-foreground` token is
+measured against its own SOLID fill. A component that DILUTES that fill, the
+way the kit's destructive button does with `dark:bg-destructive/60`, is
+painting a different colour and the pair no longer holds: there,
+`--destructive-foreground` measures 2.49:1 while plain `text-white` measures
+6.48:1. So `button.ts` and `badge.ts` keep `text-white` on that one variant.
+If you dilute a fill with an opacity modifier, re-measure the foreground
+against the composite rather than assuming the token still applies.
 
 **Semantic state goes through the semantic role.** A failed row is
 `text-destructive`, not `text-red-600`. A success toast is `text-success`. This

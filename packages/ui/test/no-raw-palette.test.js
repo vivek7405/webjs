@@ -150,19 +150,38 @@ test('a diluted destructive fill keeps its own foreground (#1116)', () => {
   // So the token is exactly wrong on the two components it looks most correct
   // on, and an earlier revision of this branch shipped that regression by
   // "fixing" button.ts to use it. The two must also agree with each other.
+  //
+  // Read the BLANKED source, like every other test in this file. The first
+  // version of this test scanned raw text with a finder whose primary
+  // predicate matched nothing, so it silently fell through to a looser one and
+  // asserted on whichever line the surrounding comment prose happened to leave
+  // first. It passed by accident: a comment mentioning `bg-destructive` and a
+  // `text-` utility in one sentence would have made a correct variant fail, and
+  // one worded the other way would have let a real regression through.
   for (const file of ['button.ts', 'badge.ts']) {
-    const src = readFileSync(join(REGISTRY, 'components', file), 'utf8');
-    const destructive = src.split('\n').find((l) => /destructive:/.test(l) && /bg-destructive/.test(l))
-      ?? src.split('\n').find((l) => /bg-destructive\b/.test(l) && /text-/.test(l));
-    assert.ok(destructive, `${file}: could not find the destructive variant`);
+    const src = blankComments(readFileSync(join(REGISTRY, 'components', file), 'utf8'));
+
+    // The `destructive:` key and its class string, which the formatter may put
+    // on the same line or the next one. Anchored on the VARIANTS key so it can
+    // only ever match the real variant.
+    const m = src.match(/\bdestructive:\s*\n?\s*(['"`])([\s\S]*?)\1/);
+    assert.ok(m, `${file}: could not find the destructive variant`);
+    const classes = m[2];
+    assert.match(classes, /\bbg-destructive\b/, `${file}: matched something that is not the destructive variant`);
     assert.match(
-      destructive,
-      /text-white/,
-      `${file}: a variant diluting the fill with bg-destructive/60 must keep text-white, since --destructive-foreground is built for the solid fill`,
+      classes,
+      /\bdark:bg-destructive\/\d+/,
+      `${file}: this test only applies to a variant that DILUTES the fill. If the dark fill became solid, the token is correct and this test should change with it.`,
+    );
+
+    assert.match(
+      classes,
+      /\btext-white\b/,
+      `${file}: a variant diluting the fill with dark:bg-destructive/60 must keep text-white, since --destructive-foreground is built for the solid fill`,
     );
     assert.doesNotMatch(
-      destructive,
-      /text-destructive-foreground/,
+      classes,
+      /\btext-destructive-foreground\b/,
       `${file}: --destructive-foreground measures 2.49:1 on the /60 composite this variant paints`,
     );
   }

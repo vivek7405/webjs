@@ -114,8 +114,11 @@
   --accent-foreground: oklch(0.205 0 0);
   --destructive: oklch(0.577 0.245 27.325);
   /* Pure white, not red-50. White on red-600 measures 4.76:1 and red-50 on it
-     measured 4.35:1, which is under the 4.5:1 floor for body text, so the pair
-     the kit shipped did not pass. */
+     measured 4.35:1, under the 4.5:1 floor for body text. Like the dark pair
+     below, this was LATENT rather than shipped: the only two consumers,
+     button.ts and badge.ts, carry text-white in both modes, so nothing ever
+     rendered either value. Correcting them is what makes the pair safe for app
+     code that pairs it with a solid --destructive fill. */
   --destructive-foreground: oklch(1 0 0);
   --destructive-subtle: oklch(0.971 0.013 17.38);
   --destructive-subtle-foreground: oklch(0.444 0.177 26.899);
