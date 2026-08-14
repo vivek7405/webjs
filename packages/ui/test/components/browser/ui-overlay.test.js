@@ -1012,8 +1012,12 @@ suite('ui-alert-dialog', () => {
     root.querySelector('ui-alert-dialog-trigger [data-slot="alert-dialog-trigger"]').click();
     await tick();
     assert.ok(ad.hasAttribute('open'), 'host gets [open] attribute');
-    const inner = ad.querySelector('ui-alert-dialog-content [role="alertdialog"]');
-    assert.ok(inner, 'inner alertdialog rendered');
+    // Located by data-slot, NOT by [role="alertdialog"]. The role moved onto
+    // the native <dialog>, so a role-based locator here would resolve to the
+    // same node as `native` below and this would be a weaker duplicate of that
+    // assertion rather than a check that the content panel rendered.
+    const inner = ad.querySelector('ui-alert-dialog-content [data-slot="alert-dialog-content"]');
+    assert.ok(inner, 'inner content panel rendered');
     // showModal() reaches the own-rendered native <dialog> through the
     // ref()/createRef() handle, so the native element is actually open.
     const native = ad.querySelector('dialog[data-slot="alert-dialog-native"]');
