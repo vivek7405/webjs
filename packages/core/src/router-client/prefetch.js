@@ -88,17 +88,20 @@ function prefetchRefusedRecently(key) {
 
 /**
  * Forget every refusal (#1407). Called from the two places where the SOURCE may
- * have changed under us, which is the only thing that can change whether a
- * route streams: wherever a DEPLOY is detected, and `refreshPage`, the dev
- * live-reload path (deleting a `loading.{js,ts}` stops a route streaming and
- * arrives here as a shell refresh; ADDING one does not, since a brand-new file
- * is in no build's graph and takes a full reload instead).
+ * have changed under us: wherever a DEPLOY is detected, and `refreshPage`, the
+ * dev live-reload path, where a `page` or `shell` edit can add or remove a
+ * `Suspense` / `<webjs-suspense>` boundary and so start or stop the route
+ * streaming. (A `loading.{js,ts}` edit is NOT one of them: that file is a
+ * browser entry, so it classifies `ships-to-browser` and takes a full reload.)
  *
- * NEITHER form of `revalidate` clears them. It is the post-MUTATION API an app
- * calls after an RPC write, and a data mutation cannot change whether a route
- * streams, so clearing there would drop every memo on every mutation and reopen
- * the request-per-hover loop this exists to close. A memo holds no content, so
- * leaving one costs at most a skipped warm-up until its TTL runs out.
+ * NEITHER form of `revalidate` clears them, which is a cost/benefit call rather
+ * than an impossibility. It is the post-MUTATION api an app calls after an RPC
+ * write, so clearing there would drop every memo on every mutation and reopen
+ * the request-per-hover loop this exists to close. A mutation CAN change a given
+ * render's streamed shape, since a page may render `Suspense` conditionally on
+ * fetched data, but the cost of a memo that outlives that is bounded to one
+ * skipped warm-up for that key until the 30s TTL runs out, which is the cheaper
+ * side of the trade.
  */
 export function clearPrefetchRefused() {
   prefetchRefused.clear();

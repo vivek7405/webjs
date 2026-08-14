@@ -293,12 +293,15 @@ export async function refreshPage(mode) {
   // Every cached copy predates the change, so drop both caches before fetching.
   revalidate();
   // And the refusal memos (#1407), which `revalidate` deliberately leaves alone
-  // because it is also the post-mutation API. Here the SOURCE changed, and
-  // DELETING a `loading.{js,ts}` (still in the previous build's graph, so it
-  // classifies as a shell refresh rather than a reload) stops the route
-  // streaming, which is exactly what a memo recorded. Adding one does not reach
-  // this path: a brand-new file is in no build's graph, so it classifies
-  // `unknown-path` and takes a full reload.
+  // because it is also the post-mutation api. Here the SOURCE changed, which is
+  // what can change whether a route streams, and a streamed render is what
+  // produced the unmarked answer a memo recorded. The edit that reaches here is
+  // one classified `page` or `shell`: a page that renders `Suspense(...)` or a
+  // component that renders `<webjs-suspense>` gains or loses that boundary, and
+  // the route starts or stops streaming. NOT a `loading.{js,ts}` edit, either
+  // direction: that file is a browser ENTRY, so it is in `shippedFiles` and
+  // classifies `ships-to-browser`, which is a full reload and never arrives
+  // here (and a brand-new one is in no graph at all, so it reloads too).
   clearPrefetchRefused();
   try {
     const res = await performNavigation(location.href, false, null, { refresh: mode === 'shell' ? 'shell' : 'page' });

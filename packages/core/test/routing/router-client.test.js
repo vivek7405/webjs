@@ -44,7 +44,7 @@ let _collect, _plan, _keyOf, _diffEl, _reconcile,
   _viewTransitionsEnabled, _runWithTransition, _regraftPermanentElements, _regraftPermanentInSlice,
   _applyStreamedResolve,
   _isPreBootNavigation, _FALLBACK_MARKER_KEY,
-  enableClientRouter, disableClientRouter, revalidate,
+  enableClientRouter, disableClientRouter, revalidate, refreshPage,
   WebComponent, html;
 
 before(async () => {
@@ -133,6 +133,7 @@ before(async () => {
     _applyStreamedResolve,
     navigate,
     revalidate,
+    refreshPage,
     enableClientRouter,
     disableClientRouter,
   } = await import('../../src/router-client.js'));
@@ -4300,6 +4301,31 @@ test('revalidate evicts the prefetch cache, not just the snapshot cache', async 
   });
 });
 
+test('refreshPage DOES drop the refusal memos, since the source may have changed (#1407)', async () => {
+  // The counterfactual for the clear that `revalidate` deliberately does not do.
+  // `refreshPage` is the dev live-reload path, where a `page` or `shell` edit can
+  // add or remove a `Suspense` / `<webjs-suspense>` boundary and so start or stop
+  // the route streaming, which is exactly what a memo recorded.
+  const calls = [];
+  const streamy = 'http://localhost/streamy';
+  const countFor = (u) => calls.filter((c) => String(c.url).includes(u)).length;
+  await withPrefetchEnv(async () => {
+    _prefetch(streamy, 'tasks');
+    await new Promise((r) => setTimeout(r, 0));
+    assert.equal(countFor('/streamy'), 1, 'precondition: the first attempt went out');
+    _prefetch(streamy, 'tasks');
+    await new Promise((r) => setTimeout(r, 0));
+    assert.equal(countFor('/streamy'), 1, 'precondition: memoed, so the retry was suppressed');
+
+    // The refresh itself navigates (and may fail to swap under linkedom, which
+    // is fine): the clear runs before the fetch either way.
+    await refreshPage();
+    _prefetch(streamy, 'tasks');
+    await new Promise((r) => setTimeout(r, 0));
+    assert.equal(countFor('/streamy'), 2, 'the memo was dropped, so the link re-asked');
+  }, { fetchImpl: frameFetchImpl(calls, null) });
+});
+
 test('revalidate(url) evicts EVERY dimension of that url, not just the page one (#1407)', async () => {
   // A frame entry is keyed `<frameId> <path>`, so evicting the bare path would
   // leave a pre-mutation subtree consumable by the next frame click for the rest
@@ -4321,11 +4347,13 @@ test('revalidate(url) evicts EVERY dimension of that url, not just the page one 
 });
 
 test('NEITHER revalidate form drops the refusal memos (#1407)', async () => {
-  // `revalidate` is the post-MUTATION api an app calls after an RPC write, and a
-  // data mutation cannot change whether a route streams, which is the only thing
-  // a memo records. Clearing there would drop every memo on every mutation and
-  // reopen the request-per-hover loop the memo exists to close. `refreshPage`,
-  // where the SOURCE may actually have changed, clears them itself.
+  // `revalidate` is the post-MUTATION api an app calls after an RPC write, so
+  // clearing there would drop every memo on every mutation and reopen the
+  // request-per-hover loop the memo exists to close. A mutation CAN change a
+  // given render's streamed shape (a page may render `Suspense` conditionally on
+  // fetched data), but a memo that outlives that costs one skipped warm-up for
+  // that key until the TTL, which is the cheaper side. `refreshPage`, where the
+  // SOURCE may have changed, clears them itself.
   const calls = [];
   await withPrefetchEnv(async () => {
     _prefetch('http://localhost/streamy', 'tasks');
