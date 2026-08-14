@@ -408,7 +408,7 @@ export function wrapHead(opts) {
       if (!name) continue;
       metaTags.push(`<meta name="author" content="${escapeAttr(name)}">`);
       if (typeof a === 'object' && a.url) {
-        linkTags.push(`<link rel="author" href="${escapeAttr(absUrl(a.url))}">`);
+        metaTags.push(`<link rel="author" href="${escapeAttr(absUrl(a.url))}">`);
       }
     }
   }
@@ -562,6 +562,100 @@ export function wrapHead(opts) {
     for (const [k, v] of Object.entries(m.twitter)) {
       const out = k === 'image' ? absUrl(v) : String(v);
       metaTags.push(`<meta name="twitter:${escapeAttr(k)}" content="${escapeAttr(out)}">`);
+    }
+  }
+
+  // Preload hints: page modules themselves + every discovered component
+  // module, then any custom `metadata.preload` entries (fonts, images, etc.)
+  // (linkTags array was declared earlier so the metadata block above can
+  // push icons / canonical / hreflang / archives / etc. into it.)
+  //
+  // Cross-origin URLs (vendor packages served from jspm.io etc.) MUST
+  // carry `crossorigin="anonymous"` on the preload link. Without it
+  // the browser either ignores the preload entirely or double-fetches
+  // (once for the preload as a non-CORS request, once for the actual
+  // module as a CORS request, defeating the optimization). Same-origin
+  // URLs get no attribute; adding `crossorigin=""` there would also
+  // double-fetch in some browsers because the preload becomes CORS
+  // but the import doesn't.
+  // CSP nonce on the preload link: under strict CSP (script-src
+  // 'nonce-...') the browser also gates modulepreload by the same
+  // policy. Without the attribute the preload is blocked and the
+  // import either falls back to a cold fetch or fails. Rails (via
+  // importmap-rails) applies nonce on every modulepreload tag for
+  // the same reason.
+  const noncePreload = opts.nonce ? ` nonce="${escapeAttr(opts.nonce)}"` : '';
+  // Core runtime modulepreload (#1118). Every module the boot imports pulls
+  // `@webjsdev/core`, but the boot script names only page and component URLs,
+  // so without this hint the browser discovers core only after one of those is
+  // fetched AND parsed: one full round trip into the load, which is exactly
+  // where the pre-boot click window lives on a cold, throttled connection.
+  //
+  // The href comes STRAIGHT from the importmap target (no `fp()` rewrite: the
+  // map's targets are already base-path-prefixed and content-hashed), so it is
+  // byte-identical to what the import resolves to. A differing href makes the
+  // browser treat the preload and the import as two resources and fetch core
+  // twice. That is why this copies the vendor loop below, not the module loop
+  // above. `vendorPreloadTargets` still excludes core deliberately; this hint
+  // is emitted from the head builder, not the vendor path.
+  //
+  // Gated on the boot actually shipping something. A fully elided page ships no
+  // boot module and must not be handed a preload for a runtime it never loads
+  // (#780), which also keeps it off `global-error.{js,ts}`, whose document is
+  // returned verbatim with no importmap and no boot script.
+  if (opts.moduleUrls.length || lazyEntries) {
+    const coreMap = buildImportMap();
+    const coreHref = coreMap.imports['@webjsdev/core'];
+    if (coreHref) {
+      const raw = coreMap.integrity ? coreMap.integrity[coreHref] : undefined;
+      const coreIntegrity = raw ? ` integrity="${escapeAttr(raw)}"` : '';
+      linkTags.push(
+        `<link rel="modulepreload" href="${escapeAttr(coreHref)}"` +
+        `${preloadCrossOriginAttr(coreHref)}${coreIntegrity}${noncePreload}>`,
+      );
+    }
+  }
+
+  for (const url of opts.moduleUrls || []) {
+    linkTags.push(
+      `<link rel="modulepreload" href="${escapeAttr(fp(url))}"` +
+      `${preloadCrossOriginAttr(url)}${integrityAttr(url)}${noncePreload}>`,
+    );
+  }
+  for (const url of opts.preloads || []) {
+    linkTags.push(
+      `<link rel="modulepreload" href="${escapeAttr(fp(url))}"` +
+      `${preloadCrossOriginAttr(url)}${integrityAttr(url)}${noncePreload}>`,
+    );
+  }
+  // Vendor modulepreload (#754): the npm CDN dependencies the page reaches,
+  // hinted up front to flatten the cross-origin waterfall. The href comes
+  // straight from the importmap target (byte-identical, no `fp()` rewrite, so
+  // the browser does not double-fetch) and carries the importmap's `integrity`.
+  // `preloadCrossOriginAttr` adds `crossorigin` for a cross-origin CDN url (a
+  // same-origin pinned `/__webjs/vendor/*` url gets none). Deduped against the
+  // app module/component preloads already emitted above.
+  const emittedPreloadHrefs = new Set([
+    ...(opts.moduleUrls || []).map((u) => fp(u)),
+    ...(opts.preloads || []).map((u) => fp(u)),
+  ]);
+  for (const v of opts.vendorPreloads || []) {
+    if (emittedPreloadHrefs.has(v.href)) continue;
+    emittedPreloadHrefs.add(v.href);
+    const integrity = v.integrity ? ` integrity="${escapeAttr(v.integrity)}"` : '';
+    linkTags.push(
+      `<link rel="modulepreload" href="${escapeAttr(v.href)}"` +
+      `${preloadCrossOriginAttr(v.href)}${integrity}${noncePreload}>`,
+    );
+  }
+
+  if (Array.isArray(m.preload)) {
+    for (const p of m.preload) {
+      if (!p || !p.href) continue;
+      const attrs = Object.entries(p)
+        .map(([k, v]) => `${k}="${escapeAttr(String(v))}"`)
+        .join(' ');
+      linkTags.push(`<link rel="preload" ${attrs}>`);
     }
   }
 
@@ -720,100 +814,6 @@ export function wrapHead(opts) {
     for (const obj of list) {
       const tag = jsonLdScript(obj);
       if (tag) scriptTags.push(tag);
-    }
-  }
-
-  // Preload hints: page modules themselves + every discovered component
-  // module, then any custom `metadata.preload` entries (fonts, images, etc.)
-  // (linkTags array was declared earlier so the metadata block above can
-  // push icons / canonical / hreflang / archives / etc. into it.)
-  //
-  // Cross-origin URLs (vendor packages served from jspm.io etc.) MUST
-  // carry `crossorigin="anonymous"` on the preload link. Without it
-  // the browser either ignores the preload entirely or double-fetches
-  // (once for the preload as a non-CORS request, once for the actual
-  // module as a CORS request, defeating the optimization). Same-origin
-  // URLs get no attribute; adding `crossorigin=""` there would also
-  // double-fetch in some browsers because the preload becomes CORS
-  // but the import doesn't.
-  // CSP nonce on the preload link: under strict CSP (script-src
-  // 'nonce-...') the browser also gates modulepreload by the same
-  // policy. Without the attribute the preload is blocked and the
-  // import either falls back to a cold fetch or fails. Rails (via
-  // importmap-rails) applies nonce on every modulepreload tag for
-  // the same reason.
-  const noncePreload = opts.nonce ? ` nonce="${escapeAttr(opts.nonce)}"` : '';
-  // Core runtime modulepreload (#1118). Every module the boot imports pulls
-  // `@webjsdev/core`, but the boot script names only page and component URLs,
-  // so without this hint the browser discovers core only after one of those is
-  // fetched AND parsed: one full round trip into the load, which is exactly
-  // where the pre-boot click window lives on a cold, throttled connection.
-  //
-  // The href comes STRAIGHT from the importmap target (no `fp()` rewrite: the
-  // map's targets are already base-path-prefixed and content-hashed), so it is
-  // byte-identical to what the import resolves to. A differing href makes the
-  // browser treat the preload and the import as two resources and fetch core
-  // twice. That is why this copies the vendor loop below, not the module loop
-  // above. `vendorPreloadTargets` still excludes core deliberately; this hint
-  // is emitted from the head builder, not the vendor path.
-  //
-  // Gated on the boot actually shipping something. A fully elided page ships no
-  // boot module and must not be handed a preload for a runtime it never loads
-  // (#780), which also keeps it off `global-error.{js,ts}`, whose document is
-  // returned verbatim with no importmap and no boot script.
-  if (opts.moduleUrls.length || lazyEntries) {
-    const coreMap = buildImportMap();
-    const coreHref = coreMap.imports['@webjsdev/core'];
-    if (coreHref) {
-      const raw = coreMap.integrity ? coreMap.integrity[coreHref] : undefined;
-      const coreIntegrity = raw ? ` integrity="${escapeAttr(raw)}"` : '';
-      linkTags.push(
-        `<link rel="modulepreload" href="${escapeAttr(coreHref)}"` +
-        `${preloadCrossOriginAttr(coreHref)}${coreIntegrity}${noncePreload}>`,
-      );
-    }
-  }
-
-  for (const url of opts.moduleUrls || []) {
-    linkTags.push(
-      `<link rel="modulepreload" href="${escapeAttr(fp(url))}"` +
-      `${preloadCrossOriginAttr(url)}${integrityAttr(url)}${noncePreload}>`,
-    );
-  }
-  for (const url of opts.preloads || []) {
-    linkTags.push(
-      `<link rel="modulepreload" href="${escapeAttr(fp(url))}"` +
-      `${preloadCrossOriginAttr(url)}${integrityAttr(url)}${noncePreload}>`,
-    );
-  }
-  // Vendor modulepreload (#754): the npm CDN dependencies the page reaches,
-  // hinted up front to flatten the cross-origin waterfall. The href comes
-  // straight from the importmap target (byte-identical, no `fp()` rewrite, so
-  // the browser does not double-fetch) and carries the importmap's `integrity`.
-  // `preloadCrossOriginAttr` adds `crossorigin` for a cross-origin CDN url (a
-  // same-origin pinned `/__webjs/vendor/*` url gets none). Deduped against the
-  // app module/component preloads already emitted above.
-  const emittedPreloadHrefs = new Set([
-    ...(opts.moduleUrls || []).map((u) => fp(u)),
-    ...(opts.preloads || []).map((u) => fp(u)),
-  ]);
-  for (const v of opts.vendorPreloads || []) {
-    if (emittedPreloadHrefs.has(v.href)) continue;
-    emittedPreloadHrefs.add(v.href);
-    const integrity = v.integrity ? ` integrity="${escapeAttr(v.integrity)}"` : '';
-    linkTags.push(
-      `<link rel="modulepreload" href="${escapeAttr(v.href)}"` +
-      `${preloadCrossOriginAttr(v.href)}${integrity}${noncePreload}>`,
-    );
-  }
-
-  if (Array.isArray(m.preload)) {
-    for (const p of m.preload) {
-      if (!p || !p.href) continue;
-      const attrs = Object.entries(p)
-        .map(([k, v]) => `${k}="${escapeAttr(String(v))}"`)
-        .join(' ');
-      linkTags.push(`<link rel="preload" ${attrs}>`);
     }
   }
 

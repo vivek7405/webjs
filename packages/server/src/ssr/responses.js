@@ -48,12 +48,12 @@ export function getNonce(_req) {
  * @param {URL | undefined} url
  */
 export function cachedHtmlResponse(rec, req, url) {
-  const headers = new Headers({ 'content-type': rec.contentType || 'text/html; charset=utf-8' });
-  headers.set('cache-control', rec.cacheControl || 'no-store');
+  const headers = new Headers({ 'content-type': rec.contentType });
+  headers.set('cache-control', rec.cacheControl);
   headers.set('x-webjs-build', publishedBuildId());
   headers.set('x-webjs-src', appSourceId());
   headers.set(BUFFERED_MARKER, '1');
-  return new Response(rec.body || rec, { status: rec.status || 200, headers });
+  return new Response(rec.body, { status: rec.status, headers });
 }
 
 /**

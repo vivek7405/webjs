@@ -1074,7 +1074,11 @@ export async function createRequestHandler(opts) {
     if (basePathValue) {
       const stripped = stripBasePath(rawUrl.pathname, basePathValue);
       if (stripped === null) {
-        return new Response('Not found', { status: 404 });
+        // Not under the base path: this request is not for this app.
+        return new Response('Not found', {
+          status: 404,
+          headers: { 'content-type': 'text/plain; charset=utf-8' },
+        });
       }
       const newUrl = new URL(req.url);
       newUrl.pathname = stripped;
@@ -1133,6 +1137,12 @@ export async function createRequestHandler(opts) {
     const url = new URL(req.url);
     let path;
     try { path = decodeURIComponent(url.pathname); } catch { path = url.pathname; }
+    // The probes match the RAW pathname, never the decoded one. Decoding first
+    // would make `/__webjs%2Fhealth` answer the liveness probe, which is a
+    // different url that happens to decode to the same string. Guarded, because
+    // an unparseable url must fall through rather than throw out of `produce`.
+    let probePath;
+    try { probePath = new URL(req.url).pathname; } catch { probePath = ''; }
 
     // Health and readiness probes are answered BEFORE ensureReady so a probe
     // never blocks on the analysis. `/__webjs/health` is liveness (the
@@ -1148,7 +1158,7 @@ export async function createRequestHandler(opts) {
     // attempt is bounded (the jspm fetch timeout), so a vendor CDN failure
     // delays readiness only briefly and then admits the instance (degraded but
     // reload-safe); a transient failure is re-attempted on the next request.
-    if (path === '/__webjs/health') {
+    if (probePath === '/__webjs/health') {
       return Response.json({ status: 'ok' }, { headers: { 'cache-control': 'no-store' } });
     }
 
@@ -1156,11 +1166,11 @@ export async function createRequestHandler(opts) {
     // ensureReady like the other probes (it depends only on the package
     // version + already-published build id + process info, never the app
     // analysis). No secrets.
-    if (path === '/__webjs/version') {
+    if (probePath === '/__webjs/version') {
       return buildInfoResponse();
     }
 
-    if (path === '/__webjs/ready') {
+    if (probePath === '/__webjs/ready') {
       const noStore = { 'cache-control': 'no-store' };
       if (!readyDone) {
         ensureReady().catch(() => {}); // drive the warm; never block the probe
@@ -1187,19 +1197,21 @@ export async function createRequestHandler(opts) {
       return Response.json({ status: 'ok' }, { headers: noStore });
     }
 
-    // Dev live-reload client.
-    if (dev && path === '/__webjs/reload.js') {
-      const script = reloadClientJs(basePathValue);
-      return new Response(script, {
-        headers: { 'content-type': 'application/javascript; charset=utf-8', 'cache-control': 'no-cache' },
+    // Dev live-reload client. The `!dev` arm answers 404 rather than falling
+    // through, so the path is dead in production instead of being routed like
+    // an app url.
+    if (path === '/__webjs/reload.js') {
+      if (!dev) return new Response('Not found', { status: 404 });
+      return new Response(reloadClientJs(basePathValue), {
+        headers: { 'content-type': 'application/javascript; charset=utf-8' },
       });
     }
 
     // Dev live-reload SharedWorker: one shared connection for all tabs (#887).
-    if (dev && path === '/__webjs/reload-worker.js') {
-      const script = reloadWorkerJs(basePathValue);
-      return new Response(script, {
-        headers: { 'content-type': 'application/javascript; charset=utf-8', 'cache-control': 'no-cache' },
+    if (path === '/__webjs/reload-worker.js') {
+      if (!dev) return new Response('Not found', { status: 404 });
+      return new Response(reloadWorkerJs(basePathValue), {
+        headers: { 'content-type': 'application/javascript; charset=utf-8' },
       });
     }
 
