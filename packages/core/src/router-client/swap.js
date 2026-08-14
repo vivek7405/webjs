@@ -315,6 +315,13 @@ export function applySwap(doc, frameId, revalidating, href, incomingBuild, incom
   // and no history entry is written.
   if (refresh === 'shell') {
     ingestSeeds();
+    // Reads as a contradiction with "no history entry is written" above, so:
+    // the prose is authoritative and this call cannot fire. A refresh always
+    // reaches `fetchAndApply` with `recordHistory` false (`navigator.js` passes
+    // `!isPopState && !refresh`), so the thunk is null here, every time. It is
+    // written anyway so "the entry is recorded at the commit" holds at EVERY
+    // commit point without a reader having to prove reachability first, which
+    // is what stops the next person adding a commit point from omitting it.
     if (recordHistoryNow) recordHistoryNow();
     swapFullBody(doc);
     return;

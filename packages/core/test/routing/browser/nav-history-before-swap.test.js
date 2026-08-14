@@ -28,9 +28,10 @@ const INCOMING_SENTINEL = 'incoming-page-1406';
 const SCROLL_TO = 800;
 
 suite('Client router: history is recorded before the swap (#1406)', () => {
-  let origFetch, origPushState, navGuard, pushes;
+  let origFetch, origPushState, navGuard, pushes, origHref;
 
   function setup() {
+    origHref = location.href;
     enableClientRouter(); // idempotent; ensures the document listeners are attached
     // The swap can still degrade to a hard navigation, and an escaped
     // `location.href` assignment aborts the whole web-test-runner session
@@ -74,6 +75,12 @@ suite('Client router: history is recorded before the swap (#1406)', () => {
     if (navGuard) navGuard.remove();
     document.body.innerHTML = '';
     window.scrollTo({ left: 0, top: 0, behavior: 'instant' });
+    // These tests really do commit their pushState (the wrapper delegates to
+    // the original), so the runner's URL now points at a fake path and has
+    // lost its own `wtr-session-id` query string. Put it back, or it leaks
+    // into the next test and the next file. Same reason and same fix as
+    // `nav-guard.test.js`.
+    history.replaceState(null, '', origHref);
   }
 
   test('at the pushState call the outgoing page is still live at its own scroll offset', async () => {
