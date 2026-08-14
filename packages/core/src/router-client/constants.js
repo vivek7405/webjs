@@ -44,19 +44,9 @@ export const STREAM_MIME = 'text/vnd.webjs-stream.html';
  *   4. A poisoned scan or no shared boundary degrades to a FULL PAGE LOAD:
  *      bounded and correct, never a guessed recovery.
  *   5. Commit, in this order: `history.pushState`, then merge head, then apply
- *      the replace/morph from step 3, then re-run scripts, with the
- *      custom-element upgrade calls alongside (`activateSwappedRange`
- *      interleaves the two per top-level node; the frame and full-body tiers
- *      do all the scripts, then upgrade). Those calls are BACKSTOPS rather
- *      than the first upgrade, and the platform does the work in both normal
- *      cases: an element whose definition is already registered upgrades as a
- *      custom-element reaction the moment the swap inserts it, and
- *      `customElements.define()` upgrades matching elements already in the
- *      document, so an element a just-re-executed script defines is upgraded
- *      by that `define` call, not by ours. What is left for the backstops
- *      (plus the document-wide observer in `upgrade.js`) is a subtree the
- *      platform's insertion reactions did not reach, such as one a View
- *      Transition deferred. The push leads because
+ *      the replace/morph from step 3, then re-run scripts and upgrade custom
+ *      elements. Only the push moved (#1406); the rest of the sequence is
+ *      unchanged. The push leads because
  *      WebKit binds a same-document entry's
  *      back-forward gesture snapshot to the page state when the entry is
  *      recorded, so recording it after the content swap makes an iOS
