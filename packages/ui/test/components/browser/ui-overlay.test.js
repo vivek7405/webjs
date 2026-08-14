@@ -112,9 +112,13 @@ suite('ui-dialog', () => {
     `);
     await tick();
     const dialog = root.querySelector('ui-dialog');
-    // data-state lives on the inner [role="dialog"] element rendered
-    // inside the <ui-dialog-content> host.
-    const contentInner = dialog.querySelector('ui-dialog-content [role="dialog"]');
+    // data-state lives on the inner content div rendered inside the
+    // <ui-dialog-content> host. Located by its data-slot, NOT by [role="dialog"]:
+    // the role moved onto the native <dialog> in #1245, and the two were only
+    // ever on the same element by coincidence. data-state is a styling hook and
+    // the role is an accessibility contract, so a locator that conflates them
+    // breaks whenever either one moves.
+    const contentInner = dialog.querySelector('ui-dialog-content [data-slot="dialog-content"]');
     assert.ok(contentInner, 'inner content element exists in DOM');
     assert.equal(contentInner.getAttribute('data-state'), 'closed');
     assert.equal(getComputedStyle(dialog.querySelector('ui-dialog-content')).display, 'none', 'host hidden when closed');

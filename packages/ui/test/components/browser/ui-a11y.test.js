@@ -947,7 +947,7 @@ suite('ui-dialog a11y', () => {
     root.querySelector('ui-dialog').show();
     await tick();
     await tick();
-    const panel = root.querySelector('[data-slot="dialog-content"]');
+    const panel = root.querySelector('dialog[data-slot="dialog-native"]');
     const title = root.querySelector('[data-slot="dialog-title"]');
     const desc = root.querySelector('[data-slot="dialog-description"]');
     assert.ok(title.id, 'title got an id');
@@ -971,7 +971,7 @@ suite('ui-dialog a11y', () => {
     root.querySelector('ui-dialog').show();
     await tick();
     await tick();
-    const panel = root.querySelector('[data-slot="dialog-content"]');
+    const panel = root.querySelector('dialog[data-slot="dialog-native"]');
     assert.equal(panel.hasAttribute('aria-labelledby'), false, 'nothing to point at');
     assert.equal(panel.getAttribute('aria-label'), 'Dialog', 'generic name as the floor');
     root.querySelector('ui-dialog').hide();
@@ -1002,7 +1002,7 @@ suite('ui-dialog a11y', () => {
       dlg.show();
       await tick();
       await tick();
-      const panel = root.querySelector('[data-slot="dialog-content"]');
+      const panel = root.querySelector('dialog[data-slot="dialog-native"]');
       const desc = root.querySelector('[data-slot="dialog-description"]');
       assert.equal(panel.getAttribute('aria-label'), 'Edit profile', 'author name applied');
       assert.equal(
@@ -1032,7 +1032,7 @@ suite('ui-dialog a11y', () => {
       dlg.show();
       await tick();
       await tick();
-      const panel = root.querySelector('[data-slot="dialog-content"]');
+      const panel = root.querySelector('dialog[data-slot="dialog-native"]');
       assert.equal(panel.getAttribute('aria-labelledby'), 'dlg-own-label', 'author reference wins');
     } finally {
       dlg.hide();
@@ -1051,7 +1051,7 @@ suite('ui-dialog a11y', () => {
     root.querySelector('ui-dialog').show();
     await tick();
     await tick();
-    const panel = root.querySelector('[data-slot="dialog-content"]');
+    const panel = root.querySelector('dialog[data-slot="dialog-native"]');
     assert.equal(panel.getAttribute('aria-label'), 'Edit profile', 'author name forwarded');
     root.querySelector('ui-dialog').hide();
     root.remove();
@@ -1075,7 +1075,7 @@ suite('ui-alert-dialog a11y', () => {
     root.querySelector('ui-alert-dialog').show();
     await tick();
     await tick();
-    const panel = root.querySelector('[data-slot="alert-dialog-content"]');
+    const panel = root.querySelector('dialog[data-slot="alert-dialog-native"]');
     const title = root.querySelector('[data-slot="alert-dialog-title"]');
     const desc = root.querySelector('[data-slot="alert-dialog-description"]');
     assert.ok(title.id);
@@ -1098,7 +1098,7 @@ suite('ui-alert-dialog a11y', () => {
     root.querySelector('ui-alert-dialog').show();
     await tick();
     await tick();
-    const panel = root.querySelector('[data-slot="alert-dialog-content"]');
+    const panel = root.querySelector('dialog[data-slot="alert-dialog-native"]');
     assert.equal(panel.hasAttribute('aria-labelledby'), false, 'nothing to point at');
     assert.equal(panel.getAttribute('aria-label'), 'Alert dialog', 'generic name as the floor');
     root.querySelector('ui-alert-dialog').hide();
@@ -1121,7 +1121,7 @@ suite('ui-alert-dialog a11y', () => {
       dlg.show();
       await tick();
       await tick();
-      const panel = root.querySelector('[data-slot="alert-dialog-content"]');
+      const panel = root.querySelector('dialog[data-slot="alert-dialog-native"]');
       const desc = root.querySelector('[data-slot="alert-dialog-description"]');
       assert.equal(panel.getAttribute('aria-label'), 'Confirm deletion');
       assert.equal(
@@ -1147,7 +1147,7 @@ suite('ui-alert-dialog a11y', () => {
     root.querySelector('ui-alert-dialog').show();
     await tick();
     await tick();
-    const panel = root.querySelector('[data-slot="alert-dialog-content"]');
+    const panel = root.querySelector('dialog[data-slot="alert-dialog-native"]');
     assert.equal(panel.getAttribute('aria-label'), 'Confirm deletion', 'author name forwarded');
     root.querySelector('ui-alert-dialog').hide();
     root.remove();
@@ -1473,6 +1473,24 @@ suite('ui-sonner a11y', () => {
     await tick();
     const alert = region.querySelector('[role="alert"]');
     assert.ok(alert, 'error toast carries role=alert');
+    root.remove();
+  });
+
+  // #1245: an ordinary toast carries NO role of its own. role="status" is
+  // itself a live region, so it resolved under TWO nested live roots (measured
+  // over CDP) and some readers double-announce that, while buying nothing:
+  // the viewport is already polite. Asserting the ABSENCE of the attribute
+  // matters more than it looks. The template branches the whole attribute
+  // rather than emitting a nullish hole, because a nullish hole serves
+  // role="" from the server renderer, and an empty role is not a role.
+  test('an ordinary toast carries no role of its own, and no empty one', async () => {
+    const root = await mount(html`<ui-sonner></ui-sonner>`);
+    root.querySelector('ui-sonner').addToast('Saved', {});
+    await tick();
+    const toast = root.querySelector('[data-slot="sonner-toast"]');
+    assert.ok(toast, 'the toast rendered');
+    assert.equal(toast.hasAttribute('role'), false, 'no role attribute at all');
+    assert.equal(toast.getAttribute('role'), null, 'and not an empty one');
     root.remove();
   });
 

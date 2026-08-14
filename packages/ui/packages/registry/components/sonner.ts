@@ -32,8 +32,14 @@
  *
  * A11y (owned by the element, nothing to supply):
  *   The viewport is a persistent `aria-live="polite"` region labelled
- *   "Notifications", so a toast is announced as it is inserted; an `error`
- *   toast carries `role="alert"` so it is announced assertively. Every toast
+ *   "Notifications", so a toast is announced as it is inserted, and it is the
+ *   ONLY live root an ordinary toast resolves under: a non-error toast carries
+ *   no role of its own, because `role="status"` is itself a live region and
+ *   nesting one inside the polite viewport bought nothing while making some
+ *   readers announce the toast twice. An `error` toast does carry
+ *   `role="alert"` so it is announced assertively, which is the only way to
+ *   make one item assertive inside a polite viewport, and its second live
+ *   root is the accepted cost of that urgency. Every toast
  *   also ships a labelled close button, so a toast can always be dismissed by
  *   hand rather than only by its timer or a programmatic `toast.dismiss(id)`.
  *   That matters most for a toast that never auto-dismisses, which
@@ -247,9 +253,16 @@ export class UiSonner extends WebComponent({
     const pos = POSITIONS[this.position] ?? POSITIONS['bottom-right'];
     // The container is a persistent live region: it is in the DOM from the
     // first render (even with zero toasts), so a screen reader announces
-    // each toast as it is inserted. It defaults to polite; an `error` toast
-    // carries its own role="alert" (assertive) and that innermost live
-    // region wins for that item.
+    // each toast as it is inserted. It is polite, and it is the ONLY live
+    // root an ordinary toast resolves under.
+    //
+    // A non-error toast therefore carries no role of its own. It used to carry
+    // role="status", which is itself a live region, so the toast resolved under
+    // TWO nested live roots (measured over CDP, #1245) and some readers
+    // double-announce that. The inner role bought nothing, because the viewport
+    // is already polite. An `error` toast keeps role="alert", which is
+    // load-bearing: it is the only way to make ONE item assertive inside a
+    // polite viewport, and its second live root is the accepted cost.
     return html`<div
       data-slot="sonner"
       role="region"
@@ -262,12 +275,33 @@ export class UiSonner extends WebComponent({
       ${repeat(
         this.items.get(),
         (item) => item.id,
-        (item) => html`<div
-          data-slot="sonner-toast"
-          class=${TOAST_ITEM_BASE}
-          data-type=${item.type}
-          role=${item.type === 'error' ? 'alert' : 'status'}
-        >
+        // The role is BRANCHED rather than written as a nullish hole. A hole
+        // that evaluates to null serves role="" from the server renderer while
+        // the client renderer removes the attribute, which is the divergence
+        // test/ssr-aria.test.js exists to catch, and an empty role is worse
+        // than no role: it is not a role, so the toast falls back to `generic`
+        // in a way no attribute assertion would notice.
+        (item) => (item.type === 'error'
+          ? html`<div
+              data-slot="sonner-toast"
+              class=${TOAST_ITEM_BASE}
+              data-type=${item.type}
+              role="alert"
+            >${this._toastBody(item)}</div>`
+          : html`<div
+              data-slot="sonner-toast"
+              class=${TOAST_ITEM_BASE}
+              data-type=${item.type}
+            >${this._toastBody(item)}</div>`),
+      )}
+    </div>`;
+  }
+
+  // The toast's contents, shared by both arms of the role branch above.
+  // A METHOD, not a module-scope value: a registry module does no work at
+  // module scope.
+  _toastBody(item: ToastItem) {
+    return html`
           <div class=${`${TYPE_ICON_COLOR[item.type]} pt-0.5`}>${unsafeHTML(ICONS[item.type])}</div>
           <div class="flex-1">
             <div class="font-medium">${item.message}</div>
@@ -304,9 +338,7 @@ export class UiSonner extends WebComponent({
             class="shrink-0 rounded-md p-1 text-muted-foreground hover:bg-accent hover:text-foreground"
             @click=${() => this._remove(item.id)}
           >${unsafeHTML(CLOSE_SVG)}</button>
-        </div>`,
-      )}
-    </div>`;
+        `;
   }
 }
 UiSonner.register('ui-sonner');

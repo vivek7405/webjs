@@ -47,6 +47,10 @@
  *   floor to make an unnamed modal impossible, NOT a substitute: give the
  *   dialog a real title, since "Dialog" tells a screen reader user nothing
  *   about what they have been interrupted with.
+ *   `role="dialog"` and the name both sit on the NATIVE `<dialog>`, not on the
+ *   inner content div, so exactly one dialog-family node is exposed in the
+ *   accessibility tree. There is no `aria-modal`: a `showModal()`-opened
+ *   native dialog is already exposed as modal by the platform.
  *
  * Design tokens used: --background, --border, --muted-foreground.
  *
@@ -122,7 +126,7 @@ export function wireDialogLabels(host: Element, panelSelector: string): void {
   const panel = host.querySelector(panelSelector);
   if (!panel) return;
   // A name the author put on <ui-dialog-content> is where they naturally write
-  // it, but role="dialog" lives on the inner panel, so forward it there.
+  // it, but role="dialog" lives on the native <dialog>, so forward it there.
   //
   // This RETURNS once an authored name is forwarded, rather than falling
   // through to the title wiring below. Falling through would set
@@ -505,7 +509,7 @@ export class UiDialogContent extends WebComponent({
   }
 
   showModal(): void {
-    wireDialogLabels(this, '[data-slot="dialog-content"]');
+    wireDialogLabels(this, 'dialog[data-slot="dialog-native"]');
     const native = this._native();
     if (native && !native.open) native.showModal();
   }
@@ -520,15 +524,14 @@ export class UiDialogContent extends WebComponent({
     const parentOpen = !!this._parent()?.open;
     return html`<dialog
       data-slot="dialog-native"
+      role="dialog"
+      tabindex="-1"
       class=${NATIVE_DIALOG_CLASS}
       ${ref(this.#dialog)}
       @close=${this._onNativeClose}
       @click=${this._onNativeBackdropClick}
     ><div
       data-slot="dialog-content"
-      role="dialog"
-      aria-modal="true"
-      tabindex="-1"
       data-state=${parentOpen ? 'open' : 'closed'}
       class=${dialogContentClass()}
     >

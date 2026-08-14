@@ -55,6 +55,11 @@
  *   Treat that as a bug in your markup rather than a feature: this dialog
  *   interrupts the user to demand an explicit choice and blocks Escape, so
  *   naming it "Alert dialog" tells them nothing about what they are deciding.
+ *   `role="alertdialog"` and the name both sit on the NATIVE `<dialog>`, a
+ *   valid ARIA-in-HTML override of that element's implicit `dialog` role, so
+ *   exactly one dialog-family node is exposed rather than an `alertdialog`
+ *   nested inside a `dialog`. There is no `aria-modal`: the platform already
+ *   exposes a `showModal()`-opened dialog as modal.
  *
  * Design tokens used: --background, --border, --muted-foreground.
  *
@@ -425,10 +430,10 @@ export class UiAlertDialogContent extends WebComponent({
   }
 
   _wireLabels(): void {
-    const panel = this.querySelector('[data-slot="alert-dialog-content"]');
+    const panel = this.querySelector('dialog[data-slot="alert-dialog-native"]');
     if (!panel) return;
     // A name the author put on <ui-alert-dialog-content> is where they
-    // naturally write it, but role="alertdialog" lives on the inner panel.
+    // naturally write it, but role="alertdialog" lives on the native <dialog>.
     //
     // Each authored-name branch RETURNS rather than falling through to the
     // title wiring. Falling through would set aria-labelledby from the title
@@ -472,15 +477,14 @@ export class UiAlertDialogContent extends WebComponent({
     const parentOpen = !!this._parent()?.open;
     return html`<dialog
       data-slot="alert-dialog-native"
+      role="alertdialog"
+      tabindex="-1"
       class=${NATIVE_DIALOG_CLASS}
       ${ref(this.#dialog)}
       @cancel=${this._onNativeCancel}
       @close=${this._onNativeClose}
     ><div
       data-slot="alert-dialog-content"
-      role="alertdialog"
-      aria-modal="true"
-      tabindex="-1"
       data-size=${this.size}
       data-state=${parentOpen ? 'open' : 'closed'}
       class=${alertDialogContentClass()}

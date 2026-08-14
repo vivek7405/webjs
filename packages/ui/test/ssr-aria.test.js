@@ -124,3 +124,52 @@ test('ui-toggle-group-item: disabled state reaches the first paint', { skip }, a
     assert.match(tag, /data-slot="toggle-group-item"/, `served item has no data-slot: ${tag}`);
   }
 });
+
+// #1245: the dialog-family role moved off the inner content div and onto the
+// native <dialog>, so that exactly ONE dialog-family node is exposed in the
+// accessibility tree rather than two nested ones (measured over CDP in
+// test/e2e/a11y-tree.e2e.mjs). The role is in render(), which is the only hook
+// SSR runs, so the FIRST PAINT is where the move has to be visible. These
+// assertions are the SSR half of that contract; the tree assertions are the
+// half that proves what the platform actually exposes.
+test('ui-dialog-content: the role is on the native <dialog> at SSR, not the panel', { skip }, async () => {
+  const out = await ssr(
+    ['dialog.ts'],
+    (html) => html`<ui-dialog-content><h2>Edit profile</h2></ui-dialog-content>`,
+  );
+  assert.match(
+    out,
+    /<dialog[^>]*data-slot="dialog-native"[^>]*role="dialog"|<dialog[^>]*role="dialog"[^>]*data-slot="dialog-native"/,
+    `the native <dialog> does not carry the role: ${out.slice(0, 400)}`,
+  );
+  const panel = out.match(/<div[^>]*data-slot="dialog-content"[^>]*>/)?.[0] ?? '';
+  assert.ok(panel, 'the content panel rendered');
+  assert.ok(!/\brole=/.test(panel), `the inner panel still carries a role, so both are exposed: ${panel}`);
+  // A showModal()-opened native dialog is exposed as modal by the platform, so
+  // aria-modal on the node that owns the role would be redundant. The e2e
+  // asserts the computed `modal` property is still true without it.
+  assert.ok(!out.includes('aria-modal'), `served a redundant aria-modal: ${out.slice(0, 400)}`);
+});
+
+test('ui-alert-dialog-content: the alertdialog role is on the native <dialog> at SSR', { skip }, async () => {
+  const out = await ssr(
+    ['alert-dialog.ts'],
+    (html) => html`<ui-alert-dialog-content><h2>Are you sure?</h2></ui-alert-dialog-content>`,
+  );
+  assert.match(
+    out,
+    /<dialog[^>]*data-slot="alert-dialog-native"[^>]*role="alertdialog"|<dialog[^>]*role="alertdialog"[^>]*data-slot="alert-dialog-native"/,
+    `the native <dialog> does not carry the alertdialog role: ${out.slice(0, 400)}`,
+  );
+  const panel = out.match(/<div[^>]*data-slot="alert-dialog-content"[^>]*>/)?.[0] ?? '';
+  assert.ok(panel, 'the content panel rendered');
+  assert.ok(!/\brole=/.test(panel), `the inner panel still carries a role, so both are exposed: ${panel}`);
+  assert.ok(!out.includes('aria-modal'), `served a redundant aria-modal: ${out.slice(0, 400)}`);
+});
+
+// The sonner toast role is deliberately NOT asserted here. `items` is an empty
+// instance signal, so a viewport always renders zero toasts server-side and a
+// toast's role never reaches the server renderer through markup at all. The
+// branch in sonner.ts is still the correct shape (a nullish hole is the
+// documented footgun this file exists for), but its observable contract lives
+// in the browser suite and in the accessibility-tree e2e.

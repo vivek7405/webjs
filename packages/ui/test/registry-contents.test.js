@@ -189,7 +189,12 @@ test('card : exposes all 7 subpart class helpers (no custom elements)', { skip }
 test('dialog : delegates to native <dialog> for modal behavior', { skip }, () => {
   const src = readSource('dialog');
   assert.match(src, /'role',\s*'dialog'|"role",\s*"dialog"|role="dialog"/);
-  assert.match(src, /aria-modal/);
+  // No aria-modal assertion: the role moved onto the native <dialog> (#1245),
+  // and a showModal()-opened native dialog is already exposed as modal by the
+  // platform, so the attribute would be redundant on the node that owns the
+  // role. That the dialog is EXPOSED as modal is asserted where it can
+  // actually be observed, against the computed accessibility tree, in
+  // test/e2e/a11y-tree.e2e.mjs. A source regex could never have proven it.
   // Native dialog is what owns Escape, Tab cycling, and focus restoration.
   assert.match(src, /showModal/);
   assert.match(src, /HTMLDialogElement/);
