@@ -124,7 +124,7 @@ function nearest(arr) {
 }
 
 /**
- * @param {import('./router.js').PageRoute} route
+ * @param {import('../router.js').PageRoute} route
  * @param {Record<string,unknown>} ctx
  * @param {boolean} dev
  */
@@ -394,10 +394,10 @@ async function ssrNotFoundHtml(notFoundFile, opts) {
  *   - On a render error we walk up the chain looking for the nearest `error.js`
  *     and render that instead (falls back to a plain error page).
  *
- * @param {import('./router.js').PageRoute} route
+ * @param {import('../router.js').PageRoute} route
  * @param {Record<string,string>} params
  * @param {URL} url
- * @param {{ dev: boolean, appDir: string, req?: Request, moduleGraph?: import('./module-graph.js').ModuleGraph, serverFiles?: Map<string,string> | Set<string>, actionData?: unknown, status?: number, pageModule?: Record<string, unknown>, cspEnabled?: boolean }} opts
+ * @param {{ dev: boolean, appDir: string, req?: Request, moduleGraph?: import('../module-graph.js').ModuleGraph, serverFiles?: Map<string,string> | Set<string>, actionData?: unknown, status?: number, pageModule?: Record<string, unknown>, cspEnabled?: boolean }} opts
  * @returns {Promise<Response>}
  */
 export async function ssrPage(route, params, url, opts) {

@@ -82,7 +82,7 @@ export function componentPreloads(usedTags, appDir, elidable) {
  *
  * @param {string[]} componentUrls  direct component module URLs
  * @param {string[]} moduleUrls     boot script imports (page + layouts)
- * @param {import('./module-graph.js').ModuleGraph | undefined} graph
+ * @param {import('../module-graph.js').ModuleGraph | undefined} graph
  * @param {string[]} entryFiles     absolute paths of the SHIPPED page/layout modules (from `moduleUrls`)
  * @param {string} appDir
  * @param {Set<string>} [elidableComponents]  absolute paths to skip in the walk
@@ -156,7 +156,7 @@ export function deduplicatedPreloads(componentUrls, moduleUrls, graph, entryFile
  * importable). So the canonical SSR-only-dependency pattern (which elision keeps
  * off the client) is never preloaded (no over-fetch).
  *
- * @param {import('./module-graph.js').ModuleGraph | undefined} graph
+ * @param {import('../module-graph.js').ModuleGraph | undefined} graph
  * @param {string[]} entryFiles  absolute paths of the SHIPPED page/layout modules (from `moduleUrls`)
  * @param {string[]} componentUrls  rendered eager component URL paths
  * @param {string} appDir

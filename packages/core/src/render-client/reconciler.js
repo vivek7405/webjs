@@ -297,7 +297,7 @@ function resolveHoleValue(v) {
 }
 
 /**
- * @param {import('./html.js').TemplateResult} tr
+ * @param {import('../html.js').TemplateResult} tr
  * @param {Element | DocumentFragment | ShadowRoot} container
  */
 function createInstance(tr, container) {

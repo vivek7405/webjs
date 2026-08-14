@@ -535,7 +535,7 @@ const ROOT_MIDDLEWARE_FILES = ['middleware.ts', 'middleware.js', 'middleware.mts
  * Load the optional top-level `middleware.{ts,js,mts,mjs}`.
  * @param {string} appDir
  * @param {boolean} dev
- * @param {import('./logger.js').Logger} logger
+ * @param {import('../logger.js').Logger} logger
  */
 export async function loadMiddleware(appDir, dev, logger) {
   let file = null;

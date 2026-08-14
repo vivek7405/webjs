@@ -54,7 +54,7 @@ export function shouldIgnoreWatchPath(filename) {
  * clients, and exit once in-flight requests drain.
  * @param {import('node:http').Server} server
  * @param {Set<import('node:http').ServerResponse>} sseClients
- * @param {import('./logger.js').Logger} logger
+ * @param {import('../logger.js').Logger} logger
  */
 /**
  * Create a plain HTTP/1.1 server. WebJs deploys are expected to sit
@@ -76,7 +76,7 @@ function makeHttpServer(handler) {
  * `Request` (`toWebRequest`) and `Response` -> `ServerResponse`
  * (`sendWebResponse`), emits 103 Early Hints, and drives SSE + WS over node
  * primitives, sharing the SSE registry + lifecycle wiring with the Bun shell.
- * @param {import('./listener-types.js').ListenerContext} ctx
+ * @param {import('../listener-types.js').ListenerContext} ctx
  * @returns {{ server: import('node:http').Server, close: () => Promise<void> }}
  */
 function startNodeListener(ctx) {
@@ -208,7 +208,7 @@ function startNodeListener(ctx) {
  *   port?: number,
  *   dev?: boolean,
  *   compress?: boolean,
- *   logger?: import('./logger.js').Logger,
+ *   logger?: import('../logger.js').Logger,
  *   onError?: (error: unknown, ctx: { request: Request, requestId: string|null, phase: string }) => void,
  * }} opts
  */
@@ -258,7 +258,7 @@ export async function startServer(opts) {
     // accumulation, for the same reason: a window mixing a page edit and a
     // component edit is a component edit, and taking the last one would morph
     // fresh markup onto the old component class.
-    /** @type {import('./dev-classify.js').ReloadVerdict | null} */
+    /** @type {import('../dev-classify.js').ReloadVerdict | null} */
     let pendingVerdict = null;
     const rebuild = debounce(() => {
       const v = pendingVerdict;

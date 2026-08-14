@@ -155,7 +155,7 @@ class WebComponentBase extends Base {
 
   /**
    * Styles to adopt into the shadow root.
-   * @type {import('./css.js').CSSResult | import('./css.js').CSSResult[] | null}
+   * @type {import('../css.js').CSSResult | import('../css.js').CSSResult[] | null}
    */
   static styles = null;
 

@@ -189,7 +189,7 @@ export async function render(value, ctx) {
 }
 
 /**
- * @param {import('./html.js').TemplateResult} tr
+ * @param {import('../html.js').TemplateResult} tr
  * @param {SuspenseCtx} [ctx]
  * @returns {Promise<string>}
  */
@@ -641,7 +641,7 @@ export async function streamRender(value, ctx, controller) {
  * Stream a TemplateResult by yielding each static string piece and
  * processing each value hole incrementally.
  *
- * @param {import('./html.js').TemplateResult} tr
+ * @param {import('../html.js').TemplateResult} tr
  * @param {SuspenseCtx} [ctx]
  * @param {ReadableStreamDefaultController<string>} controller
  */

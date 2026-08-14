@@ -811,7 +811,7 @@ export function nodesToFrag(nodes) {
 /**
  * Build a TemplateInstance whose nodes (including bookends) live in a
  * document fragment that the caller will insert wherever it wants.
- * @param {import('./html.js').TemplateResult} tr
+ * @param {import('../html.js').TemplateResult} tr
  * @returns {{ inst: TemplateInstance, frag: DocumentFragment }}
  */
 export function buildDetached(tr, reconcileFormActionsCb) {

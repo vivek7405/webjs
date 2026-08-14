@@ -111,9 +111,9 @@ function frameworkServerVersion() {
  * @param {{
  *   appDir: string,
  *   dev?: boolean,
- *   logger?: import('./logger.js').Logger,
+ *   logger?: import('../logger.js').Logger,
  *   onError?: (error: unknown, ctx: { request: Request, requestId: string|null, phase: string }) => void,
- *   onReload?: (verdict?: import('./dev-classify.js').ReloadVerdict) => void,
+ *   onReload?: (verdict?: import('../dev-classify.js').ReloadVerdict) => void,
  *   onDevError?: (frame: object) => void,
  * }} opts
  */
@@ -826,7 +826,7 @@ export async function createRequestHandler(opts) {
   let rebuildInFlight = Promise.resolve();
 
   /**
-   * @param {import('./dev-classify.js').ReloadVerdict} [verdict] the live-reload
+   * @param {import('../dev-classify.js').ReloadVerdict} [verdict] the live-reload
    *   classification of the change that triggered this rebuild (#1398). Absent
    *   (an embedded host calling `rebuild()`, or any caller with no filename to
    *   classify) means a full reload, which is the fail-safe default.
@@ -841,7 +841,7 @@ export async function createRequestHandler(opts) {
     return rebuildInFlight;
   }
 
-  /** @param {import('./dev-classify.js').ReloadVerdict} [verdict] */
+  /** @param {import('../dev-classify.js').ReloadVerdict} [verdict] */
   async function doRebuild(verdict) {
     // The route table is the only eager artifact (cheap directory scan); rebuild
     // it so routing reflects added/removed route files immediately.
@@ -1356,7 +1356,7 @@ export async function createRequestHandler(opts) {
      *
      * @param {string} filename  `event.filename`, relative to `root`
      * @param {string} [root]  the watched root, defaulting to the app dir
-     * @returns {import('./dev-classify.js').ReloadVerdict}
+     * @returns {import('../dev-classify.js').ReloadVerdict}
      */
     classifyWatchPath: (filename, root) => classifyChangedPath(resolve(root || appDir, filename), {
       appDir,

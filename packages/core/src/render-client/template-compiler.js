@@ -43,7 +43,7 @@ export const INSTANCE = Symbol.for('webjs.instance');
  * } BoundPart
  */
 
-/** @param {import('./html.js').TemplateResult} tr */
+/** @param {import('../html.js').TemplateResult} tr */
 export function compile(tr) {
   const { strings } = tr;
   let cached = templateCache.get(strings);
