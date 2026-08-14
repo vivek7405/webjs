@@ -2083,6 +2083,50 @@ test('boundary: a 404 for a URL that matched no route stays a bare document', as
   assert.ok(!body.includes('<script type="module">'), 'and no boot script, since no chain rendered');
 });
 
+test('boundary: instrumentation-client boots FIRST on a boundary page too (#848)', async () => {
+  // The boundary page is where the app's client error reporting matters most,
+  // so it must not be the one page that runs app modules without it.
+  const { route, appDir } = crashApp({
+    files: { 'instrumentation-client.js': `console.log('boot');\n` },
+  });
+  const resp = await SILENT(() => ssrPage(route, {}, new URL('http://localhost/docs/crash'), {
+    dev: false, appDir, instrumentationClient: join(appDir, 'instrumentation-client.js'),
+  }));
+  const body = await resp.text();
+  const boot = body.match(/<script type="module">([\s\S]*?)<\/script>/);
+  assert.ok(boot, 'the boundary page has a boot script');
+  const imports = [...boot[1].matchAll(/import\s+"([^"]+)"/g)].map((m) => m[1]);
+  assert.equal(imports[0], '/instrumentation-client.js', 'and instrumentation is its FIRST import');
+  assert.ok(imports.includes('/docs/error.js'), 'the boundary module still boots');
+});
+
+test('boundary: a layout that throws while wrapping a 403 is REPORTED, not swallowed', async () => {
+  // These paths execute layout modules for the first time since #1298, so a
+  // genuine layout crash would otherwise vanish: a chrome-less boundary page
+  // with nothing saying why, and an APM sink that never heard about it.
+  const { route, appDir } = makeBoundaryApp({
+    files: {
+      'layout.js': `export default function Root() { throw new Error('layout-boom-403'); }\n`,
+      'admin/forbidden.js': HTML_IMPORT + `export default function F() { return html\`<p id="fb">no</p>\`; }\n`,
+      'admin/page.js': `import { forbidden } from ${JSON.stringify(WEBJS_MODULE_URL)};\nexport default function Page() { forbidden(); }\n`,
+    },
+    page: 'admin/page.js',
+    layouts: ['layout.js'],
+    forbiddens: ['admin/forbidden.js'],
+  });
+  const seen = [];
+  const resp = await SILENT(() => ssrPage(route, {}, new URL('http://localhost/admin'), {
+    dev: false, appDir, onError: (e) => seen.push(e),
+  }));
+  assert.equal(resp.status, 403, 'it still degrades to the standalone 403 rather than failing');
+  const body = await resp.text();
+  assert.ok(body.includes('id="fb"'), 'the boundary itself still rendered');
+  assert.equal(markersOf(body).length, 0, 'with no markers, since the chain could not render');
+  assert.ok(!body.includes('<script type="module">'), 'and no boot set for a chain that did not render');
+  assert.equal(seen.length, 1, 'the layout throw reached the onError sink');
+  assert.match(String(seen[0].message), /layout-boom-403/);
+});
+
 test('boundary: a boundary response is never storable and never reduced', async () => {
   // Two independent guarantees. The HTML cache refuses a non-200 outright, and
   // the reduced X-Webjs-Have path is structurally unreachable: the boundary

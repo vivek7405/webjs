@@ -415,6 +415,25 @@ async function renderChain(route, ctx, dev, suspenseCtx, have, pageModule) {
 }
 
 /**
+ * Report a throw from a layout wrapped around a 403 / 401 / 404 boundary
+ * (#1298) to the same sinks a page-render error reaches, then let the caller
+ * degrade to the standalone render. Best-effort on both sinks: a throwing sink
+ * must never affect the response.
+ *
+ * @param {unknown} err
+ * @param {{ onError?: (e: unknown) => void, onDevError?: (e: unknown) => void }} opts
+ */
+function reportBoundaryLayoutError(err, opts) {
+  if (typeof opts.onError === 'function') {
+    try { opts.onError(err); } catch { /* a throwing sink must not affect the response */ }
+  }
+  if (typeof opts.onDevError === 'function') {
+    try { opts.onDevError(err); } catch { /* a throwing sink must not affect the response */ }
+  }
+  console.error('[webjs] a layout threw while wrapping a boundary page:', err);
+}
+
+/**
  * The boot module set for a boundary response: what actually RENDERED, the
  * boundary module plus the layouts wrapping it (#1298).
  *
@@ -434,7 +453,8 @@ async function renderChain(route, ctx, dev, suspenseCtx, have, pageModule) {
  * @param {string} boundaryFile
  * @param {string[]} wrapLayouts
  * @param {{ appDir: string, inertRouteModules?: Set<string>,
- *   importOnlyRouteModules?: Map<string, string[]> }} opts
+ *   importOnlyRouteModules?: Map<string, string[]>,
+ *   instrumentationClient?: string }} opts
  * @returns {string[]}
  */
 function boundaryModuleUrls(boundaryFile, wrapLayouts, opts) {
@@ -450,6 +470,18 @@ function boundaryModuleUrls(boundaryFile, wrapLayouts, opts) {
     const emit = opts.importOnlyRouteModules && opts.importOnlyRouteModules.get(f);
     if (emit) emit.forEach(push);
     else push(f);
+  }
+  // instrumentation-client.{js,ts} (#848) rides the SAME first-import contract
+  // it has on the happy path: it runs before app modules so the app's client
+  // error reporting is installed before anything can throw. A boundary page is
+  // where that matters most, so it must not be the one place it is missing.
+  // Only when the set is non-empty: an empty set means no boot script at all,
+  // and instrumentation alone is not a reason to start emitting one.
+  if (opts.instrumentationClient && urls.length) {
+    const u = toUrlPath(opts.instrumentationClient, opts.appDir);
+    const i = urls.indexOf(u);
+    if (i !== -1) urls.splice(i, 1);
+    urls.unshift(u);
   }
   return urls;
 }
@@ -512,9 +544,14 @@ async function ssrBoundaryHtml(file, heading, opts) {
           } else {
             body = await renderToString(tree, { ssr: true, dev: opts.dev });
           }
-        } catch {
+        } catch (layoutErr) {
           // A wrapped layout threw. Degrade to the standalone render this has
-          // always produced, and to its empty boot set with it.
+          // always produced, and to its empty boot set with it. REPORT it
+          // first: these paths execute layout modules for the first time since
+          // #1298, so a genuine layout crash would otherwise vanish, leaving a
+          // developer looking at a chrome-less boundary page with nothing
+          // saying why, and an APM sink that never heard about it.
+          reportBoundaryLayoutError(layoutErr, opts);
           body = await renderToString(tree, { ssr: true, dev: opts.dev });
           moduleUrls = [];
         }
@@ -564,7 +601,9 @@ async function ssrNotFoundHtml(notFoundFile, opts) {
           } else {
             body = await renderToString(tree, { ssr: true, dev: opts.dev });
           }
-        } catch {
+        } catch (layoutErr) {
+          // Same degradation, and the same reporting, as ssrBoundaryHtml above.
+          reportBoundaryLayoutError(layoutErr, opts);
           body = await renderToString(tree, { ssr: true, dev: opts.dev });
           moduleUrls = [];
         }

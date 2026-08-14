@@ -159,12 +159,29 @@ export async function checkServerImportInBrowserModule(appDir, violations) {
   for (const page of routeTable.pages || []) {
     for (const f of page.errors || []) alwaysShipRouteModules.set(f, 'error boundary');
     for (const f of page.loadings || []) alwaysShipRouteModules.set(f, 'loading boundary');
+    // forbidden / unauthorized joined this set with #1298. They used to render
+    // with an empty boot set, so their modules never reached the browser and
+    // omitting them here was harmless. They now render inside their layout
+    // chain AND ship, so a `forbidden.ts` doing `import { auth } from
+    // '#lib/auth.server.ts'` (a natural thing on a 403: "signed in as X, but
+    // not permitted") is a real throw-at-load crash that takes every sibling
+    // registration in the same module script with it.
+    for (const f of page.forbiddens || []) alwaysShipRouteModules.set(f, 'forbidden boundary');
+    for (const f of page.unauthorizeds || []) alwaysShipRouteModules.set(f, 'unauthorized boundary');
   }
   if (routeTable.notFound) alwaysShipRouteModules.set(routeTable.notFound, 'not-found page');
   if (routeTable.notFounds) {
     for (const f of routeTable.notFounds.values()) {
       alwaysShipRouteModules.set(f, 'not-found page');
     }
+  }
+  // global-not-found ships for the same reason: a thrown notFound() with no
+  // nearer boundary renders it against the matched route, so it wraps and
+  // boots. global-ERROR is deliberately absent: it returns its own document
+  // verbatim with no importmap and no boot script, so nothing of it ever
+  // reaches the browser.
+  if (routeTable.globalNotFound) {
+    alwaysShipRouteModules.set(routeTable.globalNotFound, 'global-not-found page');
   }
 
   // The elision flag mirrors `dev.js`: respect `webjs.elide === false` and the
