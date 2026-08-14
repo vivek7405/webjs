@@ -38,6 +38,10 @@ import { _swapCommit, applySwap } from './swap.js';
  * @param {'page' | 'shell'} [refresh]  Same-URL in-place refresh (#1398). It
  *   suppresses the `X-Webjs-Have` header and picks the swap tier; see
  *   `refreshPage`.
+ * @param {boolean} [noPrefetch]  Never consume a speculative entry, whatever the
+ *   cache holds (#1407). Set by `loadFrame`: a `<webjs-frame src>` self-load or
+ *   `src` mutation asks for THIS frame's content now, which is a freshness
+ *   request rather than the click-follows-hover shape the warm cache serves.
  * @returns {Promise<{ ok: boolean, status: number | null, aborted: boolean, applied: boolean }>}
  *   The fetch outcome, so a caller (the form-submission busy/event lifecycle)
  *   can report whether the submission settled as a success, an error, or an
@@ -58,7 +62,7 @@ import { _swapCommit, applySwap } from './swap.js';
  *   boundary scan). A caller deciding whether to fall back to a full page load
  *   wants `applied`; one reporting the submission's success wants `ok`.
  */
-export async function fetchAndApply(href, frameId, recordHistory, optimisticState, method, body, signal, token, revalidating, refresh) {
+export async function fetchAndApply(href, frameId, recordHistory, optimisticState, method, body, signal, token, revalidating, refresh, noPrefetch) {
   method = method || 'GET';
   const myToken = typeof token === 'number' ? token : currentNavigationToken;
   let html;
@@ -89,7 +93,9 @@ export async function fetchAndApply(href, frameId, recordHistory, optimisticStat
     // always hits the server (it is a write). A FRAME nav consumes only an entry
     // fetched under the SAME frame id (#1407): the key carries that dimension,
     // so a page fragment can never be applied into a frame region, nor a frame
-    // subtree into a page swap. The entry
+    // subtree into a page swap, and a `<webjs-frame src>` SELF-load opts out
+    // entirely via `noPrefetch`, since it is asking for fresh content rather
+    // than following a hover. The entry
     // is single-use (prefetchTake removes it) and TTL-guarded. A PAGE entry is
     // then validated by its ANCHOR rather than by an identical X-Webjs-Have
     // (#1114): a fragment applies wherever the boundary it starts at is still
@@ -103,7 +109,7 @@ export async function fetchAndApply(href, frameId, recordHistory, optimisticStat
     // predates the change that triggered it. `refreshPage` clears both caches
     // before it fetches, so this only closes the window where a prefetch lands
     // between that clear and this read.
-    const prefetched = (method === 'GET' && !body && !refresh)
+    const prefetched = (method === 'GET' && !body && !refresh && !noPrefetch)
       ? prefetchTake(href, optimisticState ? optimisticState.haveKeys : undefined, frameId)
       : null;
     if (prefetched) {

@@ -442,9 +442,11 @@ export function prefetch(href, frameId) {
       // top, so consuming the entry gives the reader a changed address over an
       // unchanged panel rather than a fetch. Whether the frame is found at all
       // depends on where it sits relative to the streamed boundary (one OUTSIDE
-      // every boundary does arrive in the first flush and would be found), and
-      // the router cannot tell which from the bytes, so it declines rather than
-      // gamble. It cannot be filed under
+      // every boundary does arrive in the first flush and would be found). The
+      // router does not LOOK: the refusal is decided on the response header,
+      // before the body is ever read, so it declines the whole shape rather than
+      // parse a document it has already been told is not the slice it asked for.
+      // It cannot be filed under
       // the page key either, since it was fetched with a header the response
       // varies on.
       //

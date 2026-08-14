@@ -24,6 +24,7 @@ import {
   _prefetchPeek,
   _prefetchTake,
   _resetPrefetch,
+  loadFrame as _loadFrame,
 } from '../../../src/router-client.js';
 
 import { assert } from '../../../../../test/browser-assert.js';
@@ -224,13 +225,37 @@ suite('Client router: frame-dimensioned link prefetch (#1407)', () => {
     } finally { teardown(); }
   });
 
+  test('a <webjs-frame src> SELF-load never consumes a speculative entry (#1407)', async () => {
+    // Out of scope by design. Dropping the blanket `!frameId` guard from the
+    // consume check made `loadFrame` eligible for the first time, and it should
+    // not be: a `src` self-load or `src` mutation is the app asking for THIS
+    // frame's content now, a freshness request rather than the click-follows-
+    // hover shape the warm cache serves.
+    setup('/tasks?status=selfload');
+    try {
+      const target = location.origin + '/tasks?status=selfload';
+      _prefetch(target, 'tasks');
+      await afterPrefetchAttempt();
+      assert.ok(_prefetchPeek(target, 'tasks'), 'precondition: a matching frame entry is warm');
+
+      const before = calls.length;
+      const frame = document.getElementById('tasks');
+      await _loadFrame(frame, '/tasks?status=selfload');
+      await settle();
+
+      assert.equal(calls.length, before + 1, 'the self-load went to the network');
+      assert.ok(_prefetchPeek(target, 'tasks'), 'and left the warm entry for a real click');
+    } finally { teardown(); }
+  });
+
   test('a full-document answer to a framed prefetch is not stored, but the refusal is memoed', async () => {
     // The server's frame branch has two fall-throughs (a streamed render, an
     // absent frame id) that answer with a whole document and no marker. Storing
-    // one under a frame key risks a DEAD click: the swap looks for
-    // `webjs-frame#<id>` in the body and may not find it (an absent id was never
-    // rendered, and a streamed page's content sits in a template the swap does
-    // not descend into), leaving the region unchanged instead of fetching.
+    // one under a frame key risks a click that changes the url and scrolls to
+    // top while the panel stays put: the swap looks for `webjs-frame#<id>` in the
+    // body and may not find it (an absent id was never rendered, and a streamed
+    // page's content sits in a template the swap does not descend into), so it
+    // leaves the region unchanged while the navigation around it completes.
     setup('/tasks?status=streamed');
     try {
       window.fetch = async (url, init) => {

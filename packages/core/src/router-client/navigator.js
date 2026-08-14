@@ -220,6 +220,15 @@ export async function loadFrame(frameEl, url) {
     /* body */ null,
     signal,
     myToken,
+    /* revalidating */ false,
+    /* refresh */ undefined,
+    // A self-load never consumes a speculative entry (#1407). Dropping the
+    // blanket `!frameId` guard from the consume check made this path eligible
+    // for the first time, and it should not be: a `src` self-load or a `src`
+    // mutation is the app asking for THIS frame's content now, which is a
+    // freshness request, not the click-follows-hover shape the warm cache
+    // exists to serve. Deliberately out of scope for that change.
+    /* noPrefetch */ true,
   );
 }
 
