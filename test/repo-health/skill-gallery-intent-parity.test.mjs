@@ -43,6 +43,11 @@ function cheatSheetRows() {
   const end = rest.indexOf('\n## ');
   const section = end === -1 ? rest : rest.slice(0, end);
 
+  // Cells are split on a bare `|`, so no cell may CONTAIN one, escaped as `\|`
+  // or otherwise. That is a real constraint on the table rather than a parser
+  // shortcut, and the 5-cell assertion below is what enforces it: a row with a
+  // pipe in a cell fails loudly here instead of being silently mis-parsed into
+  // the wrong columns. If a row ever needs a literal pipe, phrase around it.
   return section
     .split('\n')
     .filter((l) => l.startsWith('|') && !/^\|[\s|:-]*\|$/.test(l))
@@ -88,7 +93,13 @@ test('every gallery demo has exactly one cheat-sheet row', () => {
   const rows = cheatSheetRows();
   const demos = navDemoPaths();
   const onDisk = diskDemoPaths();
-  assert.ok(demos.length >= 20, `expected the gallery index to list its demos, found ${demos.length}`);
+  // Non-vacuity is asserted on the DISK set, not on a hand-written floor over
+  // the parsed ones. The disk set is the anchor, so it is the only one that
+  // cannot go quietly empty (a missing directory throws in readdirSync rather
+  // than returning nothing), and once it is known non-empty the three-way
+  // equality below carries every other case. A `demos.length >= N` floor would
+  // just be a second number to remember to raise.
+  assert.ok(onDisk.length > 0, 'found no demo directories under gallery/app');
 
   const rowDemos = rows.map((r) => r.demo);
   assert.deepEqual(

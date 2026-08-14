@@ -35,7 +35,7 @@ WebJs is an AI-first, web-components-first framework with **no build step**: sou
 
 ## Reach For The Right Primitive
 
-Scan this BEFORE deciding how to build something, while the shape of the code is still open. WebJs ships a primitive for most of the jobs below, and the failure to avoid is not picking the wrong one, it is not knowing one exists and hand-rolling the React-shaped version instead. That version compiles, passes `webjs check`, and ships, so nothing catches it. The "reflex to resist" column is what the hand-rolled version usually looks like.
+Scan this BEFORE deciding how to build something, while the shape of the code is still open. WebJs ships a primitive for most of the jobs below, and the mistake to guard against is rarely choosing badly between them. It is that the primitive never comes to mind at all, so the React-shaped version gets hand-rolled in its place. That version compiles, passes `webjs check`, and ships, so nothing catches it. The "reflex to resist" column is what the hand-rolled version usually looks like.
 
 Rows point rather than explain. The reference is the authority on the rule, and it is the durable half: the demo lives in the scaffold gallery, which an app deletes with `npm run gallery:clear` once it has outgrown it.
 
