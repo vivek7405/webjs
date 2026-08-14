@@ -431,9 +431,14 @@ export default function NotFound() {
     </p>
     <p>
       A boundary sits inside its own segment's layout, so it cannot catch that layout.
-      An error thrown by a layout is handled by the next boundary further out. This is
-      Next's rule and it exists for a plain reason: re-running the layout that just threw
-      would only throw again.
+      This is Next's rule and it exists for a plain reason: re-running the layout that
+      just threw would only throw again. On a 500 the error walks outward to the next
+      <code>error.ts</code>, and on to <code>global-error.ts</code> once the chain is
+      exhausted. The <code>not-found.ts</code>, <code>forbidden.ts</code> and
+      <code>unauthorized.ts</code> boundaries have no outward walk: each renders the
+      single nearest file, so a throwing layout degrades that one response to the
+      boundary without its chrome, keeping the status. See
+      <a href="/docs/error-handling">Error handling</a> for the full rules.
     </p>
 
     <code-block>// app/error.ts: root error boundary

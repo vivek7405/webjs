@@ -31,7 +31,14 @@ export default function ErrorHandling() {
 
     <p>The boundary renders <strong>inside the layouts at and above its own segment</strong>, so your site chrome stays on screen: the nav, the sidebar and the header are still there, and the user has something to navigate away with. It also means a client-router navigation into a failing page stays a soft navigation rather than reloading the document, so hydrated state elsewhere on the page survives. A layout deeper than the boundary never rendered on the way in, so it is not rendered on the way out either.</p>
 
-    <p>Because the boundary sits inside its own segment's layout, that layout cannot be caught by it. An error thrown by a layout is handled by the next boundary further out, which is where its own markup is no longer in play. This matches Next's component hierarchy.</p>
+    <p>Because the boundary sits inside its own segment's layout, that layout cannot be caught by it. This matches Next's component hierarchy. What happens instead depends on which boundary is rendering:</p>
+
+    <ul>
+      <li>On a <strong>500</strong>, the error walks outward: each <code>error.ts</code> in the chain is tried in turn, innermost first, and a layout that throws fails every attempt whose layouts include it, so control ends at <code>global-error.ts</code> (or the built-in 500 page) once they are exhausted.</li>
+      <li>On a <strong>404, 403 or 401</strong> there is no outward walk. Each renders the single nearest boundary, so a layout that throws degrades that response to the boundary on its own, without the surrounding chrome and without a boot script. The status is preserved. A <code>redirect()</code> thrown by one of those layouts is discarded rather than followed, because the status is already decided and the boundary page is the answer to that request.</li>
+    </ul>
+
+    <p>A layout that genuinely crashes is reported to your <code>onError</code> hook rather than being swallowed, so it reaches your error tracker. Repeats of the same crash within one request are collapsed to a single report, since one shared layout can fail several boundary attempts. A <code>redirect()</code> or <code>notFound()</code> is never reported, being routing rather than a crash.</p>
 
     <p>Two consequences worth knowing. A layout that fetches data runs that fetch a second time on a boundary response, since the chain is rendered again around the boundary. And a <code>&lt;webjs-suspense&gt;</code> inside a wrapped layout shows its fallback, because a boundary response is buffered so its status and headers are final before the first byte goes out.</p>
 

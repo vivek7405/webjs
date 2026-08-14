@@ -415,6 +415,23 @@ async function renderChain(route, ctx, dev, suspenseCtx, have, pageModule) {
 }
 
 /**
+ * A per-request dedup key for a secondary boundary failure: the error's name,
+ * message and throw site. Identity cannot be used, because a layout that
+ * constructs its error yields a fresh object each time it is re-run, and the
+ * whole point is to collapse exactly those repeats while letting a genuinely
+ * different failure through. The first stack frame is the throw site, so two
+ * different layouts raising the same message still read as distinct causes.
+ *
+ * @param {unknown} err
+ * @returns {string}
+ */
+function boundaryErrorKey(err) {
+  if (!(err instanceof Error)) return `raw:${String(err)}`;
+  const site = String(err.stack || '').split('\n')[1] || '';
+  return `${err.name}:${err.message}:${site.trim()}`;
+}
+
+/**
  * Report a throw from a layout wrapped around a boundary page (#1298) to the
  * same sinks a page-render error reaches, then let the caller degrade to the
  * standalone render. Best-effort on both sinks: a throwing sink must never
@@ -435,14 +452,21 @@ async function renderChain(route, ctx, dev, suspenseCtx, have, pageModule) {
  * standalone boundary body, exactly as it does for a real layout crash, and
  * the status the boundary carries is preserved.
  *
- * REPORTED AT MOST ONCE PER REQUEST, via the caller's `once` latch. The 500
- * path tries each boundary in the chain, and a throwing layout that is an
- * ancestor of several of them fails EVERY attempt: `layoutsForBoundary` selects
- * by segment ancestry rather than by boundary depth, so two boundaries at
- * different segments can resolve to the same layout set. Without the latch a
- * root layout that throws is reported once per boundary in the chain. Identity
- * deduplication would not do, because a layout that constructs its error
- * (`throw new Error(...)`) yields a fresh object per attempt.
+ * Deduplicated per request by CAUSE, via the caller's `seen` set. The 500 path
+ * tries each boundary in the chain, and a throwing layout that is an ancestor
+ * of several of them fails EVERY attempt: `layoutsForBoundary` selects by
+ * segment ancestry rather than by boundary depth, so two boundaries at
+ * different segments can resolve to the same layout set. Without dedup a root
+ * layout that throws is reported once per boundary in the chain.
+ *
+ * The key is the error's name, message and throw site rather than its identity,
+ * because a layout that constructs its error (`throw new Error(...)`) yields a
+ * fresh object per attempt. Deduplicating on "any secondary failure already
+ * reported" instead would be wrong in the other direction: an inner boundary
+ * throwing a TypeError would silence a LATER, unrelated root-layout crash, and
+ * would make the `global-error` report below unreachable on every route whose
+ * chain contains a real `error.{js,ts}`, since reaching that block at all means
+ * an earlier attempt already threw. Distinct causes are each reported once.
  *
  * `overlay` says whether this failure may claim the DEV OVERLAY. The overlay
  * holds one retained frame per URL and the dev handler's slot is last-write
@@ -455,13 +479,14 @@ async function renderChain(route, ctx, dev, suspenseCtx, have, pageModule) {
  *
  * @param {unknown} err
  * @param {{ onError?: (e: unknown) => void, onDevError?: (e: unknown) => void }} opts
- * @param {{ what?: string, once?: { reported: boolean }, overlay?: boolean }} [cfg]
+ * @param {{ what?: string, seen?: Set<string>, overlay?: boolean }} [cfg]
  */
 function reportBoundaryLayoutError(err, opts, cfg = {}) {
   if (isRedirect(err) || isNotFound(err) || isForbidden(err) || isUnauthorized(err)) return;
-  if (cfg.once) {
-    if (cfg.once.reported) return;
-    cfg.once.reported = true;
+  if (cfg.seen) {
+    const key = boundaryErrorKey(err);
+    if (cfg.seen.has(key)) return;
+    cfg.seen.add(key);
   }
   const what = cfg.what || 'a layout threw while wrapping a boundary page';
   if (typeof opts.onError === 'function') {
@@ -1070,9 +1095,11 @@ export async function ssrPage(route, params, url, opts) {
     // error page's boot scripts (when moduleUrls is non-empty) and
     // the meta csp-nonce tag both pass strict-CSP enforcement.
     const errNonce = opts.req ? getNonce(opts.req) : undefined;
-    // One latch for the whole 500 path: the walk below, and the global-error
-    // attempt after it, report at most ONE secondary failure between them.
-    const secondary = { reported: false };
+    // One dedup set for the whole 500 path: the walk below and the
+    // global-error attempt after it collapse REPEATS of the same cause (a
+    // shared layout that fails every attempt) while still reporting a
+    // genuinely different failure, including global-error's own.
+    const secondary = new Set();
     // Try nearest error.js (innermost → outermost).
     for (let i = route.errors.length - 1; i >= 0; i--) {
       try {
@@ -1125,7 +1152,7 @@ export async function ssrPage(route, params, url, opts) {
         // a routing decision rather than a crash.
         reportBoundaryLayoutError(nested, opts, {
           what: 'an error boundary or its layout threw while handling a render error',
-          once: secondary,
+          seen: secondary,
           overlay: false,
         });
       }
@@ -1156,7 +1183,7 @@ export async function ssrPage(route, params, url, opts) {
         // that failed.
         reportBoundaryLayoutError(nested, opts, {
           what: 'global-error threw while handling a render error',
-          once: secondary,
+          seen: secondary,
           overlay: false,
         });
       }

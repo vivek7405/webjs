@@ -2242,11 +2242,16 @@ test('boundary: a broken global-error is reported, not silently swallowed', asyn
   const { route, appDir } = makeBoundaryApp({
     files: {
       'global-error.js': `export default function GE() { throw new Error('global-error-boom'); }\n`,
+      // A REAL error boundary in the chain, which is the shape that matters:
+      // control only reaches global-error because this one threw first, so a
+      // dedup keyed on "any secondary failure already reported" would swallow
+      // global-error's own crash on every route that has an error.ts at all.
+      'error.js': `export default function Err() { throw new Error('boundary-boom'); }\n`,
       'page.js': `export default function Page() { throw new Error('page-boom'); }\n`,
     },
     page: 'page.js',
     layouts: [],
-    errors: [],
+    errors: ['error.js'],
   });
   const seen = [];
   const resp = await SILENT(() => ssrPage(route, {}, new URL('http://localhost/'), {
@@ -2257,7 +2262,33 @@ test('boundary: a broken global-error is reported, not silently swallowed', asyn
   assert.ok(body.includes('Something went wrong'), 'it still degrades to the default 500 page');
   const messages = seen.map((e) => String(e && e.message));
   assert.ok(messages.includes('global-error-boom'), 'the global-error crash reached the sink');
+  assert.ok(messages.includes('boundary-boom'), 'and so did the boundary that failed before it');
   assert.ok(messages.includes('page-boom'), 'alongside the original page error');
+});
+
+test('boundary: dedup collapses REPEATS of one cause, not distinct failures', async () => {
+  // The dedup exists for one layout that fails every attempt. It must not
+  // silence a genuinely different secondary failure: an inner boundary that
+  // throws its own error, then an outer attempt whose layout crashes, are two
+  // causes and both belong in the sink.
+  const { route, appDir } = makeBoundaryApp({
+    files: {
+      'layout.js': `export default function Root() { throw new Error('shared-layout-boom'); }\n`,
+      'error.js': HTML_IMPORT + `export default function Err() { return html\`<p>outer</p>\`; }\n`,
+      'docs/error.js': `export default function Err() { throw new TypeError('inner-boundary-boom'); }\n`,
+      'docs/page.js': `export default function Page() { throw new Error('page-boom'); }\n`,
+    },
+    page: 'docs/page.js',
+    layouts: ['layout.js'],
+    errors: ['error.js', 'docs/error.js'],
+  });
+  const seen = [];
+  await SILENT(() => ssrPage(route, {}, new URL('http://localhost/docs'), {
+    dev: false, appDir, onError: (e) => seen.push(e),
+  }));
+  const messages = seen.map((e) => String(e && e.message));
+  assert.ok(messages.includes('inner-boundary-boom'), 'the inner boundary crash is reported');
+  assert.ok(messages.includes('shared-layout-boom'), 'and the LATER, unrelated layout crash is not swallowed by it');
 });
 
 test('boundary: a boundary response is never storable and never reduced', async () => {
