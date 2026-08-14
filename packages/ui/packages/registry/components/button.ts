@@ -11,6 +11,15 @@
  * shadcn React's `asChild` (Slot) prop has no equivalent here: just call
  * `buttonClass(...)` and spread the classes onto whatever element you want.
  *
+ * Design: One primary button per view. That is the action pyramid, and it is the rule
+ * most often broken, because every action feels important to whoever built the
+ * screen. Everything else is `outline` or `secondary`, and anything genuinely
+ * minor is `ghost` or a `link`. Two default-variant buttons side by side tell
+ * the reader nothing about which one to press, so they decide by position
+ * instead, which is not the decision you wanted them to make. `destructive` is
+ * for the irreversible one, not merely the negative one: cancel is not
+ * destructive.
+ *
  * A11y (required for accessible output): an icon-only button (the `icon`,
  * `icon-xs`, `icon-sm`, `icon-lg` sizes) has no visible text, so it MUST
  * carry an accessible name via aria-label (or aria-labelledby). A button

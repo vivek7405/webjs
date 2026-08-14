@@ -60,6 +60,13 @@
  *                         refocusing its sub-trigger) and refocus the trigger
  *   Tab                   close menu and proceed with normal tab order
  *
+ * Design: A menu holds actions, not navigation and not settings, and it holds the ones
+ * too numerous or too rare to sit on the surface. If there are two actions, put
+ * them on the surface as buttons instead, because a menu costs a click and hides
+ * what is available. Group with separators when there are more than about five,
+ * and put anything destructive at the bottom behind a separator so it is not
+ * adjacent to something routine.
+ *
  * A11y (owned by the element, nothing to supply):
  *   The trigger gets `aria-haspopup` / `aria-expanded` / `aria-controls`, the
  *   panel is a `role="menu"` labelled back by the trigger, and a disabled item

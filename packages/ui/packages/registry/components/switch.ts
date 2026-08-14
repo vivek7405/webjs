@@ -11,6 +11,13 @@
  * Design tokens used: --primary, --input, --background, --foreground, --ring,
  * --primary-foreground.
  *
+ * Design: A switch takes effect immediately, which is what separates it from a checkbox.
+ * If the change needs a save button, it is a checkbox and using a switch there
+ * is a promise the form does not keep. Label the thing being switched, not the
+ * action (`Email notifications`, not `Enable email notifications`), because the
+ * control already says on or off and the label should read the same in both
+ * states.
+ *
  * A11y (required for accessible output):
  *   Keep `role="switch"` on the native checkbox. That is what makes a screen
  *   reader announce "on / off" rather than "checked / unchecked", and the

@@ -12,6 +12,12 @@
  * Design tokens used: --input, --background, --muted-foreground, --ring,
  * --destructive.
  *
+ * Design: Size it to the answer you expect, since the field is the clearest signal
+ * anyone gets about how much to write. Three rows asks for a sentence and ten
+ * asks for a paragraph, and a one-line input asks for neither. Let it grow
+ * rather than trapping a long answer in a small scrolling box, and if there is a
+ * hard limit say so before they hit it rather than truncating afterwards.
+ *
  * A11y (required for accessible output):
  *   LABEL IT. A `<label class=${labelClass()} for="<the textarea's id">` linked
  *   by the `for` / `id` pair is the whole requirement. The `placeholder` in the

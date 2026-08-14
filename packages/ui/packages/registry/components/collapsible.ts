@@ -17,6 +17,12 @@
  *
  * Design tokens used: --border, --ring, --foreground.
  *
+ * Design: Same restraint as the accordion, one region at a time. The trigger must say
+ * what is inside before it opens, so `Advanced options` works and `More` does
+ * not. Reserve it for something genuinely secondary; a collapsible around
+ * primary content trades a scroll the reader would have done anyway for a click
+ * they might not.
+ *
  * A11y (mostly handled by the native primitives):
  *   Build it on `<details>` + `<summary>`. The browser gives you the button
  *   semantics, the expanded state, Enter / Space activation, and focus for free,

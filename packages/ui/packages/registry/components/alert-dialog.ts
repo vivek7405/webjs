@@ -44,6 +44,14 @@
  * Keyboard: Escape is blocked (alert dialogs require explicit choice);
  * Tab cycles trapped within the dialog (native focus trap).
  *
+ * Design: This interrupts. That is the whole point, so spend it only on something
+ * irreversible, and never on a confirmation the reader will learn to dismiss
+ * without reading. The title asks the actual question and the confirm button
+ * names the actual verb, so `Delete workspace` beats `Are you sure?` with an
+ * `OK`, which forces a reader to reconstruct what they are agreeing to. A
+ * destructive confirm takes the destructive variant and sits on the right,
+ * with cancel to its left where the reflex lands.
+ *
  * A11y (owned by the element, but SUPPLY A TITLE):
  *   On open the element names and describes the panel from the
  *   `data-slot="alert-dialog-title"` / `alert-dialog-description` nodes,

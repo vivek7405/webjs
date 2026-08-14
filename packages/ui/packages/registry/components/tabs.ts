@@ -30,6 +30,13 @@
  *   Home / End               first / last
  *   Enter / Space            activate (native button activation)
  *
+ * Design: Tabs are peers, so the content behind each must be genuinely parallel and the
+ * reader must not need two of them at once. A step in a sequence is not a tab.
+ * Keep the labels to one or two words so the tab row does not wrap, since a
+ * wrapped tab row stops reading as a row. The first tab is the default and
+ * should be the one most readers want, not the one that comes first
+ * alphabetically.
+ *
  * A11y (owned by the element, nothing to supply beyond trigger names):
  *   The element wires the whole APG Tabs pattern: the list is a
  *   `role="tablist"` reporting `aria-orientation`, each trigger is a

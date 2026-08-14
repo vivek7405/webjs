@@ -15,6 +15,13 @@
  * Design tokens used: --input, --background, --primary, --primary-foreground,
  * --muted-foreground, --foreground, --ring, --destructive.
  *
+ * Design: The label is not optional, and a placeholder is not a label: it disappears the
+ * moment someone types, so a form labelled only by placeholders is unreadable
+ * exactly when the reader is checking their work. Size the field to the content
+ * it expects, since a postcode field the width of the page tells the reader they
+ * have got something wrong. Keep help text under the field rather than beside
+ * it, and reserve the error space so a message does not shift the form.
+ *
  * A11y (required for accessible output):
  *   LABEL IT. A `<label class=${labelClass()} for="<the input's id">` is the
  *   whole requirement, and the `for` / `id` pair is what links them. Without it

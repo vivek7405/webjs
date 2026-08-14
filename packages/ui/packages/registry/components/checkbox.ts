@@ -12,6 +12,13 @@
  * Design tokens used: --input, --primary, --primary-foreground, --background,
  * --ring, --destructive.
  *
+ * Design: A checkbox is for choices that are independent, so if the options are mutually
+ * exclusive it is a radio group and if there are two states of one thing it is a
+ * switch. The label is the click target, which is a usability property rather
+ * than a styling one. Group related checkboxes in a fieldset with a legend, and
+ * keep the copy positive: `Email me about updates` is answerable, `Do not email
+ * me` makes the reader work out what checking it means.
+ *
  * A11y (required for accessible output):
  *   `data-slot="checkbox"` is REQUIRED, not decoration. The injected stylesheet
  *   keys the checkmark on it, so without it a checked box renders as a filled

@@ -23,6 +23,13 @@
  * Design tokens used: --input, --background, --primary, --primary-foreground,
  * --muted-foreground, --ring, --destructive.
  *
+ * Design: A select trades scanning for space, so it is right past about seven options and
+ * wrong under about four, where radios show every choice at once. It is the
+ * wrong control for something with a natural order the reader is adjusting (use a
+ * slider or a stepper) and for anything they will want to search. Always carry a
+ * sensible default: an empty select asks the reader to make a decision before
+ * they know what the options are.
+ *
  * A11y (required for accessible output):
  *   LABEL IT. A `<label class=${labelClass()} for="<the select's id">` linked by
  *   the `for` / `id` pair is the whole requirement. A `<select>` with no label

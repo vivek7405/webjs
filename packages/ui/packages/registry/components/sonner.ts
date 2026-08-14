@@ -30,6 +30,13 @@
  * per-instance dispatch (bypasses the singleton router that `toast()`
  * uses); typically only needed when mounting multiple viewports.
  *
+ * Design: A toast is for confirming something the reader did, and it is the weakest
+ * notification in the kit because it disappears. Nothing important belongs here:
+ * if they must act on it, it is an alert or a dialog. Keep it to one line, put
+ * any undo in the toast itself where the reflex is, and let the type carry the
+ * meaning through the semantic roles rather than through a colour picked for
+ * the toast alone.
+ *
  * A11y (owned by the element, nothing to supply):
  *   The viewport is a persistent `aria-live="polite"` region labelled
  *   "Notifications", so a toast is announced as it is inserted; an `error`

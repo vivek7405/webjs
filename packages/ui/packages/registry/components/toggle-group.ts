@@ -35,6 +35,13 @@
  * Enter / Space toggles the focused item. A `disabled` item is skipped by all
  * of these.
  *
+ * Design: A toggle group shows every option at once, which makes it right for a small
+ * set the reader switches between often (a view mode, a text alignment) and
+ * wrong past about five, where a select is calmer. Keep the options the same
+ * width so the group reads as one control, and make sure something is always
+ * selected in single-select mode, because an empty group leaves the reader
+ * unable to tell what the current state is.
+ *
  * A11y (owned by the element, nothing to supply beyond item names):
  *   The group is a `role="group"` whose items carry `aria-pressed`, navigated by
  *   a roving tabindex so the whole group is one Tab stop. A `disabled` item

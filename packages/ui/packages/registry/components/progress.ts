@@ -10,6 +10,12 @@
  *                                 `::-webkit-progress-value`, and
  *                                 `::-moz-progress-bar`)
  *
+ * Design: Show progress when the wait is long enough to worry about, which is roughly a
+ * second, and show a determinate bar only when the number means something. A
+ * fake percentage that jumps to ninety and sits there is worse than a spinner,
+ * because it makes a promise it then breaks. Pair it with what is happening,
+ * since `Uploading 3 of 12` is information and a bare bar is only reassurance.
+ *
  * A11y (required for accessible output): give the <progress> an accessible
  * name with aria-label (or a <label for>), e.g. aria-label="Upload
  * progress". The native element supplies the role and value; only the name

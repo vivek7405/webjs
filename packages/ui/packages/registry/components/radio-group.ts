@@ -11,6 +11,13 @@
  *
  * Design tokens used: --input, --primary, --ring, --destructive.
  *
+ * Design: Radios are for a choice between mutually exclusive options where seeing all of
+ * them matters, which is why they beat a select under about seven. The group
+ * needs a legend, since without it a screen reader announces the options with no
+ * idea what question they answer, and a sighted reader has the same problem in a
+ * dense form. Preselect the safe or common default rather than leaving the group
+ * empty, and keep the option order stable across visits.
+ *
  * A11y (required for accessible output):
  *   `data-slot="radio"` is REQUIRED, not decoration. The injected stylesheet
  *   keys the indicator dot on it, and `radioClass()` carries no checked

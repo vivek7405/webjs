@@ -37,6 +37,13 @@
  * Keyboard: Escape closes (native `cancel` event); Tab cycles trapped
  * within the dialog (native focus trap).
  *
+ * Design: A dialog takes the whole screen's attention, so it is for a focused task with
+ * a clear end (a form to fill, a choice to make) and not for content the reader
+ * wants to compare against the page underneath. If they need what is behind it,
+ * use a popover or a panel. Keep it short enough not to scroll where you can: a
+ * dialog with its own scrollbar usually wanted to be a page. Actions go bottom
+ * right, primary last, matching the reading direction.
+ *
  * A11y (owned by the element, but SUPPLY A TITLE):
  *   On open the element names and describes the panel from the
  *   `data-slot="dialog-title"` / `dialog-description` nodes, falling back to

@@ -13,6 +13,13 @@
  *
  * Design tokens used: --card, --card-foreground, --muted-foreground, --border.
  *
+ * Design: A card groups things that belong together, so a card holding one unrelated
+ * item each is just a border tax. Prefer whitespace and a heading for grouping
+ * and reach for a card when the group needs a boundary against a busy
+ * background, or when the cards are peers in a grid. Keep one elevation across a
+ * set of peers: a card that sits higher than its neighbours claims an importance
+ * the content probably does not have.
+ *
  * A11y (required for accessible output):
  *   Use a REAL HEADING for `cardTitleClass()` whenever the card has a
  *   meaningful title. The helper only styles text, so on a `<div>` the title is
