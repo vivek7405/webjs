@@ -601,12 +601,18 @@ fifth token, because Tailwind generates `border-success/30` from the solid.
 `button.ts` and `badge.ts` paint `dark:bg-destructive/60`, a composite rather
 than a solid, and against it `--destructive-foreground` measures 2.49:1 while
 plain `text-white` measures 6.48:1. Both components therefore keep `text-white`
-on that variant, which is the one place in the kit a non-token colour is
-correct. `packages/ui/test/no-raw-palette.test.js` pins both of them, so the
-two cannot drift apart, and the raw-palette scan cannot see `text-white` (it
-matches only palette families with a numeric step), which is why the pin is a
-test rather than a convention. Diluting a fill means re-measuring its
+on that variant. `packages/ui/test/no-raw-palette.test.js` pins both of them,
+so the two cannot drift apart, and the raw-palette scan cannot see `text-white`
+(it matches only palette families with a numeric step), which is why the pin is
+a test rather than a convention. Diluting a fill means re-measuring its
 foreground against the composite.
+
+It is not the only correct non-token colour here. `dialog.ts` and
+`alert-dialog.ts` both carry `backdrop:bg-black/50`, since a scrim is black in
+both themes and has no token to be. The rule is that a colour is a token
+WHENEVER the theme should be able to move it, not that a literal is never
+right, and both of these are invisible to the raw-palette scan for the same
+reason.
 
 Every token is declared in BOTH the `:root` and `.dark` value blocks AND mapped
 in `@theme inline`. **A token with no mapping entry emits no utility at all**,

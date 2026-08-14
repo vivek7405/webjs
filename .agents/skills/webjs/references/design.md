@@ -111,14 +111,19 @@ type sizes has usually confused variety with hierarchy.
 surface pair. An app that names a palette family cannot be rethemed, and the
 reader gets one hardcoded green that no longer matches anything around it.
 
-**The one exception, and the rule it teaches.** A `-foreground` token is
-measured against its own SOLID fill. A component that DILUTES that fill, the
-way the kit's destructive button does with `dark:bg-destructive/60`, is
-painting a different colour and the pair no longer holds: there,
+**A `-foreground` token assumes a SOLID fill.** A component that DILUTES that
+fill, the way the kit's destructive button does with `dark:bg-destructive/60`,
+is painting a different colour and the pair no longer holds: there,
 `--destructive-foreground` measures 2.49:1 while plain `text-white` measures
-6.48:1. So `button.ts` and `badge.ts` keep `text-white` on that one variant.
-If you dilute a fill with an opacity modifier, re-measure the foreground
-against the composite rather than assuming the token still applies.
+6.48:1. So `button.ts` and `badge.ts` keep `text-white` on that variant. If you
+dilute a fill with an opacity modifier, re-measure the foreground against the
+composite rather than assuming the token still applies.
+
+**A literal is right where the theme should not move the colour.** A scrim is
+the everyday case, and the kit's dialogs use `backdrop:bg-black/50` rather than
+a token, because a scrim is black in both themes. The rule is not that a
+literal is never correct, it is that a colour is a token whenever the theme
+should be able to move it, which is almost always.
 
 **Semantic state goes through the semantic role.** A failed row is
 `text-destructive`, not `text-red-600`. A success toast is `text-success`. This
