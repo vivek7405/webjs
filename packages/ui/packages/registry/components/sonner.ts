@@ -45,7 +45,8 @@
  *   That matters most for a toast that never auto-dismisses, which
  *   `toast.loading()` is by default (`duration: 0`) and which was otherwise
  *   impossible to get rid of from the UI. Each toast's icon is decorative and
- *   aria-hidden; the meaning is in the text and the role.
+ *   aria-hidden; the meaning is in the text, and urgency in the viewport's
+ *   politeness plus `role="alert"` on an error toast.
  *
  * Design tokens used: --popover, --popover-foreground, --border, --radius.
  *
@@ -348,8 +349,9 @@ UiSonner.register('ui-sonner');
 const CLOSE_SVG =
   '<svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>';
 
-// Type glyphs, all decorative: the toast's text carries the meaning, and the
-// type is conveyed by role="alert" vs role="status", not by the picture.
+// Type glyphs, all decorative: the toast's text carries the meaning, and
+// urgency is conveyed by role="alert" on an error toast, not by the picture.
+// An ordinary toast carries no role and is announced by the polite viewport.
 const ICONS: Record<ToastType, string> = {
   default: '',
   success:

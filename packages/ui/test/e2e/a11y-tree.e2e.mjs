@@ -316,15 +316,21 @@ async function probeToast(label, fire, probeId, expectAssertive) {
   }
 }
 
+// `duration: 0` disables auto-dismiss. Without it a toast defaults to 4000ms
+// and the probe races it: this waits 700ms, tags the node, then issues a full
+// DOM.getDocument plus getFullAXTree against a large gallery page, and if that
+// budget is ever exceeded the toast is gone, the chain resolves to null, and a
+// null chain is a hard FAIL by design rather than a skip. The probe never
+// asserts dismissal, so removing the timer costs nothing.
 await probeToast(
   'Default toast probe',
-  () => import('/modules/ui/components/sonner.ts').then((m) => m.toast('Default toast probe')),
+  () => import('/modules/ui/components/sonner.ts').then((m) => m.toast('Default toast probe', { duration: 0 })),
   'default-toast-probe',
   false,
 );
 await probeToast(
   'Error toast probe',
-  () => import('/modules/ui/components/sonner.ts').then((m) => m.toast.error('Error toast probe')),
+  () => import('/modules/ui/components/sonner.ts').then((m) => m.toast.error('Error toast probe', { duration: 0 })),
   'error-toast-probe',
   true,
 );
