@@ -68,10 +68,28 @@ export function snapshotGet(url) {
   return v;
 }
 
-/** @param {string} url */
-export function cacheKey(url) {
+/**
+ * The cache key for a URL, optionally in a `<webjs-frame>` dimension (#1407).
+ *
+ * A frame response is SLICED by the `x-webjs-frame` request header and the
+ * server marks it `Vary: X-Webjs-Frame`, so a client-side cache of that
+ * response has to carry the same dimension or a frame subtree and a page
+ * fragment for one URL alias onto each other.
+ *
+ * The delimiter is a single SPACE, which cannot occur in either half: the URL
+ * parser percent-encodes U+0020 in both the path and the query, and an HTML
+ * `id` may not contain ASCII whitespace. So a framed key always holds a space
+ * and an unframed one never does, and even a non-conforming id set through the
+ * DOM stays unambiguous, because the space-free URL half means the LAST space
+ * separates the two.
+ *
+ * @param {string} url
+ * @param {string | null} [frameId]
+ */
+export function cacheKey(url, frameId) {
   const u = new URL(url, location.href);
-  return u.pathname + u.search;
+  const path = u.pathname + u.search;
+  return frameId ? `${frameId} ${path}` : path;
 }
 
 /* ====================================================================

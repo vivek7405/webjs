@@ -85,8 +85,11 @@ export async function fetchAndApply(href, frameId, recordHistory, optimisticStat
   try {
     // Warm-cache fast path: a hover/focus/viewport prefetch may already hold
     // this page. Consume it instead of going to the network, so the click
-    // resolves with no round-trip. Only for plain GET navs without a frame
-    // target; form submissions and frame swaps always hit the server. The entry
+    // resolves with no round-trip. Only for plain GET navs. A form submission
+    // always hits the server (it is a write). A FRAME nav consumes only an entry
+    // fetched under the SAME frame id (#1407): the key carries that dimension,
+    // so a page fragment can never be applied into a frame region, nor a frame
+    // subtree into a page swap. The entry
     // is single-use (prefetchTake removes it), TTL-guarded, and validated by its
     // ANCHOR rather than by an identical X-Webjs-Have (#1114): a fragment
     // applies wherever the boundary it starts at is still live, so an unrelated
@@ -97,8 +100,8 @@ export async function fetchAndApply(href, frameId, recordHistory, optimisticStat
     // predates the change that triggered it. `refreshPage` clears both caches
     // before it fetches, so this only closes the window where a prefetch lands
     // between that clear and this read.
-    const prefetched = (method === 'GET' && !body && !frameId && !refresh)
-      ? prefetchTake(href, optimisticState ? optimisticState.haveKeys : undefined)
+    const prefetched = (method === 'GET' && !body && !refresh)
+      ? prefetchTake(href, optimisticState ? optimisticState.haveKeys : undefined, frameId)
       : null;
     if (prefetched) {
       html = prefetched.html;

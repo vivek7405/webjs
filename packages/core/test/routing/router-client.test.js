@@ -23,6 +23,11 @@
 import { test, before } from 'node:test';
 import assert from 'node:assert/strict';
 import { parseHTML } from 'linkedom';
+// Imported directly rather than through the barrel: `cacheKey` is internal to
+// the router and is not re-exported from `router-client.js`. The module has no
+// import-time side effects (it only pulls a constant), so a static import here
+// does not trip the auto-enable the barrel's dynamic import exists to defer.
+import { cacheKey } from '../../src/router-client/snapshot-cache.js';
 
 let _collect, _plan, _keyOf, _diffEl, _reconcile,
   _addNewHead, _merge, _isNonHtmlPath, navigate,
@@ -4019,6 +4024,138 @@ test('prefetchTake: consumes a cached entry exactly once', async () => {
     const first = _prefetchTake('http://localhost/take');
     assert.ok(first, 'first take hits');
     assert.equal(_prefetchTake('http://localhost/take'), null, 'second take is a miss (single-use)');
+  });
+});
+
+/* ====================================================================
+ * Frame-dimensioned prefetch (#1407)
+ * ==================================================================== */
+
+/** A stub whose response carries the server's sliced-subtree marker (#1407). */
+const frameFetchImpl = (calls, servedFrameId) => async (url, init) => {
+  calls.push({ url: String(url), init });
+  const headers = { 'content-type': 'text/html', 'x-webjs-build': 'b1' };
+  const served = servedFrameId === undefined
+    ? (init && init.headers && init.headers['x-webjs-frame'])
+    : servedFrameId;
+  if (served) headers['x-webjs-frame'] = served;
+  return new Response('<webjs-frame id="tasks"><p>ok</p></webjs-frame>', { status: 200, headers });
+};
+
+test('cacheKey: the frame dimension separates a subtree from a page fragment (#1407)', () => {
+  // The server slices on the `x-webjs-frame` REQUEST header and marks the
+  // response `Vary: X-Webjs-Frame`, so a client cache of that response has to
+  // carry the same dimension or the two bodies for one url alias.
+  const origLoc = globalThis.location;
+  globalThis.location = /** @type any */ ({ origin: 'http://localhost', href: 'http://localhost/', pathname: '/', search: '' });
+  try {
+    const page = cacheKey('/x?a=1');
+    const tasks = cacheKey('/x?a=1', 'tasks');
+    const other = cacheKey('/x?a=1', 'other');
+    assert.notEqual(page, tasks, 'a framed key is not the page key');
+    assert.notEqual(tasks, other, 'two frames of one url are two entries');
+    assert.equal(cacheKey('/x?a=1', null), page, 'an explicit null frame is the page dimension');
+    assert.equal(cacheKey('/x?a=1', undefined), page, 'so is an omitted one');
+    // Injectivity. The delimiter is a space, which the URL parser
+    // percent-encodes in both the path and the query, so the url half can never
+    // contain one and the split is unambiguous even for an id that does.
+    assert.notEqual(cacheKey('/a b', 'f'), cacheKey('/b', 'f /a'), 'no delimiter collision');
+    assert.ok(cacheKey('/a b').indexOf(' ') === -1, 'the url half is space-free');
+  } finally {
+    globalThis.location = origLoc;
+  }
+});
+
+test('prefetch: a framed prefetch sends x-webjs-frame and keys the entry by it (#1407)', async () => {
+  const calls = [];
+  await withPrefetchEnv(async () => {
+    _prefetch('http://localhost/tasks?status=done', 'tasks');
+    await new Promise((r) => setTimeout(r, 0));
+    assert.equal(calls.length, 1, 'one speculative request');
+    assert.equal(calls[0].init.headers['x-webjs-frame'], 'tasks', 'asks for the subtree the click will ask for');
+    assert.equal(calls[0].init.headers['x-webjs-prefetch'], '1', 'still marked speculative');
+    assert.ok(_prefetchPeek('http://localhost/tasks?status=done', 'tasks'), 'cached in the frame dimension');
+    assert.equal(_prefetchPeek('http://localhost/tasks?status=done'), null, 'and NOT under the page key');
+  }, { fetchImpl: frameFetchImpl(calls) });
+});
+
+test('prefetch: an unframed prefetch sends no frame header (#1407)', async () => {
+  await withPrefetchEnv(async (calls) => {
+    _prefetch('http://localhost/plain');
+    await new Promise((r) => setTimeout(r, 0));
+    assert.equal(calls[0].init.headers['x-webjs-frame'], undefined, 'no header on a page prefetch');
+    assert.ok(_prefetchPeek('http://localhost/plain'), 'cached under the page key');
+  });
+});
+
+test('prefetchTake: a page entry and a frame entry never substitute for each other (#1407)', async () => {
+  await withPrefetchEnv(async (calls) => {
+    document.body.innerHTML = '<webjs-frame id="tasks"><p>live</p></webjs-frame>';
+    // Only the PAGE entry is cached; a frame click on the same url must miss.
+    _prefetch('http://localhost/both');
+    await new Promise((r) => setTimeout(r, 0));
+    assert.ok(_prefetchPeek('http://localhost/both'), 'precondition: page entry cached');
+    assert.equal(_prefetchTake('http://localhost/both', undefined, 'tasks'), null, 'frame click cannot consume a page fragment');
+    assert.ok(_prefetchTake('http://localhost/both'), 'the page nav still consumes it');
+
+    // And the reverse: only the FRAME entry is cached, so a page nav must miss.
+    _resetPrefetch();
+    _prefetch('http://localhost/both', 'tasks');
+    await new Promise((r) => setTimeout(r, 0));
+    assert.ok(_prefetchPeek('http://localhost/both', 'tasks'), 'precondition: frame entry cached');
+    assert.equal(_prefetchTake('http://localhost/both'), null, 'page nav cannot consume a frame subtree');
+    assert.ok(_prefetchTake('http://localhost/both', undefined, 'tasks'), 'the frame nav still consumes it');
+    document.body.innerHTML = '';
+  }, { fetchImpl: frameFetchImpl([]) });
+});
+
+test('prefetchTake: a frame entry is validated by its FRAME being live, not by an anchor (#1407)', async () => {
+  // A frame subtree carries no `wj:children` marker, so `prefetchAnchor`
+  // returns null, which the page path reads as "no constraint" and would
+  // consume anywhere. The frame path asks the different question instead.
+  const calls = [];
+  await withPrefetchEnv(async () => {
+    document.body.innerHTML = '<webjs-frame id="tasks"><p>live</p></webjs-frame>';
+    _prefetch('http://localhost/f', 'tasks');
+    await new Promise((r) => setTimeout(r, 0));
+    const entry = _prefetchPeek('http://localhost/f', 'tasks');
+    assert.ok(entry, 'precondition: cached');
+    assert.equal(_prefetchAnchor(entry.html), null, 'precondition: a subtree has no boundary anchor');
+    assert.ok(_prefetchTake('http://localhost/f', undefined, 'tasks'), 'consumed while the frame is live');
+
+    // Same entry, frame gone: discarded rather than applied into nothing.
+    _prefetch('http://localhost/f', 'tasks');
+    await new Promise((r) => setTimeout(r, 0));
+    assert.ok(_prefetchPeek('http://localhost/f', 'tasks'), 'precondition: re-cached');
+    document.body.innerHTML = '<p>the frame is gone</p>';
+    assert.equal(_prefetchTake('http://localhost/f', undefined, 'tasks'), null, 'discarded when its frame is gone');
+    assert.equal(_prefetchPeek('http://localhost/f', 'tasks'), null, 'evicted, not left to poison');
+    document.body.innerHTML = '';
+  }, { fetchImpl: frameFetchImpl(calls) });
+});
+
+test('prefetch: a full-document answer to a framed request is not stored (#1407)', async () => {
+  // The server's frame branch has two fall-throughs (a streamed render, an
+  // absent frame id) that answer with a whole document. It marks the sliced
+  // case with `x-webjs-frame`, so an unmarked body is not the shape this entry
+  // claims and must not be filed under EITHER key.
+  const calls = [];
+  await withPrefetchEnv(async () => {
+    _prefetch('http://localhost/streamed', 'tasks');
+    await new Promise((r) => setTimeout(r, 0));
+    assert.equal(calls.length, 1, 'the request went out');
+    assert.equal(_prefetchPeek('http://localhost/streamed', 'tasks'), null, 'not stored under the frame key');
+    assert.equal(_prefetchPeek('http://localhost/streamed'), null, 'nor under the page key');
+  }, { fetchImpl: frameFetchImpl(calls, null) });
+});
+
+test('prefetch: a framed link to the CURRENT url is not prefetched (#1106 in the frame dimension, #1407)', async () => {
+  await withPrefetchEnv(async (calls) => {
+    // location.href is http://localhost/. A framed link back to it is a frame
+    // REFRESH, and a refresh must show fresh bytes.
+    _prefetch('http://localhost/', 'tasks');
+    await new Promise((r) => setTimeout(r, 0));
+    assert.equal(calls.length, 0, 'no speculative request for a same-url frame refresh');
   });
 });
 

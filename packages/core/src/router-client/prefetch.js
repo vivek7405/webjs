@@ -9,6 +9,7 @@
 import { closestAnchor } from './anchors.js';
 import { buildHaveHeader } from './boundaries.js';
 import { NON_HTML_EXTENSIONS } from './constants.js';
+import { liveFrameElement, resolveTargetFrameId } from './frames.js';
 import { enabled } from './state.js';
 
 import { cacheKey, snapshotCache } from './snapshot-cache.js';
@@ -36,7 +37,7 @@ const PREFETCH_HOVER_DELAY = 100;
  */
 const PREFETCH_VIEWPORT_DELAY = 250;
 
-/** @typedef {{ html: string, build: string | null, finalUrl: string, at: number }} PrefetchEntry */
+/** @typedef {{ html: string, build: string | null, src: string | null, finalUrl: string, frameId: string | null, at: number }} PrefetchEntry */
 /** @type {Map<string, PrefetchEntry>} */
 export const prefetchCache = new Map();
 
@@ -219,14 +220,18 @@ export function prefetchMode(anchor) {
  * than silently losing everything past the cap.
  *
  * @param {string} href
+ * @param {string | null} [frameId]  The `<webjs-frame>` this href drives, from
+ *   `resolveTargetFrameId` at the trigger. Sends `x-webjs-frame` so the server
+ *   answers with the SAME subtree the click will ask for, and keys the entry in
+ *   that dimension so it can only ever be consumed by a matching frame nav.
  */
-export function prefetch(href) {
+export function prefetch(href, frameId) {
   // Never speculate once the router is torn down: a leftover hover / queue /
   // dwell timer that fires after disableClientRouter must not issue a fetch.
   if (!enabled) return;
   if (typeof fetch !== 'function') return;
   if (prefetchSaysSaveData()) return;
-  const key = cacheKey(href);
+  const key = cacheKey(href, frameId);
   // Never prefetch the page we are already ON (#1106). The request cannot help
   // any future navigation, because a same-URL click short-circuits, and it
   // occupies one of the capped cache slots until its TTL expires. Fires
@@ -242,7 +247,12 @@ export function prefetch(href) {
   // perfectly applicable from a sibling page and fails only from outside that
   // layout, which is exactly what the anchor check catches, and which a
   // never-clicked hover on a sibling link produces without this guard.
-  if (typeof location !== 'undefined' && key === cacheKey(location.href)) return;
+  //
+  // Compared in the SAME dimension (#1407): a framed link to the current url is
+  // a frame REFRESH, and a refresh must show fresh bytes, so it stays excluded
+  // for the reason `fetchAndApply` refuses to let `refresh` consume a prefetch
+  // (#1398). Comparing against the bare page key instead would let it through.
+  if (typeof location !== 'undefined' && key === cacheKey(location.href, frameId)) return;
   if (prefetchInflight.has(key)) return;
   if (prefetchQueued.has(key)) return;
   const existing = prefetchCache.get(key);
@@ -251,10 +261,10 @@ export function prefetch(href) {
     // Gate full: queue rather than drop, bounded so a huge link list
     // cannot grow the queue without limit (oldest queued entry is shed).
     prefetchQueued.add(key);
-    prefetchQueue.push(href);
+    prefetchQueue.push({ href, frameId: frameId || null });
     while (prefetchQueue.length > PREFETCH_QUEUE_CAP) {
       const dropped = prefetchQueue.shift();
-      prefetchQueued.delete(cacheKey(dropped));
+      prefetchQueued.delete(cacheKey(dropped.href, dropped.frameId));
     }
     return;
   }
@@ -273,6 +283,10 @@ export function prefetch(href) {
   prefetchInflight.add(key);
   const headers = { 'x-webjs-router': '1', 'x-webjs-prefetch': '1' };
   if (have) headers['x-webjs-have'] = have;
+  // Ask for exactly what the click will ask for (`fetch-apply.js` adds the same
+  // header on a frame nav), so the cached body is the frame subtree, not the
+  // page fragment the swap would refuse to apply.
+  if (frameId) headers['x-webjs-frame'] = frameId;
 
   // `no-cache` (revalidate, NOT bypass) is load-bearing (#1131): the deploy
   // check below reads x-webjs-build / x-webjs-src off this response, and a
@@ -314,9 +328,19 @@ export function prefetch(href) {
         // repeated prefetches in the pre-first-nav window each re-clear the
         // (already tiny) caches, which converges the instant the user navigates.
       }
+      // The server answers a frame-headed request with the SLICED subtree only
+      // when the render did not stream AND the id was in the output
+      // (`ssr/render.js`); both fall-throughs return a whole document instead.
+      // It marks the sliced case with `x-webjs-frame`, so a mismatch here means
+      // the body is not the shape this entry claims. Discard it rather than
+      // store it: a full document under a frame key would be swapped into the
+      // frame region on the click, and it cannot be filed under the page key
+      // either, since it was fetched with a header the response varies on.
+      const servedFrame = resp.headers.get('x-webjs-frame');
+      if ((servedFrame || null) !== (frameId || null)) return;
       const finalUrl = resp.redirected && resp.url ? resp.url : href;
       const html = await resp.text();
-      prefetchStore(key, { html, build, src, finalUrl, at: nowMs() });
+      prefetchStore(key, { html, build, src, finalUrl, frameId: frameId || null, at: nowMs() });
     })
     .catch(() => { /* speculative: swallow */ })
     .finally(() => {
@@ -328,9 +352,9 @@ export function prefetch(href) {
 /** Start the next queued prefetch if a concurrency slot is free. */
 function drainPrefetchQueue() {
   while (prefetchQueue.length && prefetchInflight.size < PREFETCH_CONCURRENCY) {
-    const href = prefetchQueue.shift();
-    prefetchQueued.delete(cacheKey(href));
-    prefetch(href);
+    const { href, frameId } = prefetchQueue.shift();
+    prefetchQueued.delete(cacheKey(href, frameId));
+    prefetch(href, frameId);
   }
 }
 
@@ -399,13 +423,27 @@ export function prefetchAnchor(html) {
  *   anchor against, when the caller holds a truer one than the live DOM does.
  *   Used for the optimistic loading skeleton, which deletes nested boundaries
  *   before the fetch, so reading the DOM here would under-report them.
+ * @param {string | null} [frameId]  Consume only an entry fetched in THIS frame
+ *   dimension (#1407). A page fragment and a frame subtree for one url are
+ *   different responses, so they are different entries.
  * @returns {PrefetchEntry | null}
  */
-export function prefetchTake(href, liveKeysOverride) {
-  const key = cacheKey(href);
+export function prefetchTake(href, liveKeysOverride, frameId) {
+  const key = cacheKey(href, frameId);
   const entry = prefetchCache.get(key);
   if (!entry) return null;
   if ((nowMs() - entry.at) >= PREFETCH_TTL) { prefetchCache.delete(key); return null; }
+  // A FRAME entry's validity question is a different one (#1407). Its body is a
+  // `<webjs-frame>` subtree with no `wj:children` boundary in it, so
+  // `prefetchAnchor` returns null, and null means "no constraint" below: falling
+  // through would consume it anywhere. What has to hold instead is that the
+  // region it was fetched for is still in the document, which only the live DOM
+  // can answer and only at consume time (an outer navigation between the
+  // prefetch and the click can remove the frame).
+  if (entry.frameId) {
+    prefetchCache.delete(key);
+    return liveFrameElement(entry.frameId) ? entry : null;
+  }
   // The reduced response VARIES on X-Webjs-Have, and this cache is a
   // client-side cache of that response, so it has to respect its own vary
   // dimension (#1114). The dimension is NOT the whole have string though: a
@@ -467,7 +505,7 @@ export function onPrefetchIntent(e) {
   // and viewport modes (a single request for a link about to be navigated, the
   // small mobile win the viewport default cannot give for the link just tapped).
   // No dwell, since the tap is the intent.
-  if (e.type === 'touchstart') { prefetch(href); return; }
+  if (e.type === 'touchstart') { prefetch(href, resolveTargetFrameId(anchor)); return; }
   // hover / focus only warm `intent` links; `viewport` links are the
   // observer's job (warmed on a dwell, not on a stray hover).
   if (mode !== 'intent') return;
@@ -479,7 +517,9 @@ export function onPrefetchIntent(e) {
   prefetchHoverTimer = setTimeout(() => {
     prefetchHoverTimer = null;
     prefetchHoverAnchor = null;
-    prefetch(href);
+    // Resolved at FIRE time, so it sees the document a click at this moment
+    // would (a soft nav during the dwell can change which frame encloses it).
+    prefetch(href, resolveTargetFrameId(anchor));
   }, PREFETCH_HOVER_DELAY);
 }
 
@@ -529,7 +569,7 @@ export function refreshPrefetchObservers() {
               prefetchViewTimers.delete(anchor);
               prefetchViewObserver.unobserve(anchor);
               const href = eligibleAnchorHref(anchor);
-              if (href && prefetchMode(anchor) === 'viewport') prefetch(href);
+              if (href && prefetchMode(anchor) === 'viewport') prefetch(href, resolveTargetFrameId(anchor));
             }, PREFETCH_VIEWPORT_DELAY);
             prefetchViewTimers.set(anchor, timer);
             prefetchViewPending.add(timer);
@@ -559,7 +599,7 @@ export function refreshPrefetchObservers() {
     const mode = prefetchMode(anchor);
     if (mode === 'render') {
       const href = eligibleAnchorHref(anchor);
-      if (href) prefetch(href);
+      if (href) prefetch(href, resolveTargetFrameId(anchor));
     } else if (mode === 'viewport' && hasIO) {
       prefetchViewObserver.observe(anchor);
     }
@@ -567,7 +607,7 @@ export function refreshPrefetchObservers() {
 }
 
 /** Test-only: peek the speculative cache for a href without consuming it. */
-export function _prefetchPeek(href) { return prefetchCache.get(cacheKey(href)) || null; }
+export function _prefetchPeek(href, frameId) { return prefetchCache.get(cacheKey(href, frameId)) || null; }
 
 /** Test-only: number of prefetch requests currently in flight. */
 export function _prefetchInflightSize() { return prefetchInflight.size; }

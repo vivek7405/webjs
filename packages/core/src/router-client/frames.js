@@ -92,6 +92,27 @@ export function resolveTargetFrameId(trigger) {
 }
 
 /**
+ * The live `<webjs-frame id>` element, or null when no frame with that id is
+ * in the document. Tag-checked on BOTH lookups, so an unrelated element with
+ * a colliding id never passes for a frame.
+ *
+ * The one definition of "this frame is live", shared by the busy lifecycle and
+ * by the prefetch cache's frame-entry validity check (#1407), so the two
+ * cannot drift on what liveness means.
+ *
+ * @param {string | null} frameId
+ * @returns {Element | null}
+ */
+export function liveFrameElement(frameId) {
+  if (!frameId || typeof document === 'undefined') return null;
+  let el = null;
+  try { el = document.querySelector(`webjs-frame#${CSS.escape(frameId)}`); }
+  catch { el = document.getElementById(frameId); }
+  if (!el || !el.tagName || el.tagName.toLowerCase() !== 'webjs-frame') return null;
+  return el;
+}
+
+/**
  * The nav token that currently OWNS each frame's busy state. Under two rapid
  * frame navs the router aborts the first; its `finally` would otherwise clear
  * `aria-busy` that the SECOND nav already re-set, leaving the frame falsely
@@ -119,11 +140,7 @@ export const frameBusyTokens = new WeakMap();
  * @returns {Element | null}
  */
 export function markFrameBusy(frameId, token) {
-  if (typeof document === 'undefined') return null;
-  let frame = null;
-  try {
-    frame = document.querySelector(`webjs-frame#${CSS.escape(frameId)}`);
-  } catch { frame = document.getElementById(frameId); }
+  const frame = liveFrameElement(frameId);
   if (!frame) return null;
   // Dispatch the `true` edge only on a real idle -> busy transition, so a nav
   // that supersedes an in-flight one (frame already busy) does not emit a
