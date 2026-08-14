@@ -89,11 +89,19 @@ at twice its code size, and a raw ceiling must never become a reason to delete
 explanation. The answer to that tension is the exemption list, not a different
 metric.
 
+**There is deliberately NO CI guard for this.** A line-count gate is a proxy
+metric that fights cohesion: it reds forever on a generated data table like
+`html-entities.js`, and it has to carry an exemption list that rots. So the
+ceiling is a REVIEW-TIME check, not a test. Measure it when you split something:
+
+```sh
+find <the tree you produced> -name '*.js' -exec wc -l {} + | awk '$1 > 1000 && $2 != "total"'
+```
+
 **A module that genuinely cannot or should not go under the ceiling gets a
-NAMED exemption**, recorded in `test/architecture/module-size.test.mjs` with its
-cap and its reason, and the guard fails when an exempt module shrinks under the
-ceiling so the list cannot carry stale entries. The three current exemptions
-show what a valid reason looks like:
+NAMED exemption**, argued in the PR that produces it, with its measured size and
+its reason. The three exemptions the #1365 split carries show what a valid
+reason looks like:
 
 - **lit parity** (`component/lifecycle.js`): the file tracks lit's
   `reactive-element.ts`, which lit keeps WHOLE at 1754 lines, and the project's
@@ -106,10 +114,10 @@ show what a valid reason looks like:
   means threading that state through a context object, a high-risk rewrite of
   every app's boot path for zero behaviour gain.
 
-The guard is scoped to the ten #1365 trees and nothing else. Everywhere else in
-the repo the ceiling stays a review-time judgment, because a global line-count
-gate is a proxy metric that fights cohesion (it would red on the WHATWG entity
-table forever).
+Note what a valid reason is NOT: "it is mostly comments." If a module is over
+the ceiling only because it is well documented, that is a signal the ceiling is
+being measured too literally, not grounds for an exemption. Say why the CODE
+cannot be split, or split it.
 
 ---
 
