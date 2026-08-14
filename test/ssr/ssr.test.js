@@ -2127,6 +2127,61 @@ test('boundary: a layout that throws while wrapping a 403 is REPORTED, not swall
   assert.match(String(seen[0].message), /layout-boom-403/);
 });
 
+test('boundary: a layout control-flow throw is NOT reported as an error', async () => {
+  // A redirect() from a layout is a routing decision, not a crash. Reporting it
+  // would fire the app's APM sink and paint a false dev error overlay OVER the
+  // 403 the user is looking at. It is not honoured either: the status is
+  // already decided and the boundary page IS the answer to this request.
+  const { route, appDir } = makeBoundaryApp({
+    files: {
+      'layout.js': `import { redirect } from ${JSON.stringify(WEBJS_MODULE_URL)};\nexport default function Root() { redirect('/login'); }\n`,
+      'admin/forbidden.js': HTML_IMPORT + `export default function F() { return html\`<p id="fb">no</p>\`; }\n`,
+      'admin/page.js': `import { forbidden } from ${JSON.stringify(WEBJS_MODULE_URL)};\nexport default function Page() { forbidden(); }\n`,
+    },
+    page: 'admin/page.js',
+    layouts: ['layout.js'],
+    forbiddens: ['admin/forbidden.js'],
+  });
+  const seen = [];
+  const devSeen = [];
+  const resp = await SILENT(() => ssrPage(route, {}, new URL('http://localhost/admin'), {
+    dev: true, appDir, onError: (e) => seen.push(e), onDevError: (e) => devSeen.push(e),
+  }));
+  assert.equal(resp.status, 403, 'the boundary still answers, and its status is preserved');
+  const body = await resp.text();
+  assert.ok(body.includes('id="fb"'), 'the boundary rendered');
+  assert.deepEqual(seen, [], 'a control-flow sentinel never reaches the APM sink');
+  assert.deepEqual(devSeen, [], 'nor the dev error overlay');
+});
+
+test('boundary: a layout that throws on the 500 path is reported, not lost', async () => {
+  // The fallthrough to the next boundary out is the right behaviour, but the
+  // sinks otherwise only ever hear the ORIGINAL page error, so a boundary or
+  // layout that crashed while handling it would vanish completely.
+  const { route, appDir } = makeBoundaryApp({
+    files: {
+      'layout.js': HTML_IMPORT + `export default function Root({ children }) { return html\`<div id="root-chrome">\${children}</div>\`; }\n`,
+      'error.js': HTML_IMPORT + `export default function Err() { return html\`<p id="root-boundary">outer</p>\`; }\n`,
+      'docs/layout.js': `export default function Docs() { throw new Error('layout-boom-500'); }\n`,
+      'docs/error.js': HTML_IMPORT + `export default function Err() { return html\`<p id="docs-boundary">inner</p>\`; }\n`,
+      'docs/page.js': `export default function Page() { throw new Error('page-boom'); }\n`,
+    },
+    page: 'docs/page.js',
+    layouts: ['layout.js', 'docs/layout.js'],
+    errors: ['error.js', 'docs/error.js'],
+  });
+  const seen = [];
+  const resp = await SILENT(() => ssrPage(route, {}, new URL('http://localhost/docs'), {
+    dev: false, appDir, onError: (e) => seen.push(e),
+  }));
+  assert.equal(resp.status, 500);
+  const body = await resp.text();
+  assert.ok(body.includes('id="root-boundary"'), 'it still falls through to the boundary outside the throwing layout');
+  const messages = seen.map((e) => String(e && e.message));
+  assert.ok(messages.includes('page-boom'), 'the original page error is still reported');
+  assert.ok(messages.includes('layout-boom-500'), 'and so is the layout crash that used to vanish');
+});
+
 test('boundary: a boundary response is never storable and never reduced', async () => {
   // Two independent guarantees. The HTML cache refuses a non-200 outright, and
   // the reduced X-Webjs-Have path is structurally unreachable: the boundary

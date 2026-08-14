@@ -415,22 +415,39 @@ async function renderChain(route, ctx, dev, suspenseCtx, have, pageModule) {
 }
 
 /**
- * Report a throw from a layout wrapped around a 403 / 401 / 404 boundary
- * (#1298) to the same sinks a page-render error reaches, then let the caller
- * degrade to the standalone render. Best-effort on both sinks: a throwing sink
- * must never affect the response.
+ * Report a throw from a layout wrapped around a boundary page (#1298) to the
+ * same sinks a page-render error reaches, then let the caller degrade to the
+ * standalone render. Best-effort on both sinks: a throwing sink must never
+ * affect the response.
+ *
+ * A CONTROL-FLOW sentinel is not an error and is never reported. This is the
+ * same classification the page path makes before it calls `onError` (a
+ * `redirect()` / `notFound()` / `forbidden()` / `unauthorized()` is a routing
+ * decision, not a crash), and it matters more here: reporting one would fire
+ * the app's APM sink and paint a false dev error overlay OVER the 403 the user
+ * is looking at.
+ *
+ * The sentinel is not HONOURED either, and that is deliberate. The status is
+ * already decided by the time a boundary renders, and the boundary page IS the
+ * answer to this request; letting a layout redirect out of it would replace a
+ * 403 the app asked for with a bounce the app did not, on a path where the
+ * redirect target could itself be forbidden. So the render degrades to the
+ * standalone boundary body, exactly as it does for a real layout crash, and
+ * the status the boundary carries is preserved.
  *
  * @param {unknown} err
  * @param {{ onError?: (e: unknown) => void, onDevError?: (e: unknown) => void }} opts
+ * @param {string} what  Where the throw came from, for the log line.
  */
-function reportBoundaryLayoutError(err, opts) {
+function reportBoundaryLayoutError(err, opts, what = 'a layout threw while wrapping a boundary page') {
+  if (isRedirect(err) || isNotFound(err) || isForbidden(err) || isUnauthorized(err)) return;
   if (typeof opts.onError === 'function') {
     try { opts.onError(err); } catch { /* a throwing sink must not affect the response */ }
   }
   if (typeof opts.onDevError === 'function') {
     try { opts.onDevError(err); } catch { /* a throwing sink must not affect the response */ }
   }
-  console.error('[webjs] a layout threw while wrapping a boundary page:', err);
+  console.error(`[webjs] ${what}:`, err);
 }
 
 /**
@@ -475,9 +492,11 @@ function boundaryModuleUrls(boundaryFile, wrapLayouts, opts) {
   // it has on the happy path: it runs before app modules so the app's client
   // error reporting is installed before anything can throw. A boundary page is
   // where that matters most, so it must not be the one place it is missing.
-  // Only when the set is non-empty: an empty set means no boot script at all,
-  // and instrumentation alone is not a reason to start emitting one.
-  if (opts.instrumentationClient && urls.length) {
+  // The set is never empty by the time we get here (the boundary file is
+  // always pushed above, since only pages and layouts are fed to the elision
+  // analysis, so a boundary is never inert and never import-only), which is
+  // why this needs no non-empty guard.
+  if (opts.instrumentationClient) {
     const u = toUrlPath(opts.instrumentationClient, opts.appDir);
     const i = urls.indexOf(u);
     if (i !== -1) urls.splice(i, 1);
@@ -1070,6 +1089,15 @@ export async function ssrPage(route, params, url, opts) {
         // absorbs a throw from a WRAPPED LAYOUT, which is the case that makes a
         // throwing layout render the boundary outside it (Next parity: a
         // boundary sits inside its own segment's layout, so it cannot catch it).
+        //
+        // Report it on the way past. The fallthrough is the right BEHAVIOUR,
+        // but it is not a reason to lose the error: whatever this response ends
+        // up being, the sinks only ever hear about the ORIGINAL page error
+        // (reported above), so a boundary or a layout that crashed while
+        // handling it would vanish completely. A control-flow sentinel is
+        // filtered out by the reporter, since a boundary throwing notFound() is
+        // a routing decision rather than a crash.
+        reportBoundaryLayoutError(nested, opts, 'an error boundary or its layout threw while handling a render error');
       }
     }
     // Root global-error.{js,ts} (#848): the app-wide catch-all, tried after the
