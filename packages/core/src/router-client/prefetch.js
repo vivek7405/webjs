@@ -437,10 +437,14 @@ export function prefetch(href, frameId) {
       // render never had the frame, and a streamed page carries its resolved
       // content inside a `<template data-webjs-resolve>` that `querySelector`
       // does not descend into. Then the swap dispatches `webjs:frame-missing`
-      // and leaves the region unchanged (warning to the console), so consuming
-      // the entry turns the click into a dead one rather than a network fetch,
-      // and it must not be applied blind either, since a frame OUTSIDE a streamed
-      // boundary does arrive in the shell and would be found. It cannot be filed under
+      // and leaves the region unchanged (warning to the console) while the
+      // navigation around it still completes, advancing the url and scrolling to
+      // top, so consuming the entry gives the reader a changed address over an
+      // unchanged panel rather than a fetch. Whether the frame is found at all
+      // depends on where it sits relative to the streamed boundary (one OUTSIDE
+      // every boundary does arrive in the first flush and would be found), and
+      // the router cannot tell which from the bytes, so it declines rather than
+      // gamble. It cannot be filed under
       // the page key either, since it was fetched with a header the response
       // varies on.
       //
