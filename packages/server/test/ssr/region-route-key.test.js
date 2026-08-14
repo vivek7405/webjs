@@ -11,7 +11,10 @@
  */
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { _pageSegmentPath, _regionRouteKey, _wrapWithChildrenMarker } from '../../src/ssr.js';
+import {
+  _pageSegmentPath, _regionRouteKey, _wrapWithChildrenMarker,
+  _boundarySegmentPath, _layoutsForBoundary,
+} from '../../src/ssr.js';
 
 test('pageSegmentPath derives the page own segment (full route pattern)', () => {
   assert.equal(_pageSegmentPath('/x/app/page.ts'), '/');
@@ -94,4 +97,37 @@ test('wrapWithChildrenMarker: a static segment has a constant route-key', () => 
   const r = _wrapWithChildrenMarker('X', '/', {});
   assert.equal(r.strings[0], '<!--wj:children:/:/-->');
   assert.equal(r.strings[1], '<!--/wj:children:/-->');
+});
+
+/* ------------ boundary segment derivation (#1298) ------------ */
+
+test('boundarySegmentPath derives a boundary file own segment', () => {
+  assert.equal(_boundarySegmentPath('/x/app/error.ts'), '/');
+  assert.equal(_boundarySegmentPath('/x/app/docs/error.js'), '/docs');
+  assert.equal(_boundarySegmentPath('/x/app/docs/not-found.tsx'), '/docs');
+  assert.equal(_boundarySegmentPath('/x/app/admin/forbidden.ts'), '/admin');
+  assert.equal(_boundarySegmentPath('/x/app/admin/unauthorized.ts'), '/admin');
+  // Route groups are KEPT, for the same reason layoutSegmentPath keeps them:
+  // two routes at one URL prefix under different (group) layouts must not look
+  // like a shared layout.
+  assert.equal(_boundarySegmentPath('/x/app/(marketing)/about/not-found.ts'), '/(marketing)/about');
+});
+
+test('layoutsForBoundary keeps the boundary own segment and every ancestor', () => {
+  // Next hierarchy: layout -> error -> page, so error.js sits INSIDE its
+  // segment layout and that layout DOES wrap it. A deeper layout never
+  // rendered, so it is excluded.
+  const layouts = ['/x/app/layout.ts', '/x/app/docs/layout.ts', '/x/app/docs/deep/layout.ts'];
+  assert.deepEqual(_layoutsForBoundary(layouts, '/docs'), ['/x/app/layout.ts', '/x/app/docs/layout.ts']);
+  assert.deepEqual(_layoutsForBoundary(layouts, '/'), ['/x/app/layout.ts']);
+  assert.deepEqual(_layoutsForBoundary(layouts, '/docs/deep'), layouts);
+  assert.deepEqual(_layoutsForBoundary([], '/docs'), []);
+  assert.deepEqual(_layoutsForBoundary(undefined, '/docs'), []);
+});
+
+test('layoutsForBoundary breaks the prefix test on a segment', () => {
+  // '/doc' must never match '/docs': a plain startsWith would wrap a boundary
+  // in a layout from an unrelated sibling route.
+  assert.deepEqual(_layoutsForBoundary(['/x/app/doc/layout.ts'], '/docs'), []);
+  assert.deepEqual(_layoutsForBoundary(['/x/app/docs/layout.ts'], '/docs-archive'), []);
 });

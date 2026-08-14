@@ -561,13 +561,15 @@ export async function runFormAction(route, params, url, req, ssrOpts, deps) {
       // the SUCCESS-result path below.
       return new Response(null, { status: e.status || 307, headers: { location: e.url } });
     }
+    // `route` and `params` ride along so the boundary renders inside its
+    // layouts, exactly as it does on the page-render path (#1298).
     if (isNotFound(err)) {
-      return ssrNotFound(ssrOpts.notFoundFile ?? null, { ...ssrOpts, req, url });
+      return ssrNotFound(ssrOpts.notFoundFile ?? null, { ...ssrOpts, req, url, route, params });
     }
     // forbidden()/unauthorized() from a form action render the same 403/401
     // boundary as the page-render path (#848), not a generic 500.
-    if (isForbidden(err)) return ssrForbidden(route, { ...ssrOpts, req, url });
-    if (isUnauthorized(err)) return ssrUnauthorized(route, { ...ssrOpts, req, url });
+    if (isForbidden(err)) return ssrForbidden(route, { ...ssrOpts, req, url, route, params });
+    if (isUnauthorized(err)) return ssrUnauthorized(route, { ...ssrOpts, req, url, route, params });
     if (typeof onError === 'function') onError(err);
     return await formActionErrorResponse(err, ssrOpts.dev);
   }

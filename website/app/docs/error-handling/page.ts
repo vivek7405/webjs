@@ -29,6 +29,12 @@ export default function ErrorHandling() {
     <h2>Route-level error boundaries</h2>
     <p>Place an <code>error.ts</code> file at any level in the <code>app/</code> directory. When a page or layout at that level (or deeper) throws, the nearest <code>error.ts</code> is rendered instead.</p>
 
+    <p>The boundary renders <strong>inside the layouts at and above its own segment</strong>, so your site chrome stays on screen: the nav, the sidebar and the header are still there, and the user has something to navigate away with. It also means a client-router navigation into a failing page stays a soft navigation rather than reloading the document, so hydrated state elsewhere on the page survives. A layout deeper than the boundary never rendered on the way in, so it is not rendered on the way out either.</p>
+
+    <p>Because the boundary sits inside its own segment's layout, that layout cannot be caught by it. An error thrown by a layout is handled by the next boundary further out, which is where its own markup is no longer in play. This matches Next's component hierarchy.</p>
+
+    <p>Two consequences worth knowing. A layout that fetches data runs that fetch a second time on a boundary response, since the chain is rendered again around the boundary. And a <code>&lt;webjs-suspense&gt;</code> inside a wrapped layout shows its fallback, because a boundary response is buffered so its status and headers are final before the first byte goes out.</p>
+
     <code-block>// app/error.ts: root error boundary
 import { html } from '@webjsdev/core';
 
@@ -90,6 +96,8 @@ export default async function AdminPage() {
 
     <h2>global-error.ts and global-not-found.ts</h2>
     <p>Two root-only boundaries (in <code>app/</code> exactly). <code>global-error.ts</code> is the app-wide catch-all, tried after the nested <code>error.ts</code> boundaries are exhausted, and it renders its OWN full document (a root-layout failure is when it fires):</p>
+
+    <p>It is the one boundary that is <strong>not</strong> wrapped in layouts. It writes its own document shell, wrapping it in the root layout would re-run the code that just threw, and it ships no importmap or boot script by design. So a navigation into <code>global-error.ts</code> is a full page load, which is the right outcome for a last-resort page.</p>
 
     <code-block>// app/global-error.ts
 import { html } from '@webjsdev/core';

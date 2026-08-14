@@ -18,6 +18,8 @@ export { publicEnvShim } from './ssr/env-shim.js';
 export {
   _layoutSegmentPath,
   _pageSegmentPath,
+  _boundarySegmentPath,
+  _layoutsForBoundary,
   _regionRouteKey,
   _wrapWithChildrenMarker,
   _extractUserShell,
