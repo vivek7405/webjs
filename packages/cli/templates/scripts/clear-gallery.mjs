@@ -82,9 +82,9 @@ const galleryPaths = [
 // query), pruned with the rest of the card.
 const galleryModules = [
   'async-render', 'auth', 'broadcast', 'caching', 'client-router', 'components',
-  'directives', 'file-storage', 'forms', 'frames', 'gallery', 'optimistic-ui',
-  'rate-limit', 'route-handler', 'server-actions', 'sessions', 'stream',
-  'streaming', 'suspense', 'todo', 'websockets',
+  'dashboard', 'directives', 'file-storage', 'forms', 'frames', 'gallery',
+  'optimistic-ui', 'rate-limit', 'route-handler', 'server-actions', 'sessions',
+  'settings', 'stream', 'streaming', 'suspense', 'todo', 'websockets',
 ].map((m) => `modules/${m}`);
 
 let removed = 0;

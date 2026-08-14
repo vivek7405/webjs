@@ -154,7 +154,7 @@ This trap exists ONLY in the marketing site. Scaffolded user apps,
 `examples/blog`, and every other WebJs app keep `components/ui/` as normal
 tracked source, the standard shadcn "you own it" pattern.
 
-## v1 component inventory (32 components)
+## v1 component inventory (38 components)
 
 | Tier | Component | Surface |
 |---|---|---|
@@ -162,6 +162,12 @@ tracked source, the standard shadcn "you own it" pattern.
 | 1a | `badge` | `badgeClass({ variant })`, 6 variants |
 | 1a | `alert` | `alertClass({ variant })`, `alertTitleClass`, `alertDescriptionClass` |
 | 1a | `card` | `cardClass`, `cardHeaderClass`, `cardTitleClass`, `cardDescriptionClass`, `cardActionClass`, `cardContentClass`, `cardFooterClass` |
+| 1a | `empty-state` | `emptyStateClass({ variant })`, `emptyStateMediaClass`, `emptyStateTitleClass`, `emptyStateDescriptionClass`, `emptyStateActionsClass`. What a region says when it has nothing to show, which seeded development data hides completely. |
+| 1a | `stat` | `statGroupClass({ columns })`, `statClass({ variant })`, `statLabelClass`, `statValueClass`, `statDeltaClass({ direction })`. Compose with `<dl>` / `<dt>` / `<dd>`; the delta goes through the semantic roles. |
+| 1a | `page-header` | `pageHeaderClass({ variant })`, `pageHeaderTitleClass`, `pageHeaderDescriptionClass`, `pageHeaderActionsClass`. Holds the page's one `<h1>` and its one primary action. |
+| 1a | `field-group` | `fieldSetClass`, `fieldLegendClass`, `fieldGroupClass`, `inputGroupClass`, `inputGroupAddonClass({ side })`, `inputGroupTextClass`, `fieldErrorClass`. Grouping and addon shapes only: the single-field helpers stay in `lib/utils.ts`, and `fieldErrorClass()` is the reserved SPACE while `errorClass()` is the error TEXT. |
+| 1a | `description-list` | `descriptionListClass({ layout })`, `descriptionRowClass({ layout })`, `descriptionTermClass`, `descriptionDetailsClass`. The replacement for printing a label, a colon and a value at one weight. |
+| 1a | `timeline` | `timelineClass`, `timelineItemClass`, `timelineMarkerClass({ variant })`, `timelineConnectorClass`, `timelineContentClass`, `timelineTitleClass`, `timelineTimeClass`. Compose with `<ol>` and a real `<time datetime>`. |
 | 1a | `input` / `textarea` / `label` | `inputClass`, `textareaClass`, `labelClass` |
 | 1a | `checkbox` | `checkboxClass`, native `<input type="checkbox">` with SVG check on `:checked`. REQUIRES `data-slot="checkbox"` on the input for the check to render. |
 | 1a | `radio-group` | `radioGroupClass`, `radioClass`, native `<input type="radio">`. REQUIRES `data-slot="radio"` on the input for the dot to render. |
@@ -572,6 +578,50 @@ names mechanically:
   background colour, the #1065 defect class. The closing delimiter is not
   validated, in either spelling, because the hint names the property and how
   the value terminates cannot change which property that is.
+
+## Design tokens: semantic roles and elevation (#1116)
+
+The theme ships **semantic ROLES, not palette ramps**. Four tokens per role, a
+solid fill plus the text on it and a tinted surface plus the text on it:
+
+```
+--success  --success-foreground  --success-subtle  --success-subtle-foreground
+--warning  --warning-foreground  --warning-subtle  --warning-subtle-foreground
+--info     --info-foreground     --info-subtle     --info-subtle-foreground
+--destructive  --destructive-foreground  --destructive-subtle  --destructive-subtle-foreground
+```
+
+A component that needs to say success uses `text-success` or
+`bg-success-subtle`, **never** `text-emerald-500`. A missing role is the root
+cause of raw-palette drift, which is exactly how `sonner.ts` came to carry a
+hardcoded emerald: there was no `--success` for it to use. A border needs no
+fifth token, because Tailwind generates `border-success/30` from the solid.
+
+Every token is declared in BOTH the `:root` and `.dark` value blocks AND mapped
+in `@theme inline`. **A token with no mapping entry emits no utility at all**,
+so the value block alone does nothing.
+
+Elevation is named by ROLE rather than by size:
+
+| Token | Role |
+|---|---|
+| `shadow-e1` | raised, a card at rest |
+| `shadow-e2` | menu, a dropdown or a popover |
+| `shadow-e3` | dialog, a modal or a sheet |
+| `shadow-e4` | top, a toast |
+
+The geometry is Tailwind's own, so this is naming rather than new numbers. The
+shadow COLOUR rides `var(--elevation-ambient)` / `var(--elevation-contact)`
+**inside the value**, and it has to: Tailwind INLINES a `--shadow-*` theme value
+into the utility rather than emitting a `var()` reference, so redeclaring
+`--shadow-e1` under `.dark` would silently do nothing. In dark mode elevation
+reads as a lighter surface (`--surface-1` through `--surface-3`), because a
+darker shadow on a dark ground reads as a hole.
+
+`cn()`'s shadow classifier lists `e1` through `e4` in its size alternation. A
+bare shadow name it does not list falls through to the `shadow-color` group, so
+without that entry an elevation utility and a real shadow colour evict each
+other silently.
 
 ## Layout + typography helpers (the design system)
 
