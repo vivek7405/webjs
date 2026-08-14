@@ -9,8 +9,9 @@
  * agent reads and a card that only names the feature cannot be found by someone
  * who does not know the feature exists. The skill's cheat sheet
  * (.agents/skills/webjs/SKILL.md, "Reach For The Right Primitive") carries the
- * same set keyed the same way, and test/repo-health/skill-gallery-intent-parity
- * fails if the two fall out of step.
+ * same set keyed the same way, and the repo's
+ * test/repo-health/skill-gallery-intent-parity.test.mjs fails if the two fall
+ * out of step.
  */
 export interface NavItem { href: string; title: string; blurb: string; }
 export interface NavGroup { label: string; items: NavItem[]; }
