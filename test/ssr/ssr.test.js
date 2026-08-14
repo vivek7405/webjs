@@ -1560,15 +1560,26 @@ test('ssrNotFound: renders the user-supplied not-found.js module', async () => {
 });
 
 test('ssrNotFound: not-found.js that throws falls back to an inline error body', async () => {
+  // The fallback body is DEV-only as of #1298. This used to render the thrown
+  // message in production too, which leaks a value the author does not control
+  // (a driver message, a path, a DSN) to the client. The 500 path has always
+  // drawn that line; these pages now do as well.
   const sub = mkdtempSync(join(tmpDir, 'nf-err-'));
   const notFoundFile = join(sub, 'not-found.js');
   writeFileSync(notFoundFile,
     `export default function NotFound() { throw new Error('boom'); }\n`);
-  const resp = await ssrNotFound(notFoundFile, { dev: false, appDir: sub });
-  assert.equal(resp.status, 404);
-  const body = await resp.text();
-  assert.ok(body.includes('404: Not found'));
-  assert.ok(body.includes('boom'));
+
+  const dev = await ssrNotFound(notFoundFile, { dev: true, appDir: sub });
+  assert.equal(dev.status, 404);
+  const devBody = await dev.text();
+  assert.ok(devBody.includes('404: Not found'));
+  assert.ok(devBody.includes('boom'), 'dev still shows the failure');
+
+  const prod = await ssrNotFound(notFoundFile, { dev: false, appDir: sub });
+  assert.equal(prod.status, 404);
+  const prodBody = await prod.text();
+  assert.ok(prodBody.includes('404: Not found'), 'prod still identifies the status');
+  assert.ok(!prodBody.includes('boom'), 'but never renders the thrown message');
 });
 
 /* ------------ ssrPage: redirect / notFound / error boundaries ------------ */
