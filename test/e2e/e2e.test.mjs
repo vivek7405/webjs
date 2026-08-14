@@ -765,10 +765,20 @@ describe('E2E: Blog example', { skip: !process.env.WEBJS_E2E && 'set WEBJS_E2E=1
   // Counter component survives client-side navigation
   //
   // Regression tests for: after multiple client-side navigations, the counter
-  // component stopped working because Document.parseHTMLUnsafe() created
-  // elements in a detached document, and custom element upgrades didn't fire
-  // when those elements were moved to the live document via replaceChildren.
-  // The fix (upgradeCustomElements) ensures connectedCallback always fires.
+  // component stopped working. The elements come from a detached parse
+  // (`Document.parseHTMLUnsafe`) and are moved into the live document, and
+  // `upgradeCustomElements` was added to guarantee `connectedCallback` fires.
+  //
+  // The mechanism half of that is narrower than it used to read here, so do
+  // not take the old "upgrades didn't fire on replaceChildren" wording as the
+  // rule (#1406). Measured in Chromium, Firefox, and WebKit: importing a node
+  // whose definition is already registered and inserting it, including via
+  // `replaceChildren`, DOES upgrade it synchronously, and a later
+  // `customElements.define` upgrades matching elements already in the
+  // document. So the explicit call is a backstop for what those miss rather
+  // than the thing that makes upgrades happen at all. What these tests pin is
+  // the OBSERVABLE guarantee (the counter still works after several soft
+  // navigations), which is worth keeping whichever mechanism delivers it.
   // ---------------------------------------------------------------------------
 
   test('counter works on initial page load', async () => {
