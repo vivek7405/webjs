@@ -426,6 +426,19 @@ async function renderChain(route, ctx, dev, suspenseCtx, have, pageModule) {
 }
 
 /**
+ * The layouts that will wrap a boundary FILE on this route (#1298). One place,
+ * so the render path and the boot set cannot disagree about what wrapped, and
+ * so the catch can ask whether anything wrapped at all.
+ *
+ * @param {{ layouts: string[] }} route
+ * @param {string} boundaryFile
+ * @returns {string[]}
+ */
+function wrapLayoutsFor(route, boundaryFile) {
+  return layoutsForBoundary(route.layouts, boundarySegmentPath(boundaryFile));
+}
+
+/**
  * Marker for a throw that came from the LAYOUT-wrapping phase of a boundary
  * render, as opposed to the boundary's own tree (#1298). Non-enumerable, so it
  * never shows up in a serialized error, and best-effort: a frozen or primitive
@@ -692,23 +705,21 @@ async function ssrBoundaryHtml(file, heading, opts) {
             // The chain rendered, so its modules have to boot: chrome that
             // paints but never hydrates is worse than no chrome, because its
             // controls look live and are not (#1298).
-            moduleUrls = boundaryModuleUrls(
-              file,
-              layoutsForBoundary(opts.route.layouts, boundarySegmentPath(file)),
-              opts,
-            );
+            moduleUrls = boundaryModuleUrls(file, wrapLayoutsFor(opts.route, file), opts);
           } else {
             body = await renderToString(tree, { ssr: true, dev: opts.dev });
           }
         } catch (layoutErr) {
-          // With no route there was no layout chain: the try body already ran
-          // this exact `renderToString(tree)`, so re-running it would execute
-          // the boundary tree a second time to learn nothing, and a tree that
-          // is not idempotent under re-render (a hole holding a one-shot async
-          // iterable, say) could even SUCCEED on the retry and be reported as
-          // a layout crash that never happened. Rethrow: the outer catch
-          // reports it once, under the boundary label.
-          if (!opts.route) throw layoutErr;
+          // When NO LAYOUT actually wrapped this boundary, the try body already
+          // ran this exact `renderToString(tree)`: with no route there is no
+          // chain at all, and with a route whose wrap set is empty (a legal
+          // app with no root layout, since the framework emits the shell)
+          // renderBoundaryInChain reduces to the same call. Re-running it would
+          // execute the boundary tree a second time to learn nothing, and a
+          // tree that is not idempotent under re-render could even SUCCEED on
+          // the retry and be reported as a layout crash that never happened.
+          // Rethrow: the outer catch reports it once, under the boundary label.
+          if (!opts.route || wrapLayoutsFor(opts.route, file).length === 0) throw layoutErr;
           // Always attempt the standalone render, which is the degradation
           // this path has always produced. Its OUTCOME is half the diagnosis
           // and the phase marker is the other half; neither alone is enough.
@@ -792,18 +803,14 @@ async function ssrNotFoundHtml(notFoundFile, opts) {
         try {
           if (opts.route) {
             body = await renderBoundaryInChain(tree, opts.route, notFoundFile, ctx, opts.dev);
-            moduleUrls = boundaryModuleUrls(
-              notFoundFile,
-              layoutsForBoundary(opts.route.layouts, boundarySegmentPath(notFoundFile)),
-              opts,
-            );
+            moduleUrls = boundaryModuleUrls(notFoundFile, wrapLayoutsFor(opts.route, notFoundFile), opts);
           } else {
             body = await renderToString(tree, { ssr: true, dev: opts.dev });
           }
         } catch (layoutErr) {
           // Same diagnosis rule as ssrBoundaryHtml above, including the
-          // no-route short-circuit.
-          if (!opts.route) throw layoutErr;
+          // no-layout-wrapped short-circuit.
+          if (!opts.route || wrapLayoutsFor(opts.route, notFoundFile).length === 0) throw layoutErr;
           let treeErr = null;
           try {
             body = await renderToString(tree, { ssr: true, dev: opts.dev });

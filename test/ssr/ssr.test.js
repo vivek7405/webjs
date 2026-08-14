@@ -2478,7 +2478,7 @@ test('boundary: a boundary whose own TREE fails is reported ONCE, and not as a l
       // same tree. A rejected promise in a hole is the simplest such shape:
       // renderToString awaits it.
       'admin/forbidden.js': HTML_IMPORT + `export default function F() {
-        return html\`<p>\${Promise.reject(new Error('TREE_RENDER_BOOM'))}</p>\`;
+        return html\`<p>\${{ toString() { throw new Error('TREE_RENDER_BOOM'); } }}</p>\`;
       }\n`,
       'admin/page.js': `import { forbidden } from ${JSON.stringify(WEBJS_MODULE_URL)};\nexport default function Page() { forbidden(); }\n`,
     },
@@ -2504,7 +2504,7 @@ test('boundary: when the layout AND the tree are broken, BOTH are reported', asy
     files: {
       'layout.js': `export default function Root() { throw new Error('LAYOUT_HALF_BOOM'); }\n`,
       'admin/forbidden.js': HTML_IMPORT + `export default function F() {
-        return html\`<p>\${Promise.reject(new Error('TREE_HALF_BOOM'))}</p>\`;
+        return html\`<p>\${{ toString() { throw new Error('TREE_HALF_BOOM'); } }}</p>\`;
       }\n`,
       'admin/page.js': `import { forbidden } from ${JSON.stringify(WEBJS_MODULE_URL)};\nexport default function Page() { forbidden(); }\n`,
     },
@@ -2534,7 +2534,7 @@ test('boundary: a layout failing in a TEMPLATE HOLE still degrades to the bounda
   const { route, appDir } = makeBoundaryApp({
     files: {
       'layout.js': HTML_IMPORT + `export default function Root({ children }) {
-        return html\`<nav>\${Promise.reject(new Error('LAYOUT_HOLE_BOOM'))}</nav>\${children}\`;
+        return html\`<nav>\${{ toString() { throw new Error('LAYOUT_HOLE_BOOM'); } }}</nav>\${children}\`;
       }\n`,
       'admin/forbidden.js': HTML_IMPORT + `export default function F() { return html\`<p id="fb">no access</p>\`; }\n`,
       'admin/page.js': `import { forbidden } from ${JSON.stringify(WEBJS_MODULE_URL)};\nexport default function Page() { forbidden(); }\n`,
@@ -2554,6 +2554,35 @@ test('boundary: a layout failing in a TEMPLATE HOLE still degrades to the bounda
   assert.ok(!body.includes('<script type="module">'), 'and no boot set for a chain that did not render');
   const hits = seen.filter((e) => /LAYOUT_HOLE_BOOM/.test(String(e && e.message)));
   assert.equal(hits.length, 1, 'the layout failure is reported exactly once');
+});
+
+test('boundary: a route with NO layouts does not re-render the boundary tree', async () => {
+  // A legal app with no root layout: the framework emits the shell. The wrap
+  // set is empty, so renderBoundaryInChain reduces to the same renderToString
+  // the fallback would repeat. Re-running it executes the tree twice and can
+  // report a layout crash on a route that has no layouts at all.
+  let renders = 0;
+  globalThis.__boundaryRenderCount = () => { renders += 1; };
+  const { route, appDir } = makeBoundaryApp({
+    files: {
+      'admin/forbidden.js': HTML_IMPORT + `export default function F() {
+        globalThis.__boundaryRenderCount();
+        return html\`<p>\${{ toString() { throw new Error('NO_LAYOUT_BOOM'); } }}</p>\`;
+      }\n`,
+      'admin/page.js': `import { forbidden } from ${JSON.stringify(WEBJS_MODULE_URL)};\nexport default function Page() { forbidden(); }\n`,
+    },
+    page: 'admin/page.js',
+    layouts: [],
+    forbiddens: ['admin/forbidden.js'],
+  });
+  const seen = [];
+  const resp = await SILENT(() => ssrPage(route, {}, new URL('http://localhost/admin'), {
+    dev: false, appDir, onError: (e) => seen.push(e),
+  }));
+  assert.equal(resp.status, 403);
+  assert.equal(renders, 1, 'the boundary module was rendered once, not retried');
+  const hits = seen.filter((e) => /NO_LAYOUT_BOOM/.test(String(e && e.message)));
+  assert.equal(hits.length, 1, 'and reported once');
 });
 
 test('boundary: a boundary response is never storable and never reduced', async () => {
