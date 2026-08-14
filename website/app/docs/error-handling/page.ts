@@ -40,6 +40,8 @@ export default function ErrorHandling() {
 
     <p>A layout that genuinely crashes is reported to your <code>onError</code> hook rather than being swallowed, so it reaches your error tracker. Repeats of the same crash within one request are collapsed to a single report, since one shared layout can fail several boundary attempts. A <code>redirect()</code> or <code>notFound()</code> is never reported, being routing rather than a crash.</p>
 
+    <p>The same holds when the <strong>boundary file itself</strong> throws or fails to load. Its response body follows the rule the rest of the framework uses for a thrown error: the failure is shown in development and withheld in production, where the page carries only its status, because a thrown message is not something you control and may name a driver, a path or a connection string. The error still reaches <code>onError</code> and the server log either way, so sanitizing the response never means losing the failure.</p>
+
     <p>Two consequences worth knowing. A layout that fetches data runs that fetch a second time on a boundary response, since the chain is rendered again around the boundary. And a <code>&lt;webjs-suspense&gt;</code> inside a wrapped layout shows its fallback, because a boundary response is buffered so its status and headers are final before the first byte goes out.</p>
 
     <code-block>// app/error.ts: root error boundary

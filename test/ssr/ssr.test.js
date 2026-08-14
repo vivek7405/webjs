@@ -2423,6 +2423,45 @@ test('boundary: an unprintable throw from a 403 boundary degrades, never escapes
   assert.match(await resp.text(), /unprintable value/);
 });
 
+test('boundary: a crashing boundary module is REPORTED, so prod is not silent', async () => {
+  // Sanitizing the body removed the only production-visible trace of this
+  // failure. Sanitizing without reporting moves a failure out of sight rather
+  // than out of the response, on a request that already returned a 4xx to a
+  // real user.
+  const { route, appDir } = makeBoundaryApp({
+    files: {
+      'admin/forbidden.js': `export default function F() { throw new Error('BOUNDARY_MODULE_BOOM'); }\n`,
+      'admin/page.js': `import { forbidden } from ${JSON.stringify(WEBJS_MODULE_URL)};\nexport default function Page() { forbidden(); }\n`,
+    },
+    page: 'admin/page.js',
+    layouts: [],
+    forbiddens: ['admin/forbidden.js'],
+  });
+  const seen = [];
+  const resp = await SILENT(() => ssrPage(route, {}, new URL('http://localhost/admin'), {
+    dev: false, appDir, onError: (e) => seen.push(e),
+  }));
+  assert.equal(resp.status, 403);
+  assert.ok(!(await resp.text()).includes('BOUNDARY_MODULE_BOOM'), 'the body stays sanitized');
+  assert.equal(seen.length, 1, 'but the failure reached the sink');
+  assert.match(String(seen[0].message), /BOUNDARY_MODULE_BOOM/);
+});
+
+test('boundary: a 404 boundary that fails to LOAD is reported too', async () => {
+  // The load failure path, not the render one: a syntax error in not-found.ts.
+  const sub = mkdtempSync(join(tmpDir, 'nf-load-'));
+  const appDir = join(sub, 'app');
+  mkdirSync(appDir, { recursive: true });
+  const nf = join(appDir, 'not-found.js');
+  writeFileSync(nf, `export default function NF({ x { return; }\n`);
+  const seen = [];
+  const resp = await SILENT(() => ssrNotFound(nf, {
+    dev: false, appDir, url: new URL('http://localhost/gone'), onError: (e) => seen.push(e),
+  }));
+  assert.equal(resp.status, 404);
+  assert.equal(seen.length, 1, 'a boundary that cannot even be imported is not silent either');
+});
+
 test('boundary: a boundary response is never storable and never reduced', async () => {
   // Two independent guarantees. The HTML cache refuses a non-200 outright, and
   // the reduced X-Webjs-Have path is structurally unreachable: the boundary

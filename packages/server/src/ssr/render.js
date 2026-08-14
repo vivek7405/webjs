@@ -481,6 +481,7 @@ function boundaryErrorKey(err, stage) {
 /** Stage labels, which are part of the dedup key (see boundaryErrorKey). */
 const STAGE_WALK = 'an error boundary or its layout threw while handling a render error';
 const STAGE_GLOBAL_ERROR = 'global-error threw while handling a render error';
+const STAGE_BOUNDARY = 'a boundary module threw or failed to load';
 
 /**
  * Report a throw from a layout wrapped around a boundary page (#1298) to the
@@ -679,6 +680,12 @@ async function ssrBoundaryHtml(file, heading, opts) {
         }
       }
     } catch (e) {
+      // The boundary module itself threw or failed to load. REPORT it: with
+      // the body sanitized below, this is otherwise completely silent in
+      // production, on a request that already returned a 4xx to a real user.
+      // Sanitizing without reporting moves a failure out of sight rather than
+      // out of the response, which is the opposite of the intent.
+      reportBoundaryLayoutError(e, opts, { what: STAGE_BOUNDARY, overlay: true });
       // Dev shows the failure; prod shows only the heading. The 500 path has
       // always drawn that line (a thrown error's message is not
       // author-controlled and must not reach the client), and these pages were
@@ -737,6 +744,8 @@ async function ssrNotFoundHtml(notFoundFile, opts) {
         }
       }
     } catch (e) {
+      // Reported for the same reason as in ssrBoundaryHtml above.
+      reportBoundaryLayoutError(e, opts, { what: STAGE_BOUNDARY, overlay: true });
       body = opts.dev
         ? `<h1>404: Not found</h1><pre>${escapeHtml(safeErrorText(e))}</pre>`
         : '<h1>404: Not found</h1>';
