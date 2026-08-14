@@ -429,9 +429,16 @@ export function prefetch(href, frameId) {
       // (`ssr/render.js`); both fall-throughs return a whole document instead.
       // It marks the sliced case with `x-webjs-frame`, so a mismatch here means
       // the body is not the shape this entry claims. Discard it rather than
-      // store it: a full document under a frame key would be swapped into the
-      // frame region on the click, and it cannot be filed under the page key
-      // either, since it was fetched with a header the response varies on.
+      // store it. The swap would NOT splice a whole document into the region
+      // (its frame branch queries the body for `webjs-frame#<id>` and diffs
+      // only that), but it may find no source at all: an absent id means the
+      // render never had the frame, and a streamed page carries its resolved
+      // content inside a `<template data-webjs-resolve>` that `querySelector`
+      // does not descend into. Then the swap dispatches `webjs:frame-missing`
+      // and leaves the region unchanged, so consuming the entry turns the click
+      // into a silent no-op instead of a network fetch. It cannot be filed under
+      // the page key either, since it was fetched with a header the response
+      // varies on.
       //
       // Discarding is not the same as FORGETTING, so the refusal is memoed (see
       // `prefetchRefused`) to stop the request being re-issued on every hover
