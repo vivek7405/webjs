@@ -701,24 +701,36 @@ async function ssrBoundaryHtml(file, heading, opts) {
             body = await renderToString(tree, { ssr: true, dev: opts.dev });
           }
         } catch (layoutErr) {
-          // A TREE failure is not this catch's business: the standalone
-          // fallback would re-render the same tree and fail the same way, so
-          // rethrow and let the outer catch report it ONCE under the boundary
-          // label. Reporting here as well would double-report it and call it a
-          // layout crash.
-          if (!isLayoutPhase(layoutErr)) throw layoutErr;
-          // A wrapped layout threw. Degrade to the standalone render this has
-          // always produced, and to its empty boot set with it. Report it
-          // either way: these paths execute layout modules for the first time
-          // since #1298, so a genuine layout crash would otherwise vanish.
-          reportBoundaryLayoutError(layoutErr, opts, { overlay: true });
+          // Always attempt the standalone render, which is the degradation
+          // this path has always produced. Its OUTCOME is half the diagnosis
+          // and the phase marker is the other half; neither alone is enough.
+          //
+          // The marker records a layout that threw when it was CALLED. It
+          // cannot record a layout that fails while being SERIALIZED (the
+          // idiomatic `html`<nav>${getNav()}</nav>${children}`` with a
+          // rejecting hole), because by then its output is fused into one tree
+          // with the boundary's and `renderToString` cannot say which half
+          // threw. That is what the fallback answers: if the boundary renders
+          // alone, the fault was layout-side whether or not it was marked.
+          let treeErr = null;
           try {
             body = await renderToString(tree, { ssr: true, dev: opts.dev });
             moduleUrls = [];
-          } catch (treeErr) {
-            // BOTH are broken. The layout crash is already reported above, so
-            // hand the outer catch the TREE error: it is a second, distinct
-            // failure, and it is the one whose text the dev body should show.
+          } catch (e) {
+            treeErr = e;
+          }
+          if (treeErr === null) {
+            // The boundary is fine on its own, so the chain is what failed.
+            reportBoundaryLayoutError(layoutErr, opts, { overlay: true });
+          } else {
+            // The boundary's own tree is broken too. Report a MARKED layout
+            // failure as the separate thing it is, then hand the outer catch
+            // the tree error: it is what defeated the fallback and what the
+            // dev body should show. An UNMARKED one is not reported here,
+            // because it may be this same tree error arriving twice.
+            if (isLayoutPhase(layoutErr)) {
+              reportBoundaryLayoutError(layoutErr, opts, { overlay: false });
+            }
             throw treeErr;
           }
         }
@@ -781,13 +793,20 @@ async function ssrNotFoundHtml(notFoundFile, opts) {
             body = await renderToString(tree, { ssr: true, dev: opts.dev });
           }
         } catch (layoutErr) {
-          // Same phase rule as ssrBoundaryHtml above.
-          if (!isLayoutPhase(layoutErr)) throw layoutErr;
-          reportBoundaryLayoutError(layoutErr, opts, { overlay: true });
+          // Same diagnosis rule as ssrBoundaryHtml above.
+          let treeErr = null;
           try {
             body = await renderToString(tree, { ssr: true, dev: opts.dev });
             moduleUrls = [];
-          } catch (treeErr) {
+          } catch (e) {
+            treeErr = e;
+          }
+          if (treeErr === null) {
+            reportBoundaryLayoutError(layoutErr, opts, { overlay: true });
+          } else {
+            if (isLayoutPhase(layoutErr)) {
+              reportBoundaryLayoutError(layoutErr, opts, { overlay: false });
+            }
             throw treeErr;
           }
         }

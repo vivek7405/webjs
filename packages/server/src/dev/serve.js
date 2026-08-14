@@ -503,7 +503,15 @@ export async function handleCore(req, ctx) {
   // No `route` is passed on purpose: nothing matched, so there is no layout
   // chain to render the boundary inside, and the response stays a bare
   // document with no boot script.
-  return ssrNotFound(state.routeTable.notFound || state.routeTable.globalNotFound, {
+  // Same supersede rule the matched-page branch follows (#1047 / #893): a
+  // LATER successful render of this same url clears the frame it retained, so
+  // an intermittently-failing not-found (a query behind it, not a source edit,
+  // which the rebuild already clears) cannot leave a frame that paints over a
+  // page that has since recovered. Scoped to this url, so a good render here
+  // never erases an error still current for a page the user is looking at.
+  const devErrorUrl = withBasePath(url.pathname, basePath()) + url.search;
+  const before = dev ? state.lastDevError : null;
+  const resp = await ssrNotFound(state.routeTable.notFound || state.routeTable.globalNotFound, {
     dev,
     appDir,
     req,
@@ -524,12 +532,14 @@ export async function handleCore(req, ctx) {
     // `state.lastDevError` for the SSE to replay into a fresh tab. Prefetch is
     // on by default and fetches unrouted hrefs too, so this is reachable.
     onDevError: dev && req.headers.get('x-webjs-prefetch') !== '1'
-      ? (e) => reportDevError(e, {
-        kind: 'render',
-        url: withBasePath(url.pathname, basePath()) + url.search,
-      })
+      ? (e) => reportDevError(e, { kind: 'render', url: devErrorUrl })
       : undefined,
   });
+  if (
+    before && state.lastDevError === before
+    && before.kind === 'render' && before.url === devErrorUrl
+  ) state.lastDevError = null;
+  return resp;
 }
 
 /** @param {Request} req @param {string} path */

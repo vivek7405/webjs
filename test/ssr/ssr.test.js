@@ -2525,6 +2525,37 @@ test('boundary: when the layout AND the tree are broken, BOTH are reported', asy
   assert.match(await resp.text(), /TREE_HALF_BOOM/);
 });
 
+test('boundary: a layout failing in a TEMPLATE HOLE still degrades to the boundary', async () => {
+  // The idiomatic async layout: it returns fine and fails while being
+  // serialized. The phase marker cannot see this, because by then the layout's
+  // output is fused into one tree with the boundary's, so the FALLBACK is what
+  // diagnoses it: the boundary renders alone, therefore the chain was at fault.
+  // Getting this wrong serves a bare heading instead of the boundary page.
+  const { route, appDir } = makeBoundaryApp({
+    files: {
+      'layout.js': HTML_IMPORT + `export default function Root({ children }) {
+        return html\`<nav>\${Promise.reject(new Error('LAYOUT_HOLE_BOOM'))}</nav>\${children}\`;
+      }\n`,
+      'admin/forbidden.js': HTML_IMPORT + `export default function F() { return html\`<p id="fb">no access</p>\`; }\n`,
+      'admin/page.js': `import { forbidden } from ${JSON.stringify(WEBJS_MODULE_URL)};\nexport default function Page() { forbidden(); }\n`,
+    },
+    page: 'admin/page.js',
+    layouts: ['layout.js'],
+    forbiddens: ['admin/forbidden.js'],
+  });
+  const seen = [];
+  const resp = await SILENT(() => ssrPage(route, {}, new URL('http://localhost/admin'), {
+    dev: false, appDir, onError: (e) => seen.push(e),
+  }));
+  assert.equal(resp.status, 403);
+  const body = await resp.text();
+  assert.ok(body.includes('id="fb"'), 'the boundary page is served, not a bare heading');
+  assert.equal(markersOf(body).length, 0, 'chrome-less, since the chain could not render');
+  assert.ok(!body.includes('<script type="module">'), 'and no boot set for a chain that did not render');
+  const hits = seen.filter((e) => /LAYOUT_HOLE_BOOM/.test(String(e && e.message)));
+  assert.equal(hits.length, 1, 'the layout failure is reported exactly once');
+});
+
 test('boundary: a boundary response is never storable and never reduced', async () => {
   // Two independent guarantees. The HTML cache refuses a non-200 outright, and
   // the reduced X-Webjs-Have path is structurally unreachable: the boundary

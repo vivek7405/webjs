@@ -187,3 +187,38 @@ test('a PREFETCH of an unrouted url raises no dev overlay frame (#1047)', async 
   assert.equal(frames.length, 0, 'no overlay frame from a speculative fetch');
   assert.equal(errors.length, 1, 'but the APM sink still hears about it, since the render really threw');
 });
+
+test('a recovered unrouted 404 clears the frame it retained (#1047 supersede)', async () => {
+  // An intermittently-failing not-found must not leave a frame that paints
+  // over the same url once it renders again. A source edit is cleared by the
+  // rebuild; this is the other route in, and it only became reachable once the
+  // frame stamp was correct enough for the overlay to accept it.
+  const appDir = makeApp({
+    'package.json': pkg,
+    'app/page.js': page('export default function H() { return html`<main>home</main>`; }'),
+    // Fails on the first render of a url, succeeds afterwards.
+    // globalThis, not module scope: dev re-imports the module per request with
+    // a cache-bust query, so module-level state resets every time.
+    'app/not-found.js': `import { html } from ${JSON.stringify(CORE)};
+export default function NF() {
+  if (!globalThis.__flakyNfSeen) { globalThis.__flakyNfSeen = true; throw new Error('FLAKY_NF_BOOM'); }
+  return html\`<main>missing</main>\`;
+}
+`,
+  });
+  const app = await createRequestHandler({ appDir, dev: true });
+  const prev = console.error;
+  console.error = () => {};
+  try {
+    const first = await app.handle(new Request('http://x/gone?q=1'));
+    assert.equal(first.status, 404);
+    const second = await app.handle(new Request('http://x/gone?q=1'));
+    assert.equal(second.status, 404);
+    assert.match(await second.text(), /missing/, 'the second render succeeded');
+  } finally { console.error = prev; }
+  // Observed directly, not through a probe endpoint that might not exist: a
+  // conditional assertion here would pass whether or not the fix works.
+  assert.equal(typeof app.getLastDevError, 'function', 'the handler exposes the retained frame');
+  const held = app.getLastDevError();
+  assert.equal(held, null, 'no stale frame retained for a url that recovered');
+});
