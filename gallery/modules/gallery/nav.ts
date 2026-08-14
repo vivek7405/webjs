@@ -29,7 +29,7 @@ export const FEATURE_GROUPS: NavGroup[] = [
     items: [
       { href: '/features/components', title: 'Components', blurb: 'Make one part of the page respond to a click or hold state. A page never hydrates, so interactivity lives in a component.' },
       { href: '/features/directives', title: 'Directives', blurb: 'Render a keyed list, or swap a single node when state changes, without re-rendering the component around it.' },
-      { href: '/features/async-render', title: 'Async render', blurb: 'Get server data into a component first paint. Await it in async render() rather than fetching after mount, which SSR never runs.' },
+      { href: '/features/async-render', title: 'Async render', blurb: 'Get server data into the first paint. Await it in async render() rather than fetching after mount, which SSR never runs.' },
     ],
   },
   {
