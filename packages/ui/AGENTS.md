@@ -631,11 +631,10 @@ The geometry is Tailwind's own, so this is naming rather than new numbers. The
 shadow COLOUR rides `var(--elevation-ambient)` / `var(--elevation-contact)`
 **inside the value**, and it has to: Tailwind INLINES a `--shadow-*` theme value
 into the utility rather than emitting a `var()` reference, so redeclaring
-`--shadow-e1` under `.dark` would silently do nothing. In dark mode elevation
-reads as a lighter surface (`--surface-1` through `--surface-3`), because a
-darker shadow on a dark ground reads as a hole.
-
-`cn()`'s shadow classifier lists `e1` through `e4` in its size alternation. A
+`--shadow-e1` under `.dark` would silently do nothing. In dark mode the LIFT comes from the surface being
+lighter than the page, which `--card` and `--popover` already express; the
+shadow only separates the edge, and it is stronger in dark than in light
+because the contrast against a dark ground is smaller to begin with. A
 bare shadow name it does not list falls through to the `shadow-color` group, so
 without that entry an elevation utility and a real shadow colour evict each
 other silently.

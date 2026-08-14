@@ -9,11 +9,22 @@
 // that makes people abandon a settings form.
 import type { ActionResult } from '@webjsdev/server';
 
+/** The six notification toggles, by their form field names. */
+export const NOTIFICATION_KEYS = [
+  'appointment-booked',
+  'appointment-cancelled',
+  'reminder-sent',
+  'payment-received',
+  'staff-added',
+  'weekly-summary',
+] as const;
+
 export interface SettingsInput {
   displayName: string;
   email: string;
   practice: string;
   timezone: string;
+  notifications: string;
 }
 
 export async function saveSettings(formData: FormData): Promise<ActionResult<SettingsInput>> {
@@ -22,7 +33,15 @@ export async function saveSettings(formData: FormData): Promise<ActionResult<Set
   const practice = String(formData.get('practice') ?? '').trim();
   const timezone = String(formData.get('timezone') ?? '').trim();
 
-  const values = { displayName, email, practice, timezone };
+  // An unchecked checkbox submits NOTHING, so the set of present keys IS the
+  // answer. Read them back so a failed validation can restore them: the four
+  // text fields surviving a 422 while six toggles silently reset is the same
+  // defect in a less obvious place.
+  const notifications = NOTIFICATION_KEYS.filter((k) => formData.get(k) != null);
+  // `values` is a Record<string, string> by the envelope's definition, mirroring
+  // the fact that a form submits strings. So the set rides as one comma-joined
+  // field rather than as an array, and the page splits it back.
+  const values = { displayName, email, practice, timezone, notifications: notifications.join(',') };
   const fieldErrors: Record<string, string> = {};
 
   if (displayName.length < 2 || displayName.length > 60) {

@@ -152,9 +152,13 @@ The role names mean the z-axis says something. `shadow-md` on a card and
 how depth stops carrying meaning. Keep peers on one level: a card raised above
 its neighbours claims an importance its content probably does not have.
 
-In dark mode elevation reads as a **lighter surface** rather than a darker
-shadow, which the tokens handle for you (`--surface-1` through `--surface-3`).
-A darker shadow on a dark ground reads as a hole.
+**In dark mode the lift comes from the SURFACE, not the shadow.** A raised
+element is lighter than the page behind it, which the theme already expresses
+through `--card` and `--popover` sitting above `--background`. So use
+`bg-card` for a raised surface and let the shadow only separate its edge. A
+shadow doing all the work on a dark ground reads as a hole rather than as
+lift, which is why the dark shadow is stronger than the light one but not
+dramatically so.
 
 ## Empty states are not optional
 

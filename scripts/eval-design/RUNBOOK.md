@@ -23,18 +23,28 @@ only difference between them is the guidance.
 
 ## Step 1: cut the two sides
 
-The BEFORE side is main with the guidance reverted. The AFTER side is main.
+The AFTER side is whatever ref carries the guidance. The BEFORE side is that
+same ref with the guidance removed and nothing else changed.
+
+Set it once. Pre-merge that is the feature branch, which is when this gate is
+meant to run; after a merge it is `origin/main`.
 
 ```sh
-# after side (guidance present)
-git worktree add ../gate-after main
+REF=origin/feat/ui-design-first-class   # or origin/main, once merged
+
+# after side (guidance present). A branch of its own, because a ref that is
+# already checked out in the primary clone cannot be checked out twice.
+git worktree add -b gate-after ../gate-after "$REF"
 
 # before side (guidance removed, everything else identical)
-git worktree add -b gate-before ../gate-before main
+git worktree add -b gate-before ../gate-before "$REF"
 cd ../gate-before
 git rm -r --quiet .agents/skills/webjs/references/design.md \
                   .agents/skills/webjs/references/design-depth.md
-# drop the routing rows so nothing points at the deleted files
+# drop the routing rows so nothing points at the deleted files. THREE places:
+# SKILL.md's topic table, its "Reach For The Right Primitive" cheat sheet (two
+# rows, which a repo-health test pairs against the gallery demos), and the
+# reference table in root AGENTS.md.
 $EDITOR .agents/skills/webjs/SKILL.md AGENTS.md
 git commit -am "gate: before side, guidance removed"
 ```
@@ -42,7 +52,7 @@ git commit -am "gate: before side, guidance removed"
 Confirm the two sides differ in the guidance and nothing else:
 
 ```sh
-git diff gate-before..main --stat
+git diff gate-before..gate-after --stat
 ```
 
 Anything in that diff other than the two reference files and their routing rows
@@ -50,7 +60,7 @@ means the sides are not comparable. Fix it before running.
 
 ## Step 2: generate the apps
 
-Six apps per side, three prompts times two, plus one spare run each.
+Nine apps per side: three prompts times three runs. Eighteen in all.
 
 ```sh
 for side in before after; do

@@ -64,9 +64,6 @@
   --color-info-foreground:        var(--info-foreground);
   --color-info-subtle:            var(--info-subtle);
   --color-info-subtle-foreground: var(--info-subtle-foreground);
-  --color-surface-1:              var(--surface-1);
-  --color-surface-2:              var(--surface-2);
-  --color-surface-3:              var(--surface-3);
   /* Elevation named by role. Geometry is Tailwind's own; the colour rides a
      var so the dark theme can invert it. */
   --shadow-e1: 0 1px 3px 0 var(--elevation-ambient), 0 1px 2px -1px var(--elevation-contact);

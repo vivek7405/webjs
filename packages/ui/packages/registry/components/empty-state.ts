@@ -41,7 +41,9 @@
  * @example
  * ```html
  * <div class=${emptyStateClass()}>
- *   <svg class=${emptyStateMediaClass()} aria-hidden="true"><!-- … --></svg>
+ *   <svg class=${emptyStateMediaClass()} aria-hidden="true" viewBox="0 0 24 24">
+ *     <path d="M4 7h16v13H4z" fill="none" stroke="currentColor" stroke-width="1.5" />
+ *   </svg>
  *   <h2 class=${emptyStateTitleClass()}>No invoices yet</h2>
  *   <p class=${emptyStateDescriptionClass()}>
  *     Invoices you send appear here, with their payment status.

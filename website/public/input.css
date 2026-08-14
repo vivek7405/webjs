@@ -159,9 +159,6 @@
   --color-info-foreground:        var(--info-foreground);
   --color-info-subtle:            var(--info-subtle);
   --color-info-subtle-foreground: var(--info-subtle-foreground);
-  --color-surface-1:              var(--surface-1);
-  --color-surface-2:              var(--surface-2);
-  --color-surface-3:              var(--surface-3);
   /* The shadow COLOUR rides a var INSIDE the value on purpose: Tailwind inlines
      a --shadow-* value into the utility rather than emitting a var() reference,
      so a per-theme redeclaration of --shadow-e1 would do nothing at all. */
@@ -238,9 +235,6 @@
   --info-subtle-foreground:   light-dark(oklch(0.443 0.11 240.79), oklch(0.828 0.111 230.318));
   --elevation-ambient:        light-dark(oklch(0 0 0 / 0.1), oklch(0 0 0 / 0.5));
   --elevation-contact:        light-dark(oklch(0 0 0 / 0.1), oklch(0 0 0 / 0.6));
-  --surface-1:                light-dark(oklch(1 0 0), oklch(0.205 0 0));
-  --surface-2:                light-dark(oklch(1 0 0), oklch(0.245 0 0));
-  --surface-3:                light-dark(oklch(1 0 0), oklch(0.285 0 0));
   --border:                   light-dark(oklch(0.922 0 0),         oklch(1 0 0 / 10%));
   --input:                    light-dark(oklch(0.922 0 0),         oklch(1 0 0 / 15%));
   --ring:                     light-dark(oklch(0.708 0 0),         oklch(0.556 0 0));

@@ -38,9 +38,6 @@
   --color-info-foreground: var(--info-foreground);
   --color-info-subtle: var(--info-subtle);
   --color-info-subtle-foreground: var(--info-subtle-foreground);
-  --color-surface-1: var(--surface-1);
-  --color-surface-2: var(--surface-2);
-  --color-surface-3: var(--surface-3);
   --color-border: var(--border);
   --color-input: var(--input);
   --color-ring: var(--ring);
@@ -145,13 +142,11 @@
   --info-subtle: oklch(0.977 0.013 236.62);
   --info-subtle-foreground: oklch(0.443 0.11 240.79);
 
-  /* Elevation. In light mode the shadow does all the work, so all three
-     surfaces are the card colour and only the shadow separates them. */
+  /* Elevation. The shadow colour is a token so the dark block can restate it,
+     which is the only way to retheme a --shadow-* value (Tailwind inlines the
+     value into the utility rather than emitting a var() reference to it). */
   --elevation-ambient: oklch(0 0 0 / 0.1);
   --elevation-contact: oklch(0 0 0 / 0.1);
-  --surface-1: oklch(1 0 0);
-  --surface-2: oklch(1 0 0);
-  --surface-3: oklch(1 0 0);
 
   --border: oklch(0.922 0 0);
   --input: oklch(0.922 0 0);
@@ -219,15 +214,19 @@
   --info-subtle: oklch(0.293 0.066 243.157);
   --info-subtle-foreground: oklch(0.828 0.111 230.318);
 
-  /* A darker shadow on a dark ground reads as a hole rather than as lift, so
-     elevation here is carried by a LIGHTER SURFACE. The shadow stays, and gets
-     stronger, only so the edge still separates. surface-1 is today's --card
-     value, so it is a no-op rename. */
-  --elevation-ambient: oklch(0 0 0 / 0.5);
-  --elevation-contact: oklch(0 0 0 / 0.6);
-  --surface-1: oklch(0.205 0 0);
-  --surface-2: oklch(0.245 0 0);
-  --surface-3: oklch(0.285 0 0);
+  /* Dark needs a STRONGER shadow than light, not a weaker one, because the
+     contrast between a shadow and a dark ground is smaller to begin with. It
+     is deliberately not enormous: a shadow doing all the work on a dark ground
+     reads as a hole rather than as lift.
+
+     The lift itself comes from the SURFACE being lighter than the page, which
+     this theme already expresses through --card and --popover at 0.205 against
+     a 0.145 --background. A raised element uses those; the shadow only
+     separates its edge. An earlier revision of this branch added
+     --surface-1/2/3 for the same job and nothing ever read them, so they were
+     removed rather than left as dead configuration. */
+  --elevation-ambient: oklch(0 0 0 / 0.3);
+  --elevation-contact: oklch(0 0 0 / 0.4);
 
   --border: oklch(1 0 0 / 10%);
   --input: oklch(1 0 0 / 15%);

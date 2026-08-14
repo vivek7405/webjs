@@ -138,6 +138,11 @@ export default function SettingsExample({ searchParams, actionData }: PageProps)
   const data = (actionData ?? {}) as ActionData;
   const errors = data.fieldErrors ?? {};
   const values = data.values ?? {};
+  // Defaults on a first paint, the submitted set on a re-render.
+  const checked: string[] =
+    data.values?.notifications !== undefined
+      ? data.values.notifications.split(',').filter(Boolean)
+      : ['appointment-booked', 'weekly-summary'];
   const saved = searchParams?.saved === '1' && !data.fieldErrors;
 
   return html`
@@ -209,7 +214,13 @@ export default function SettingsExample({ searchParams, actionData }: PageProps)
           ].map(
             ([name, label]) => html`
               <div class="flex items-center gap-3">
-                <input class="size-4" id=${name} name=${name} type="checkbox">
+                <!-- Restored from the action's returned values, exactly like
+                     the text fields above. An unchecked box submits nothing, so
+                     without this a failed validation resets all six while the
+                     four text fields survive, which is the same lost-input
+                     defect this file's header is about, just less visible. -->
+                <input class="size-4" id=${name} name=${name} type="checkbox"
+                       ?checked=${checked.includes(name)}>
                 <!-- Positive wording. "Do not email me" makes the reader work
                      out what ticking it means. -->
                 <label class="text-sm" for=${name}>${label}</label>

@@ -152,9 +152,6 @@ export default function RootLayout({ children }: { children: unknown }) {
              step up and the ambient gets stronger rather than weaker. */
           --elevation-ambient: light-dark(oklch(0 0 0 / 0.10), oklch(0 0 0 / 0.5));
           --elevation-contact: light-dark(oklch(0 0 0 / 0.10), oklch(0 0 0 / 0.6));
-          --surface-1: light-dark(oklch(1 0 0), oklch(0.14 0.015 60));
-          --surface-2: light-dark(oklch(1 0 0), oklch(0.18 0.015 60));
-          --surface-3: light-dark(oklch(1 0 0), oklch(0.22 0.015 60));
 
           --primary-tint:   color-mix(in oklch, var(--ring) 22%, transparent);
           --accent-tint:    color-mix(in oklch, var(--ring) 14%, transparent);
