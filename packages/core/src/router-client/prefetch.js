@@ -253,6 +253,17 @@ export function prefetch(href, frameId) {
   // for the reason `fetchAndApply` refuses to let `refresh` consume a prefetch
   // (#1398). Comparing against the bare page key instead would let it through.
   if (typeof location !== 'undefined' && key === cacheKey(location.href, frameId)) return;
+  // Every dedupe below keys on the DIMENSIONED key, which is deliberate and has
+  // a cost worth stating (#1407). A page holding two links to one href, one
+  // driving a frame and one not, warms both dimensions and so issues two
+  // requests where it used to issue one, and both occupy a `PREFETCH_CAP` slot.
+  // Suppressing the second is the obvious saving and is wrong: the two are
+  // DIFFERENT responses, so whichever link lost would never warm, and on touch
+  // (where `viewport` is the default and there is no hover to correct it later)
+  // that is permanent for that link, which is the latency this whole path
+  // exists to remove. The duplicate is bounded by the same cap, concurrency
+  // gate, TTL, and Save-Data gate as everything else, which is what those are
+  // for, and it adds no new TRIGGER and no per-link fan-out.
   if (prefetchInflight.has(key)) return;
   if (prefetchQueued.has(key)) return;
   const existing = prefetchCache.get(key);
