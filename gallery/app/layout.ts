@@ -120,6 +120,38 @@ export default function RootLayout({ children }: { children: unknown }) {
              destructive variant is deliberately transparent at rest and colours
              its TEXT, so defining it would be dead weight. */
           --destructive:            light-dark(oklch(0.58 0.22 27), oklch(0.70 0.19 22));
+          --destructive-foreground: light-dark(oklch(1 0 0), oklch(0.258 0.092 26));
+          --destructive-subtle:     light-dark(oklch(0.971 0.013 17), oklch(0.258 0.092 26));
+          --destructive-subtle-foreground: light-dark(oklch(0.444 0.177 27), oklch(0.808 0.114 20));
+
+          /* The semantic roles the @webjsdev/ui registry theme ships, warmed a
+             few degrees of hue to sit in this palette rather than beside it,
+             the same treatment --destructive above already gets. The examples
+             under app/examples/ read these; without them a delta or a marker
+             would paint in the ordinary foreground colour. */
+          --success:                light-dark(oklch(0.527 0.154 150), oklch(0.792 0.209 152));
+          --success-foreground:     light-dark(oklch(0.982 0.018 156), oklch(0.266 0.065 153));
+          --success-subtle:         light-dark(oklch(0.982 0.018 156), oklch(0.266 0.065 153));
+          --success-subtle-foreground: light-dark(oklch(0.448 0.119 151), oklch(0.871 0.15 154));
+          --warning:                light-dark(oklch(0.555 0.163 49), oklch(0.828 0.189 84));
+          --warning-foreground:     light-dark(oklch(0.987 0.022 95), oklch(0.279 0.077 46));
+          --warning-subtle:         light-dark(oklch(0.987 0.022 95), oklch(0.279 0.077 46));
+          --warning-subtle-foreground: light-dark(oklch(0.473 0.137 46), oklch(0.879 0.169 92));
+          --info:                   light-dark(oklch(0.5 0.134 243), oklch(0.746 0.16 233));
+          --info-foreground:        light-dark(oklch(0.977 0.013 237), oklch(0.293 0.066 243));
+          --info-subtle:            light-dark(oklch(0.977 0.013 237), oklch(0.293 0.066 243));
+          --info-subtle-foreground: light-dark(oklch(0.443 0.11 241), oklch(0.828 0.111 230));
+
+          /* Elevation. The shadow COLOUR is a var because Tailwind inlines a
+             --shadow-* value into the utility, so a per-theme shadow has to
+             carry its colour through a var inside the value. In dark the lift
+             is the surface rather than the shadow, which is why the surfaces
+             step up and the ambient gets stronger rather than weaker. */
+          --elevation-ambient: light-dark(oklch(0 0 0 / 0.10), oklch(0 0 0 / 0.5));
+          --elevation-contact: light-dark(oklch(0 0 0 / 0.10), oklch(0 0 0 / 0.6));
+          --surface-1: light-dark(oklch(1 0 0), oklch(0.14 0.015 60));
+          --surface-2: light-dark(oklch(1 0 0), oklch(0.18 0.015 60));
+          --surface-3: light-dark(oklch(1 0 0), oklch(0.22 0.015 60));
 
           --primary-tint:   color-mix(in oklch, var(--ring) 22%, transparent);
           --accent-tint:    color-mix(in oklch, var(--ring) 14%, transparent);

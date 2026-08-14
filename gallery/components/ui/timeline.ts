@@ -46,7 +46,7 @@
  * </ol>
  * ```
  */
-import { cn } from '../lib/utils.ts';
+import { cn } from '#lib/utils/cn.ts';
 
 /** The feed. Use a real `<ol>`. */
 export const timelineClass = (): string => 'grid';

@@ -270,7 +270,32 @@ function emptyStatePresent(files) {
   const hits = [];
   for (const file of files) {
     if (!isPageModule(file)) continue;
-    const list = file.text.match(/\.map\(|\brepeat\(/);
+    // A list over a LITERAL array cannot be empty at runtime, so it needs no
+    // empty branch. A fixed set of six notification checkboxes is the shape
+    // this excludes, and counting it would train an author to add an empty
+    // state that can never render, which is worse than the rule being silent.
+    // The line's own definition is a list "over a query result", so a literal
+    // was always out of scope; the first implementation just could not tell.
+    const list = [...file.text.matchAll(/\.map\(|\brepeat\(/g)].find((m) => {
+      const before = file.text.slice(0, m.index).trimEnd();
+      // Walk back over a balanced literal array immediately preceding `.map(`.
+      if (!before.endsWith(']')) return true;
+      let depth = 0;
+      for (let i = before.length - 1; i >= 0; i -= 1) {
+        if (before[i] === ']') depth += 1;
+        else if (before[i] === '[') {
+          depth -= 1;
+          if (depth === 0) {
+            // A literal opens with `[` preceded by an operator or a bracket,
+            // never by an identifier or a closing paren (which would make it a
+            // subscript on an expression rather than an array literal).
+            const prev = before.slice(0, i).trimEnd().slice(-1);
+            return !(prev === '' || '=(,:{&|?'.includes(prev));
+          }
+        }
+      }
+      return true;
+    });
     if (!list) continue;
     if (/\bemptyStateClass\(/.test(file.text)) continue;
     hits.push(hitAt(file, list.index, 'renders a list with no empty branch'));
