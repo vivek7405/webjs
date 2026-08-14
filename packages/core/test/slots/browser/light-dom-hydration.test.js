@@ -75,10 +75,22 @@ suite('Light DOM hydration', () => {
 });
 
 /**
- * MutationObserver safety net: when the router inserts custom elements via
- * replaceChildren or DOM moves, the browser doesn't always auto-upgrade them.
- * The router's global MutationObserver fixes that: test that importing the
- * router-client module sets up the observer and elements get upgraded.
+ * MutationObserver safety net: the router keeps a global observer that upgrades
+ * custom elements it sees inserted.
+ *
+ * Read what this asserts narrowly (#1406). It pins the END STATE, that an
+ * element inserted after the router is imported ends up constructed and
+ * connected. It does NOT isolate the observer, because the platform already
+ * upgrades this exact case on its own: measured in Chromium, Firefox, and
+ * WebKit, inserting an element whose definition is registered upgrades it
+ * synchronously, whether it arrives by `innerHTML`, by `replaceChildren`, or
+ * by importing a node out of a detached parse, and a later
+ * `customElements.define` upgrades matching elements already in the document.
+ * So this test would still pass with the observer removed.
+ *
+ * That is left as-is rather than rewritten around a case the platform does not
+ * cover, because no such case has been measured here, and a test built on a
+ * guessed one would be worse than a narrow one that is honest about its reach.
  */
 suite('Custom element upgrade safety net', () => {
   test('importing router-client upgrades custom elements inserted later', async () => {
@@ -96,10 +108,11 @@ suite('Custom element upgrade safety net', () => {
       });
     }
 
-    // Simulate router-style insertion: create the element via innerHTML of a
-    // host that starts detached, then attach the host. replaceChildren also
-    // works: the key is that the element isn't created via
-    // `document.createElement` (which auto-upgrades synchronously).
+    // Insert through `innerHTML` rather than `document.createElement`, which
+    // constructs the element itself and so would not exercise insertion at
+    // all. Note this still upgrades synchronously on its own (see the suite
+    // comment); the assertions below are about the end state, not about which
+    // mechanism delivered it.
     const host = document.createElement('div');
     document.body.appendChild(host);
     host.innerHTML = `<${tagName}></${tagName}>`;

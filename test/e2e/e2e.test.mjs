@@ -765,9 +765,15 @@ describe('E2E: Blog example', { skip: !process.env.WEBJS_E2E && 'set WEBJS_E2E=1
   // Counter component survives client-side navigation
   //
   // Regression tests for: after multiple client-side navigations, the counter
-  // component stopped working. The elements come from a detached parse
-  // (`Document.parseHTMLUnsafe`) and are moved into the live document, and
-  // `upgradeCustomElements` was added to guarantee `connectedCallback` fires.
+  // component stopped working. The elements are parsed into a detached
+  // document and then imported into the live one, and `upgradeCustomElements`
+  // was added to guarantee `connectedCallback` fires. (Which parse API runs
+  // depends on the response: `parseHTML` in `dom-parse.js` uses
+  // `createHTMLDocument` plus `setHTMLUnsafe` for a partial-nav FRAGMENT,
+  // which is the common soft-nav case here, and reaches
+  // `Document.parseHTMLUnsafe` only for a full document whose comments it
+  // preserves losslessly, falling back to `DOMParser` otherwise. The nodes are
+  // then CLONED in by `document.importNode`, not moved.)
   //
   // The mechanism half of that is narrower than it used to read here, so do
   // not take the old "upgrades didn't fire on replaceChildren" wording as the
