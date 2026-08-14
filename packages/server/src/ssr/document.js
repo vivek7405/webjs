@@ -56,10 +56,16 @@ export function pageSegmentPath(pageFile) {
  *   app/error.ts                        -> '/'
  *   app/docs/error.ts                   -> '/docs'
  *   app/(marketing)/about/not-found.ts  -> '/(marketing)/about'
+ *   app/global-not-found.ts             -> '/'   (root-only by definition)
  *
  * Route groups are KEPT, for the reason stated on layoutSegmentPath: two
  * routes at one URL prefix served by different `(group)` layouts must not
  * look like a shared layout.
+ *
+ * The filename match is anchored to a separator or the start of the path, and
+ * the `global-` forms are matched FIRST. Without the anchor, `not-found` also
+ * matches INSIDE `global-not-found.ts`, which yielded the nonsense segment
+ * `/global-` for a boundary that is root-only and must derive `/`.
  *
  * @param {string} boundaryFile  Absolute path to the boundary source file.
  * @returns {string}
@@ -67,7 +73,10 @@ export function pageSegmentPath(pageFile) {
 export function boundarySegmentPath(boundaryFile) {
   const p = boundaryFile
     .replace(/^.*\/app\//, '')
-    .replace(/\/?(?:error|not-found|forbidden|unauthorized)\.[jt]sx?$/, '');
+    .replace(
+      /(?:^|\/)(?:global-error|global-not-found|error|not-found|forbidden|unauthorized)\.[jt]sx?$/,
+      '',
+    );
   return p === '' ? '/' : '/' + p;
 }
 

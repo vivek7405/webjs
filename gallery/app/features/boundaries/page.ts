@@ -52,12 +52,15 @@ export default function BoundariesExample() {
       </li>
     </ul>
     <p class="text-muted-foreground text-sm">
-      Follow any of those links and notice what does NOT happen: the page does
-      not reload. A boundary renders inside the layouts at and above its own
-      segment, so the surrounding chrome survives and the navigation stays a
-      soft one. The one exception is
+      Follow the first three links and notice what does NOT happen: the page
+      does not reload. A boundary renders inside the layouts at and above its
+      own segment, so the surrounding chrome survives and the navigation stays
+      a soft one. Two cases still reload, both for the same reason (there is no
+      shared shell to swap into): the fourth link, whose URL matches no route
+      at all, so there is no layout chain to render the
+      <code class="font-mono">not-found.ts</code> inside; and
       <code class="font-mono">global-error.ts</code>, which owns its whole
-      document and so always arrives as a full page load.
+      document.
     </p>
     <p class="text-muted-foreground text-sm">
       <code class="font-mono">forbidden()</code> is for an authenticated user who

@@ -111,6 +111,14 @@ test('boundarySegmentPath derives a boundary file own segment', () => {
   // two routes at one URL prefix under different (group) layouts must not look
   // like a shared layout.
   assert.equal(_boundarySegmentPath('/x/app/(marketing)/about/not-found.ts'), '/(marketing)/about');
+  // The root-only global forms derive '/'. The filename match must be anchored
+  // to a separator or the path start, or `not-found` also matches INSIDE
+  // `global-not-found.ts` and yields the nonsense segment '/global-'. Reachable:
+  // a thrown notFound() with no nearer boundary renders globalNotFound.
+  assert.equal(_boundarySegmentPath('/x/app/global-not-found.ts'), '/');
+  assert.equal(_boundarySegmentPath('/x/app/global-error.js'), '/');
+  // A segment whose folder merely ENDS in a boundary word keeps its name.
+  assert.equal(_boundarySegmentPath('/x/app/my-error/not-found.ts'), '/my-error');
 });
 
 test('layoutsForBoundary keeps the boundary own segment and every ancestor', () => {

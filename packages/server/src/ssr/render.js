@@ -318,16 +318,27 @@ async function renderBoundaryInChain(tree, route, boundaryFile, ctx, dev) {
   const params = { ...(/** @type {Record<string,string>} */ (ctx.params) || {}) };
   const wrapLayouts = layoutsForBoundary(route.layouts, boundarySegmentPath(boundaryFile));
   // The boundary occupies the PAGE's region, so it gets the page's own keyed
-  // pair under the SAME skip rule renderChain uses, read against the innermost
-  // WRAPPED layout rather than the innermost layout of the route. That keeps
-  // the emitted segment-id SET identical to the happy path's in every shape:
-  // where a deeper layout would have owned the innermost region, the page
-  // region takes its place under the same id.
+  // pair, EXCEPT when the page's segment is also a LAYOUT's segment. Then the
+  // id is that layout's and emitting it here would be a lie in one of two ways.
+  //
+  // If that layout is the innermost wrapped one, its children slot already
+  // delimits this exact range and two boundaries under one id break keyed
+  // pairing: the happy path skips for the same reason.
+  //
+  // If that layout was EXCLUDED (the boundary sits above it, so it never
+  // rendered), the id is worse than redundant. The response would advertise a
+  // region under the excluded layout's id with none of its markup inside, the
+  // client would then send that id in `X-Webjs-Have`, and the next navigation
+  // into that layout's subtree would short-circuit on it and return a fragment
+  // that assumes chrome the page never had. The user lands on the next page
+  // with that layout missing entirely.
+  //
+  // So the SET of emitted ids is a subset of the happy path's, never a
+  // different set: an id only ever appears here if a layout at that segment
+  // rendered, or no layout owns that segment at all.
   const pageSeg = pageSegmentPath(route.file);
-  const innermostSeg = wrapLayouts.length
-    ? layoutSegmentPath(wrapLayouts[wrapLayouts.length - 1])
-    : null;
-  if (pageSeg !== innermostSeg) tree = wrapWithChildrenMarker(tree, pageSeg, params);
+  const layoutSegs = new Set((route.layouts || []).map(layoutSegmentPath));
+  if (!layoutSegs.has(pageSeg)) tree = wrapWithChildrenMarker(tree, pageSeg, params);
   const chain = await wrapLayoutChain(tree, wrapLayouts, ctx, dev, params, null);
   return renderToString(chain.tree, { ssr: true, dev });
 }
@@ -404,6 +415,46 @@ async function renderChain(route, ctx, dev, suspenseCtx, have, pageModule) {
 }
 
 /**
+ * The boot module set for a boundary response: what actually RENDERED, the
+ * boundary module plus the layouts wrapping it (#1298).
+ *
+ * Applies the SAME inert / import-only substitution as the happy-path boot
+ * (#963), so a boundary never ships a route module the normal render drops.
+ * Pre-substitution, an import-only layout with a bare `.server.*` import
+ * (legal, it never loads client-side) would load here whole and crash the
+ * boundary page's boot on the throw-at-load stub, killing the sibling
+ * component registrations in the same module script.
+ *
+ * The substitution applies to the boundary file harmlessly: only page and
+ * layout files are fed to the elision analysis, so a boundary is never inert
+ * and never import-only, gets no verdict, and is pushed as-is. Every boundary
+ * kind is a `browserEntryFiles` entry (browser-entries.js), so each of these
+ * URLs is servable through the auth gate.
+ *
+ * @param {string} boundaryFile
+ * @param {string[]} wrapLayouts
+ * @param {{ appDir: string, inertRouteModules?: Set<string>,
+ *   importOnlyRouteModules?: Map<string, string[]> }} opts
+ * @returns {string[]}
+ */
+function boundaryModuleUrls(boundaryFile, wrapLayouts, opts) {
+  /** @type {string[]} */
+  const urls = [];
+  const seen = new Set();
+  const push = (abs) => {
+    const u = toUrlPath(abs, opts.appDir);
+    if (!seen.has(u)) { seen.add(u); urls.push(u); }
+  };
+  for (const f of [boundaryFile, ...wrapLayouts]) {
+    if (opts.inertRouteModules && opts.inertRouteModules.has(f)) continue;
+    const emit = opts.importOnlyRouteModules && opts.importOnlyRouteModules.get(f);
+    if (emit) emit.forEach(push);
+    else push(f);
+  }
+  return urls;
+}
+
+/**
  * The ctx a boundary module and its wrapped layouts receive (#1298). Same shape
  * as the page render's, so a layout cannot tell a boundary render from a normal
  * one. Boundary modules used to be called with an empty object, which left a
@@ -439,6 +490,8 @@ function boundaryCtx(params, url, actionData) {
  */
 async function ssrBoundaryHtml(file, heading, opts) {
   let body = `<h1>${heading}</h1>`;
+  /** @type {string[]} */
+  let moduleUrls = [];
   if (file) {
     const ctx = opts.ctx || boundaryCtx(opts.params, opts.url, undefined);
     try {
@@ -446,21 +499,35 @@ async function ssrBoundaryHtml(file, heading, opts) {
       if (mod.default) {
         const tree = await mod.default(ctx);
         try {
-          body = opts.route
-            ? await renderBoundaryInChain(tree, opts.route, file, ctx, opts.dev)
-            : await renderToString(tree, { ssr: true, dev: opts.dev });
+          if (opts.route) {
+            body = await renderBoundaryInChain(tree, opts.route, file, ctx, opts.dev);
+            // The chain rendered, so its modules have to boot: chrome that
+            // paints but never hydrates is worse than no chrome, because its
+            // controls look live and are not (#1298).
+            moduleUrls = boundaryModuleUrls(
+              file,
+              layoutsForBoundary(opts.route.layouts, boundarySegmentPath(file)),
+              opts,
+            );
+          } else {
+            body = await renderToString(tree, { ssr: true, dev: opts.dev });
+          }
         } catch {
+          // A wrapped layout threw. Degrade to the standalone render this has
+          // always produced, and to its empty boot set with it.
           body = await renderToString(tree, { ssr: true, dev: opts.dev });
+          moduleUrls = [];
         }
       }
     } catch (e) {
       body = `<h1>${heading}</h1><pre>${escapeHtml(String(e))}</pre>`;
+      moduleUrls = [];
     }
   }
   const nonce = opts.req ? getNonce(opts.req) : undefined;
   return wrapInDocument(body, {
     metadata: { title: heading.replace(/^\d+:\s*/, '') },
-    moduleUrls: [],
+    moduleUrls,
     dev: opts.dev,
     nonce,
   });
@@ -478,6 +545,8 @@ async function ssrBoundaryHtml(file, heading, opts) {
  */
 async function ssrNotFoundHtml(notFoundFile, opts) {
   let body = '<h1>404: Not found</h1>';
+  /** @type {string[]} */
+  let moduleUrls = [];
   if (notFoundFile) {
     const ctx = opts.ctx || boundaryCtx(opts.params, opts.url, undefined);
     try {
@@ -485,21 +554,30 @@ async function ssrNotFoundHtml(notFoundFile, opts) {
       if (mod.default) {
         const tree = await mod.default(ctx);
         try {
-          body = opts.route
-            ? await renderBoundaryInChain(tree, opts.route, notFoundFile, ctx, opts.dev)
-            : await renderToString(tree, { ssr: true, dev: opts.dev });
+          if (opts.route) {
+            body = await renderBoundaryInChain(tree, opts.route, notFoundFile, ctx, opts.dev);
+            moduleUrls = boundaryModuleUrls(
+              notFoundFile,
+              layoutsForBoundary(opts.route.layouts, boundarySegmentPath(notFoundFile)),
+              opts,
+            );
+          } else {
+            body = await renderToString(tree, { ssr: true, dev: opts.dev });
+          }
         } catch {
           body = await renderToString(tree, { ssr: true, dev: opts.dev });
+          moduleUrls = [];
         }
       }
     } catch (e) {
       body = `<h1>404: Not found</h1><pre>${escapeHtml(String(e))}</pre>`;
+      moduleUrls = [];
     }
   }
   const nonce = opts.req ? getNonce(opts.req) : undefined;
   return wrapInDocument(body, {
     metadata: { title: 'Not found' },
-    moduleUrls: [],
+    moduleUrls,
     dev: opts.dev,
     nonce,
   });
@@ -945,20 +1023,7 @@ export async function ssrPage(route, params, url, opts) {
         // substitution applies to the boundary file harmlessly: only page and
         // layout files are fed to the elision analysis, so a boundary is never
         // inert and never import-only, gets no verdict, and is pushed as-is.
-        const errModuleUrls = [];
-        {
-          const seen = new Set();
-          const push = (abs) => {
-            const u = toUrlPath(abs, opts.appDir);
-            if (!seen.has(u)) { seen.add(u); errModuleUrls.push(u); }
-          };
-          for (const f of [route.errors[i], ...wrapLayouts]) {
-            if (opts.inertRouteModules && opts.inertRouteModules.has(f)) continue;
-            const emit = opts.importOnlyRouteModules && opts.importOnlyRouteModules.get(f);
-            if (emit) emit.forEach(push);
-            else push(f);
-          }
-        }
+        const errModuleUrls = boundaryModuleUrls(route.errors[i], wrapLayouts, opts);
         const html = wrapInDocument(body, { metadata, moduleUrls: errModuleUrls, dev: opts.dev, nonce: errNonce });
         return htmlResponse(html, 500, opts.req, url);
       } catch (nested) {

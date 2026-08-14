@@ -1895,7 +1895,40 @@ test('boundary: a layout DEEPER than the boundary is not rendered and not booted
   const body = await resp.text();
   assert.ok(!body.includes('id="deep-chrome"'), 'the deeper layout did not render');
   assert.ok(!body.includes('"/docs/deep/layout.js"'), 'the deeper layout is not in the boot script');
-  assert.deepEqual(openSegments(body), ['/', '/docs/deep']);
+  // And its segment id must not be emitted either. The page sits at
+  // /docs/deep, which is the EXCLUDED layout's own segment, so emitting the
+  // page region under that id would advertise a region the excluded layout's
+  // markup was never in. The client would send that id in X-Webjs-Have and the
+  // next navigation into /docs/deep would short-circuit on it, returning a
+  // fragment that assumes chrome this page never had.
+  assert.deepEqual(openSegments(body), ['/']);
+  assertPaired(body);
+});
+
+test('boundary: an excluded layout id is never advertised, so the NEXT nav keeps its chrome', async () => {
+  // The end-to-end consequence of the rule above, asserted through the header
+  // the client would really send. This is the shape that made the defect
+  // expensive: the boundary response looks fine on its own and corrupts the
+  // navigation AFTER it.
+  const { route, appDir } = makeBoundaryApp({
+    files: {
+      'layout.js': HTML_IMPORT + `export default function Root({ children }) { return html\`<div id="root-chrome">\${children}</div>\`; }\n`,
+      'docs/layout.js': HTML_IMPORT + `export default function Docs({ children }) { return html\`<div id="docs-chrome">\${children}</div>\`; }\n`,
+      'docs/page.js': `export default function Page() { throw new Error('boom'); }\n`,
+      'error.js': HTML_IMPORT + `export default function Err() { return html\`<p id="root-boundary">err</p>\`; }\n`,
+    },
+    page: 'docs/page.js',
+    layouts: ['layout.js', 'docs/layout.js'],
+    errors: ['error.js'],
+  });
+  const resp = await SILENT(() => ssrPage(route, {}, new URL('http://localhost/docs'), { dev: false, appDir }));
+  const body = await resp.text();
+  assert.ok(!body.includes('id="docs-chrome"'), 'the /docs layout is above the boundary, so it did not render');
+  assert.ok(
+    !openSegments(body).includes('/docs'),
+    'and its id is absent, so the client cannot claim to hold a layout it never received',
+  );
+  assert.deepEqual(openSegments(body), ['/']);
   assertPaired(body);
 });
 
@@ -2028,6 +2061,10 @@ test('boundary: a thrown forbidden() renders inside its layouts and receives a r
   assert.ok(body.includes('id="root-chrome"'), 'the root layout wraps it');
   assert.deepEqual(openSegments(body), ['/', '/admin/[org]']);
   assertPaired(body);
+  // The chain rendered, so its modules must boot. Chrome that paints and never
+  // hydrates is worse than no chrome: its controls look live and are not.
+  assert.ok(body.includes('"/layout.js"'), 'the wrapping layout module boots');
+  assert.ok(body.includes('"/admin/[org]/forbidden.js"'), 'and so does the boundary that rendered');
 });
 
 test('boundary: a 404 for a URL that matched no route stays a bare document', async () => {
@@ -2043,6 +2080,7 @@ test('boundary: a 404 for a URL that matched no route stays a bare document', as
   const body = await resp.text();
   assert.ok(body.includes('id="nf"'));
   assert.equal(markersOf(body).length, 0, 'no markers, since there is no chain');
+  assert.ok(!body.includes('<script type="module">'), 'and no boot script, since no chain rendered');
 });
 
 test('boundary: a boundary response is never storable and never reduced', async () => {
