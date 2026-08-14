@@ -89,7 +89,7 @@ With Suspense:     TTFB = shell render = ~40ms
       <li><strong>Grouping + override.</strong> One boundary wraps several components under ONE fallback; the boundary <code>.fallback</code> wins over a contained component's <code>renderFallback()</code>.</li>
       <li><strong>Concurrent.</strong> Multiple boundaries fetch their data in parallel (no server waterfall), streaming fast-before-slow.</li>
       <li><strong>Error-isolated.</strong> A throwing component inside a boundary renders its own error state while siblings stream.</li>
-      <li><strong>Progressive on soft navigation.</strong> A client-router navigation to a streamed page applies the shell (with fallbacks) immediately, advances the URL, then streams each boundary in, matching the initial-load experience.</li>
+      <li><strong>Progressive on soft navigation.</strong> A client-router navigation to a streamed page advances the URL, applies the shell (with fallbacks) immediately, then streams each boundary in, matching the initial-load experience.</li>
     </ul>
     <p>The <code>.fallback</code> is read at SSR as the inline placeholder (never through the <code>data-webjs-prop-*</code> path, because <code>&lt;webjs-suspense&gt;</code> is defined only in the browser, so no server-side instance consumes that attribute and the property would not land until <code>connectedCallback</code>, far too late for a placeholder that has to be in the first flushed bytes) and must be an unquoted property hole. <code>renderFallback()</code> on a component is a DIFFERENT concern (the client re-fetch loading state, never the first paint); see <a href="/docs/loading-states">Loading States</a>.</p>
 

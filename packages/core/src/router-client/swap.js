@@ -57,19 +57,18 @@ export let _swapCommit = Promise.resolve();
  *   the incoming (often shorter) document previews blank.
  *
  *   "Before the content swap" is the precise claim, NOT "before anything on
- *   the page has changed", which is false twice over. The app-source-drift
- *   branch above rewrites `data-webjs-src` on the importmap tag ahead of every
- *   commit point. And on a route whose innermost boundary WITH a
- *   `loading.{js,ts}` template is in the live chain, `applyOptimisticLoading`
- *   has already swapped that range for the skeleton and let the engine clamp
- *   the offset, before the fetch was even issued. (That is the innermost
- *   LAYOUT boundary carrying a template, which is usually not the deepest
- *   boundary at all: the deepest is normally the page's own, and it has no
- *   template, so the walk skips over it.) The snapshot there is of this
- *   route's shell plus a skeleton, which still beats the destination
- *   document, but it is not the page the reader left. Fixing that class means
- *   recording the entry ahead of the optimistic swap too, which is a separate
- *   change on a path nothing here measured.
+ *   the page has changed". The page may already have been mutated by the time
+ *   this runs, and on one route class it reliably has: where the live chain
+ *   contains a boundary carrying a `loading.{js,ts}` template,
+ *   `applyOptimisticLoading` swapped that range for the skeleton and let the
+ *   engine clamp the offset before the fetch was even issued. (It is the
+ *   innermost boundary WITH a template, found by walking deepest-first and
+ *   skipping any without one, so usually not the deepest boundary: that is
+ *   normally the page's own, and a `loading` file sits next to a layout.) The
+ *   snapshot there is of this route's shell plus a skeleton, which still beats
+ *   the destination document, but it is not the page the reader left. Fixing
+ *   that class means recording the entry ahead of the optimistic swap too,
+ *   which is a separate change on a path nothing here measured.
  *
  *   The caller's thunk is one-shot, so it is safe to call here AND on the
  *   caller's fall-through. Omitted or null on every path that records no
@@ -263,8 +262,8 @@ export function applySwap(doc, frameId, revalidating, href, incomingBuild, incom
     const target = document.querySelector(`webjs-frame#${CSS.escape(frameId)}`);
     const source = doc.querySelector(`webjs-frame#${CSS.escape(frameId)}`);
     if (target && source) {
-      // #1406: record at the commit, before any mutation, including the head
-      // merge below (a stylesheet it adds can change layout height).
+      // #1406: record at the commit, ahead of the head merge below (a
+      // stylesheet it adds can change layout height) and of the frame swap.
       if (recordHistoryNow) recordHistoryNow();
       // ADD-ONLY head merge: preserve runtime-generated head content
       // (Tailwind CSS injection, etc.) that the outer layout's scripts
