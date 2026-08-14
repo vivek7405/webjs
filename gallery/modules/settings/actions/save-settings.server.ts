@@ -7,19 +7,7 @@
 // the re-rendered form can show what was wrong AND keep everything the reader
 // typed. Losing the other fifteen fields because one was wrong is the thing
 // that makes people abandon a settings form.
-// `ActionResult<T>` is the documented envelope shape but `@webjsdev/core` does
-// not export the type, so it is declared here rather than imported. Importing
-// it compiles nowhere, which is a worse thing for an exemplar to teach than a
-// local declaration.
-type ActionResult<T> =
-  | { success: true; data?: T; redirect?: string }
-  | {
-      success: false;
-      error?: string;
-      fieldErrors?: Record<string, string>;
-      values?: Record<string, string>;
-      status?: number;
-    };
+import type { ActionResult } from '@webjsdev/server';
 
 export interface SettingsInput {
   displayName: string;

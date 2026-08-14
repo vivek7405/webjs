@@ -42,7 +42,7 @@
  *     </p>
  *   </div>
  *   <div class=${pageHeaderActionsClass()}>
- *     <button class=${buttonClass({ variant: 'outline' })}>Export</button>
+ *     <button class=${buttonClass({ variant: 'secondary' })}>Export</button>
  *     <button class=${buttonClass()}>New invoice</button>
  *   </div>
  * </header>

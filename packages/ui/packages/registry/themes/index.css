@@ -115,8 +115,7 @@
   --destructive: oklch(0.577 0.245 27.325);
   /* Pure white, not red-50. White on red-600 measures 4.76:1 and red-50 on it
      measured 4.35:1, which is under the 4.5:1 floor for body text, so the pair
-     the kit ships today does not pass. This also lets button.ts use the token
-     instead of the hardcoded `text-white` it was working around. */
+     the kit shipped did not pass. */
   --destructive-foreground: oklch(1 0 0);
   --destructive-subtle: oklch(0.971 0.013 17.38);
   --destructive-subtle-foreground: oklch(0.444 0.177 26.899);
@@ -183,9 +182,17 @@
   --accent: oklch(0.371 0 0);
   --accent-foreground: oklch(0.985 0 0);
   --destructive: oklch(0.704 0.191 22.216);
-  /* red-950. The value this replaces measured 1.65:1 against --destructive,
-     so the kit shipped a dark-mode destructive button whose label was very
-     nearly invisible against its own fill. This is 5.58:1. */
+  /* red-950, which measures 5.58:1 against a SOLID --destructive fill. The
+     value it replaces measured 1.65:1, though that pair was LATENT rather than
+     shipped: no registry component read --destructive-foreground, so nothing
+     rendered it. Correcting it is what makes the token safe for app code that
+     writes `bg-destructive text-destructive-foreground`.
+
+     It is NOT what button.ts should use. That component paints
+     `dark:bg-destructive/60`, a composite rather than a solid, against which
+     this value measures 2.49:1 and plain white measures 6.48:1. The pair is
+     built for the solid fill, and a component that dilutes the fill needs its
+     own foreground. */
   --destructive-foreground: oklch(0.258 0.092 26.042);
   --destructive-subtle: oklch(0.258 0.092 26.042);
   --destructive-subtle-foreground: oklch(0.808 0.114 19.571);

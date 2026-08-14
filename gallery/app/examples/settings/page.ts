@@ -84,17 +84,33 @@ function field(opts: {
   // would set it client-side either. The field would render empty and a 422
   // would lose everything typed, which is the opposite of what this file
   // claims to demonstrate.
-  const control = html`
-    <input
-      class=${inputClass()}
-      id=${opts.name}
-      name=${opts.name}
-      type=${opts.type ?? 'text'}
-      value=${opts.value}
-      aria-describedby=${describedBy}
-      aria-invalid=${opts.error ? 'true' : 'false'}
-    >
-  `;
+  // BRANCH the template rather than passing an empty string. A plain-attribute
+  // hole stringifies at SSR, so `aria-describedby=${''}` emits
+  // `aria-describedby=""`, which is an IDREF list resolving to nothing rather
+  // than an absent attribute. There is no nullish value that omits an
+  // attribute, so branching is the only way to not emit it.
+  const control = describedBy
+    ? html`
+        <input
+          class=${inputClass()}
+          id=${opts.name}
+          name=${opts.name}
+          type=${opts.type ?? 'text'}
+          value=${opts.value}
+          aria-describedby=${describedBy}
+          aria-invalid=${opts.error ? 'true' : 'false'}
+        >
+      `
+    : html`
+        <input
+          class=${inputClass()}
+          id=${opts.name}
+          name=${opts.name}
+          type=${opts.type ?? 'text'}
+          value=${opts.value}
+          aria-invalid=${opts.error ? 'true' : 'false'}
+        >
+      `;
   return html`
     <div class="grid gap-1">
       <label class="text-sm font-medium" for=${opts.name}>${opts.label}</label>

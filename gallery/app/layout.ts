@@ -115,12 +115,13 @@ export default function RootLayout({ children }: { children: unknown }) {
              undefined var() left every error message painting in the ordinary
              foreground colour and the button's hover fill absent. Value follows
              the @webjsdev/ui registry theme, warmed a few degrees of hue to sit
-             in this palette rather than beside it. The -foreground and the
-             subtle pair below it are defined too, since the design exemplars
-             under app/examples/ read them. (This comment used to say the
-             -foreground was dead weight, which was true when the destructive
-             variant was the only consumer and stopped being true the moment
-             anything rendered text ON the fill.) */
+             in this palette rather than beside it. Nothing in this app renders
+             text ON a destructive fill (every use is text-destructive or
+             hover:bg-destructive/10), so the -foreground and subtle pair below
+             are defined for COMPLETENESS against the registry vocabulary rather
+             than because a demo reads them. They cost nothing and they stop the
+             next person wondering why three of the four roles are whole and
+             this one is not. */
           --destructive:            light-dark(oklch(0.58 0.22 27), oklch(0.70 0.19 22));
           --destructive-foreground: light-dark(oklch(1 0 0), oklch(0.258 0.092 26));
           --destructive-subtle:     light-dark(oklch(0.971 0.013 17), oklch(0.258 0.092 26));

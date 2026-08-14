@@ -54,7 +54,15 @@ const BASE =
 const VARIANTS = {
   default: 'bg-primary text-primary-foreground hover:bg-primary/90',
   destructive:
-    'bg-destructive text-destructive-foreground hover:bg-destructive/90 focus-visible:ring-destructive/20 dark:bg-destructive/60 dark:focus-visible:ring-destructive/40',
+    // `text-white`, NOT `text-destructive-foreground`, and this is deliberate.
+    // The token pair is built for a SOLID `--destructive` fill, where the dark
+    // foreground (red-950) measures 5.58:1. This button does not paint a solid
+    // fill in dark: `dark:bg-destructive/60` composites red-400 at 60% over the
+    // page, and against THAT the token measures 2.49:1 while white measures
+    // 6.48:1. So the token would fail the one component it looks most correct
+    // on. `badge.ts` carries `text-white` on the identical shape for the same
+    // reason, and the two must not disagree.
+    'bg-destructive text-white hover:bg-destructive/90 focus-visible:ring-destructive/20 dark:bg-destructive/60 dark:focus-visible:ring-destructive/40',
   outline:
     'border bg-background shadow-e1 hover:bg-accent hover:text-accent-foreground dark:border-input dark:bg-input/30 dark:hover:bg-input/50',
   secondary: 'bg-secondary text-secondary-foreground hover:bg-secondary/80',

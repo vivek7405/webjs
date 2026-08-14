@@ -140,3 +140,30 @@ test('elevation shadows carry their colour as a var so dark can retheme them', (
     assert.ok(section.includes('--elevation-contact:'), `--elevation-contact is missing from ${block}`);
   }
 });
+
+test('a diluted destructive fill keeps its own foreground (#1116)', () => {
+  // `--destructive-foreground` is built for a SOLID `--destructive` fill, where
+  // the dark value (red-950) measures 5.58:1. `button.ts` and `badge.ts` both
+  // paint `dark:bg-destructive/60`, a composite rather than a solid, against
+  // which that token measures 2.49:1 and plain white measures 6.48:1.
+  //
+  // So the token is exactly wrong on the two components it looks most correct
+  // on, and an earlier revision of this branch shipped that regression by
+  // "fixing" button.ts to use it. The two must also agree with each other.
+  for (const file of ['button.ts', 'badge.ts']) {
+    const src = readFileSync(join(REGISTRY, 'components', file), 'utf8');
+    const destructive = src.split('\n').find((l) => /destructive:/.test(l) && /bg-destructive/.test(l))
+      ?? src.split('\n').find((l) => /bg-destructive\b/.test(l) && /text-/.test(l));
+    assert.ok(destructive, `${file}: could not find the destructive variant`);
+    assert.match(
+      destructive,
+      /text-white/,
+      `${file}: a variant diluting the fill with bg-destructive/60 must keep text-white, since --destructive-foreground is built for the solid fill`,
+    );
+    assert.doesNotMatch(
+      destructive,
+      /text-destructive-foreground/,
+      `${file}: --destructive-foreground measures 2.49:1 on the /60 composite this variant paints`,
+    );
+  }
+});
