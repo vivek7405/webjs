@@ -17,6 +17,8 @@ to these `references/`:
 | `references/data-and-actions.md` | Server actions, mutations, queries, validation, the `ActionResult` envelope, Drizzle surface, where server-derived types live |
 | `references/auth-and-sessions.md` | Sessions, login flows, route protection, `forbidden()` / `unauthorized()` |
 | `references/styling.md` | Tailwind, light-DOM tag-prefix rule, tokens, fixed headers, no-reflow layout |
+| `references/design.md` | **READ FIRST** when building any user-facing screen. Hierarchy, the action pyramid, spacing rhythm, type scale, palette, elevation, empty states |
+| `references/design-depth.md` | Palette construction from an accent, the component-variant checklist, finishing touches |
 | `references/client-router-and-streaming.md` | Client router, prefetch, frames, view transitions, Suspense streaming |
 | `references/optimistic-ui.md` | Optimistic UI for a user-facing mutation |
 | `references/typescript.md` | TypeScript at runtime, erasable syntax, full-stack types, the derive-the-type rule (never `unknown` / `any`) |
