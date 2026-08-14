@@ -4144,8 +4144,57 @@ test('prefetch: a full-document answer to a framed request is not stored (#1407)
     _prefetch('http://localhost/streamed', 'tasks');
     await new Promise((r) => setTimeout(r, 0));
     assert.equal(calls.length, 1, 'the request went out');
-    assert.equal(_prefetchPeek('http://localhost/streamed', 'tasks'), null, 'not stored under the frame key');
-    assert.equal(_prefetchPeek('http://localhost/streamed'), null, 'nor under the page key');
+    assert.equal(_prefetchTake('http://localhost/streamed', undefined, 'tasks'), null,
+      'and nothing consumable came of it');
+    assert.equal(_prefetchPeek('http://localhost/streamed'), null, 'nothing under the page key either');
+  }, { fetchImpl: frameFetchImpl(calls, null) });
+});
+
+test('prefetch: a discarded framed answer is REMEMBERED, so it does not re-request every hover (#1407)', async () => {
+  // Discarding is not forgetting. With nothing cached, the TTL dedupe has
+  // nothing to match and `prefetchInflight` is released when the fetch settles,
+  // so every later hover would re-issue the same useless request forever. A
+  // route with a `loading.{js,ts}` or a Suspense boundary streams, so it answers
+  // EVERY framed request unmarked, which would make that the normal case there
+  // and strictly worse than before this feature (an unframed prefetch was at
+  // least cached and deduped for the TTL).
+  const calls = [];
+  await withPrefetchEnv(async () => {
+    _prefetch('http://localhost/streamy', 'tasks');
+    await new Promise((r) => setTimeout(r, 0));
+    assert.equal(calls.length, 1, 'the first speculative request went out');
+
+    for (const attempt of [2, 3, 4]) {
+      _prefetch('http://localhost/streamy', 'tasks');
+      await new Promise((r) => setTimeout(r, 0));
+      assert.equal(calls.length, 1, `hover ${attempt} did not re-request within the TTL`);
+    }
+
+    // The tombstone is never consumable, and a take does not clear it (which
+    // would reopen the retry loop it exists to close).
+    assert.equal(_prefetchTake('http://localhost/streamy', undefined, 'tasks'), null, 'never consumable');
+    _prefetch('http://localhost/streamy', 'tasks');
+    await new Promise((r) => setTimeout(r, 0));
+    assert.equal(calls.length, 1, 'and a take did not reopen the retry loop');
+  }, { fetchImpl: frameFetchImpl(calls, null) });
+});
+
+test('prefetch: a tombstone announces no webjs:prefetch event (#1407)', async () => {
+  // The event means "a fragment is now consumable", which app code instruments
+  // for hit rate and tests await before clicking. A tombstone is neither.
+  const calls = [];
+  await withPrefetchEnv(async () => {
+    let fired = 0;
+    const onPrefetch = () => { fired++; };
+    document.addEventListener('webjs:prefetch', onPrefetch);
+    try {
+      _prefetch('http://localhost/quiet', 'tasks');
+      await new Promise((r) => setTimeout(r, 0));
+      assert.equal(calls.length, 1, 'precondition: the request went out');
+      assert.equal(fired, 0, 'a discarded answer announces nothing');
+    } finally {
+      document.removeEventListener('webjs:prefetch', onPrefetch);
+    }
   }, { fetchImpl: frameFetchImpl(calls, null) });
 });
 

@@ -37,7 +37,7 @@ const PREFETCH_HOVER_DELAY = 100;
  */
 const PREFETCH_VIEWPORT_DELAY = 250;
 
-/** @typedef {{ html: string, build: string | null, src: string | null, finalUrl: string, frameId: string | null, at: number }} PrefetchEntry */
+/** @typedef {{ html: string, build: string | null, src: string | null, finalUrl: string, frameId: string | null, unusable?: boolean, at: number }} PrefetchEntry */
 /** @type {Map<string, PrefetchEntry>} */
 export const prefetchCache = new Map();
 
@@ -258,12 +258,13 @@ export function prefetch(href, frameId) {
   // driving a frame and one not, warms both dimensions and so issues two
   // requests where it used to issue one, and both occupy a `PREFETCH_CAP` slot.
   // Suppressing the second is the obvious saving and is wrong: the two are
-  // DIFFERENT responses, so whichever link lost would never warm, and on touch
-  // (where `viewport` is the default and there is no hover to correct it later)
-  // that is permanent for that link, which is the latency this whole path
-  // exists to remove. The duplicate is bounded by the same cap, concurrency
-  // gate, TTL, and Save-Data gate as everything else, which is what those are
-  // for, and it adds no new TRIGGER and no per-link fan-out.
+  // DIFFERENT responses, so whichever link lost would never be warmed AHEAD of
+  // the click. On touch that is the worse half, because `viewport` is the
+  // default there and the only thing left is the `touchstart` warm below, which
+  // fires at tap time and so gives a far smaller head start than a dwell would.
+  // The duplicate is bounded by the same cap, concurrency gate, TTL, and
+  // Save-Data gate as everything else, which is what those are for, and it adds
+  // no new TRIGGER and no per-link fan-out.
   if (prefetchInflight.has(key)) return;
   if (prefetchQueued.has(key)) return;
   const existing = prefetchCache.get(key);
@@ -347,8 +348,26 @@ export function prefetch(href, frameId) {
       // store it: a full document under a frame key would be swapped into the
       // frame region on the click, and it cannot be filed under the page key
       // either, since it was fetched with a header the response varies on.
+      //
+      // Discarding is not the same as forgetting. Returning here without
+      // storing anything would leave the TTL dedupe below with nothing to
+      // match, and `prefetchInflight` is released in the `finally`, so EVERY
+      // later hover or viewport dwell on that link would re-issue the same
+      // useless request, forever. That is not a corner case: a route with a
+      // `loading.{js,ts}` or a Suspense boundary streams, so it answers every
+      // framed request unmarked, and it would be strictly worse than before
+      // this feature (an unframed prefetch was at least cached and deduped for
+      // the TTL). So record a TOMBSTONE instead: an entry carrying no body,
+      // which the dedupe treats like any other entry and `prefetchTake`
+      // refuses, bounding the retry to one request per TTL exactly like a
+      // successful one.
       const servedFrame = resp.headers.get('x-webjs-frame');
-      if ((servedFrame || null) !== (frameId || null)) return;
+      if ((servedFrame || null) !== (frameId || null)) {
+        prefetchStore(key, {
+          html: '', build, src, finalUrl: href, frameId: frameId || null, unusable: true, at: nowMs(),
+        });
+        return;
+      }
       const finalUrl = resp.redirected && resp.url ? resp.url : href;
       const html = await resp.text();
       prefetchStore(key, { html, build, src, finalUrl, frameId: frameId || null, at: nowMs() });
@@ -391,7 +410,10 @@ function prefetchStore(key, entry) {
     const oldest = prefetchCache.keys().next().value;
     prefetchCache.delete(oldest);
   }
-  if (typeof document !== 'undefined') {
+  // A tombstone is not a cached fragment (#1407), so it announces nothing: the
+  // event's contract is "a fragment is now consumable", which app code
+  // instruments for hit rate and tests await before clicking.
+  if (typeof document !== 'undefined' && !entry.unusable) {
     document.dispatchEvent(new CustomEvent('webjs:prefetch', {
       detail: { url: entry.finalUrl, key, from: 'prefetch' },
     }));
@@ -444,6 +466,12 @@ export function prefetchTake(href, liveKeysOverride, frameId) {
   const entry = prefetchCache.get(key);
   if (!entry) return null;
   if ((nowMs() - entry.at) >= PREFETCH_TTL) { prefetchCache.delete(key); return null; }
+  // A tombstone (#1407): the server answered this dimension with something that
+  // is not the shape the entry claims, and it is held ONLY to stop the request
+  // being re-issued on every hover until its TTL runs out. It is never
+  // consumable, and it is deliberately NOT deleted here, since deleting it on
+  // the first click would reopen the retry loop it exists to close.
+  if (entry.unusable) return null;
   // A FRAME entry's validity question is a different one (#1407). Its body is a
   // `<webjs-frame>` subtree with no `wj:children` boundary in it, so
   // `prefetchAnchor` returns null, and null means "no constraint" below: falling

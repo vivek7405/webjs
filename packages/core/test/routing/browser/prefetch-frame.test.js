@@ -246,8 +246,15 @@ suite('Client router: frame-dimensioned link prefetch (#1407)', () => {
       await afterPrefetchAttempt(400);
 
       assert.equal(calls.length, 1, 'the speculative request went out');
-      assert.equal(_prefetchPeek(target, 'tasks'), null, 'but nothing was stored under the frame key');
-      assert.equal(_prefetchPeek(target), null, 'nor under the page key, since it varies on a header it sent');
+      assert.equal(_prefetchTake(target, undefined, 'tasks'), null, 'but nothing consumable came of it');
+      assert.equal(_prefetchPeek(target), null, 'and nothing under the page key, which it varies from');
+
+      // Discarded is not forgotten. A streaming route answers EVERY framed
+      // request unmarked, so forgetting would re-request on every hover for as
+      // long as the page lives.
+      _prefetch(target, 'tasks');
+      await afterPrefetchAttempt(400);
+      assert.equal(calls.length, 1, 'a second attempt within the TTL did not re-request');
     } finally { teardown(); }
   });
 });
