@@ -701,6 +701,14 @@ async function ssrBoundaryHtml(file, heading, opts) {
             body = await renderToString(tree, { ssr: true, dev: opts.dev });
           }
         } catch (layoutErr) {
+          // With no route there was no layout chain: the try body already ran
+          // this exact `renderToString(tree)`, so re-running it would execute
+          // the boundary tree a second time to learn nothing, and a tree that
+          // is not idempotent under re-render (a hole holding a one-shot async
+          // iterable, say) could even SUCCEED on the retry and be reported as
+          // a layout crash that never happened. Rethrow: the outer catch
+          // reports it once, under the boundary label.
+          if (!opts.route) throw layoutErr;
           // Always attempt the standalone render, which is the degradation
           // this path has always produced. Its OUTCOME is half the diagnosis
           // and the phase marker is the other half; neither alone is enough.
@@ -793,7 +801,9 @@ async function ssrNotFoundHtml(notFoundFile, opts) {
             body = await renderToString(tree, { ssr: true, dev: opts.dev });
           }
         } catch (layoutErr) {
-          // Same diagnosis rule as ssrBoundaryHtml above.
+          // Same diagnosis rule as ssrBoundaryHtml above, including the
+          // no-route short-circuit.
+          if (!opts.route) throw layoutErr;
           let treeErr = null;
           try {
             body = await renderToString(tree, { ssr: true, dev: opts.dev });

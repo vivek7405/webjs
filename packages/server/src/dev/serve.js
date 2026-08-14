@@ -510,7 +510,15 @@ export async function handleCore(req, ctx) {
   // page that has since recovered. Scoped to this url, so a good render here
   // never erases an error still current for a page the user is looking at.
   const devErrorUrl = withBasePath(url.pathname, basePath()) + url.search;
-  const before = dev ? state.lastDevError : null;
+  // Gated on !isPrefetch as well as dev, exactly as the matched-page branch
+  // gates its whole supersede closure. The clear below infers "this render
+  // succeeded" from "the retained frame is still the one I captured", and that
+  // inference is only valid when a sink was installed to write a new one. A
+  // prefetch installs none, so a prefetch of a url that throws AGAIN would
+  // look like a recovery and wipe a frame that is still current, which is the
+  // #893 gap the retention exists to close.
+  const isPrefetch = req.headers.get('x-webjs-prefetch') === '1';
+  const before = dev && !isPrefetch ? state.lastDevError : null;
   const resp = await ssrNotFound(state.routeTable.notFound || state.routeTable.globalNotFound, {
     dev,
     appDir,
@@ -531,7 +539,7 @@ export async function handleCore(req, ctx) {
     // raise an overlay on the page you are actually on, nor become
     // `state.lastDevError` for the SSE to replay into a fresh tab. Prefetch is
     // on by default and fetches unrouted hrefs too, so this is reachable.
-    onDevError: dev && req.headers.get('x-webjs-prefetch') !== '1'
+    onDevError: dev && !isPrefetch
       ? (e) => reportDevError(e, { kind: 'render', url: devErrorUrl })
       : undefined,
   });

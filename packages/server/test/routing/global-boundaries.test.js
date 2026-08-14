@@ -222,3 +222,32 @@ export default function NF() {
   const held = app.getLastDevError();
   assert.equal(held, null, 'no stale frame retained for a url that recovered');
 });
+
+test('a PREFETCH that fails again does not wipe a still-current overlay frame', async () => {
+  // The clear infers "this render succeeded" from "the retained frame is still
+  // the one I captured". A prefetch installs no sink, so a prefetch of a url
+  // that throws AGAIN writes no frame and would look exactly like a recovery.
+  // The url is still broken; wiping the frame is the #893 gap the retention
+  // exists to close.
+  const appDir = makeApp({
+    'package.json': pkg,
+    'app/page.js': page('export default function H() { return html`<main>home</main>`; }'),
+    'app/not-found.js':
+      `export default function NF() { throw new Error('STILL_BROKEN_NF'); }\n`,
+  });
+  const app = await createRequestHandler({ appDir, dev: true });
+  const prev = console.error;
+  console.error = () => {};
+  try {
+    await app.handle(new Request('http://x/gone'));
+    const held = app.getLastDevError();
+    assert.ok(held, 'the first, real navigation retained a frame');
+    assert.match(String(held.url), /\/gone$/);
+
+    // Now hover a link to it. Same url, still broken, speculative.
+    await app.handle(new Request('http://x/gone', { headers: { 'x-webjs-prefetch': '1' } }));
+  } finally { console.error = prev; }
+  const after = app.getLastDevError();
+  assert.ok(after, 'the frame survives a prefetch that failed again');
+  assert.match(String(after.url), /\/gone$/);
+});
