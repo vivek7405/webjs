@@ -426,6 +426,51 @@ async function renderChain(route, ctx, dev, suspenseCtx, have, pageModule) {
 }
 
 /**
+ * Render the framework's DEFAULT boundary body inside the matched route's
+ * layout chain (#1298), so a route with no boundary file of its own still
+ * keeps its chrome and still soft-navigates.
+ *
+ * Returns null when the chain cannot render, which degrades to the bare
+ * default the caller already holds: this is the last-resort page, so it must
+ * never be the thing that fails. A layout crash here is reported like any
+ * other rather than being swallowed.
+ *
+ * @param {string} raw  The default body markup.
+ * @param {{ dev: boolean, appDir: string, route?: { file: string, layouts: string[] },
+ *   ctx?: Record<string, unknown>, params?: Record<string, string>, url?: URL }} opts
+ * @returns {Promise<{ body: string, moduleUrls: string[] } | null>}
+ */
+async function defaultBoundaryInChain(raw, opts) {
+  const route = opts.route;
+  if (!route || !route.layouts || route.layouts.length === 0) return null;
+  const ctx = opts.ctx || boundaryCtx(opts.params, opts.url, undefined);
+  try {
+    const params = { ...(/** @type {Record<string,string>} */ (ctx.params) || {}) };
+    const chain = await wrapLayoutChain(rawTemplate(raw), route.layouts, ctx, opts.dev, params, null);
+    return {
+      body: await renderToString(chain.tree, { ssr: true, dev: opts.dev }),
+      moduleUrls: boundaryModuleUrls(null, route.layouts, opts),
+    };
+  } catch (e) {
+    reportBoundaryLayoutError(e, opts, { overlay: true });
+    return null;
+  }
+}
+
+/**
+ * Wrap a raw HTML string as a synthetic TemplateResult so it can go through
+ * the layout chain. The string lives in `strings` (static template parts), not
+ * `values`, because a hole is HTML-escaped on render and this markup is the
+ * framework's own.
+ *
+ * @param {string} raw
+ * @returns {{ _$webjs: 'template', strings: string[], values: unknown[] }}
+ */
+function rawTemplate(raw) {
+  return { _$webjs: 'template', strings: [raw], values: [] };
+}
+
+/**
  * The layouts that will wrap a boundary FILE on this route (#1298). One place,
  * so the render path and the boot set cannot disagree about what wrapped, and
  * so the catch can ask whether anything wrapped at all.
@@ -617,7 +662,8 @@ function reportBoundaryLayoutError(err, opts, cfg = {}) {
  * kind is a `browserEntryFiles` entry (browser-entries.js), so each of these
  * URLs is servable through the auth gate.
  *
- * @param {string} boundaryFile
+ * @param {string | null} boundaryFile  Null for the framework's default body,
+ *   which has no module of its own; only the layouts boot then.
  * @param {string[]} wrapLayouts
  * @param {{ appDir: string, inertRouteModules?: Set<string>,
  *   importOnlyRouteModules?: Map<string, string[]>,
@@ -632,7 +678,7 @@ function boundaryModuleUrls(boundaryFile, wrapLayouts, opts) {
     const u = toUrlPath(abs, opts.appDir);
     if (!seen.has(u)) { seen.add(u); urls.push(u); }
   };
-  for (const f of [boundaryFile, ...wrapLayouts]) {
+  for (const f of (boundaryFile ? [boundaryFile, ...wrapLayouts] : [...wrapLayouts])) {
     if (opts.inertRouteModules && opts.inertRouteModules.has(f)) continue;
     const emit = opts.importOnlyRouteModules && opts.importOnlyRouteModules.get(f);
     if (emit) emit.forEach(push);
@@ -693,6 +739,16 @@ async function ssrBoundaryHtml(file, heading, opts) {
   let body = `<h1>${heading}</h1>`;
   /** @type {string[]} */
   let moduleUrls = [];
+  // No boundary FILE, but a route matched: the framework's own default page is
+  // what renders, and it belongs inside the layouts just as a custom one does.
+  // This is the COMMON case for 403 / 401, since most apps ship no
+  // forbidden.ts, and leaving it bare would mean the headline fix does not
+  // apply to them at all. Wrapped in the route's full chain, because the
+  // default boundary has no segment of its own and stands in for the page.
+  if (!file && opts.route) {
+    const wrapped = await defaultBoundaryInChain(`<h1>${heading}</h1>`, opts);
+    if (wrapped) { body = wrapped.body; moduleUrls = wrapped.moduleUrls; }
+  }
   if (file) {
     const ctx = opts.ctx || boundaryCtx(opts.params, opts.url, undefined);
     try {
@@ -794,6 +850,10 @@ async function ssrNotFoundHtml(notFoundFile, opts) {
   let body = '<h1>404: Not found</h1>';
   /** @type {string[]} */
   let moduleUrls = [];
+  if (!notFoundFile && opts.route) {
+    const wrapped = await defaultBoundaryInChain('<h1>404: Not found</h1>', opts);
+    if (wrapped) { body = wrapped.body; moduleUrls = wrapped.moduleUrls; }
+  }
   if (notFoundFile) {
     const ctx = opts.ctx || boundaryCtx(opts.params, opts.url, undefined);
     try {

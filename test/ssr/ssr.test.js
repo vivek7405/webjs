@@ -2585,6 +2585,63 @@ test('boundary: a route with NO layouts does not re-render the boundary tree', a
   assert.equal(hits.length, 1, 'and reported once');
 });
 
+test('boundary: the DEFAULT 403 page renders in its layouts too (no forbidden.ts)', async () => {
+  // The common case: most apps ship no forbidden.ts, so the framework's own
+  // page is what renders. Leaving it bare means the headline fix does not
+  // apply to them at all.
+  const { route, appDir } = makeBoundaryApp({
+    files: {
+      'layout.js': HTML_IMPORT + `export default function Root({ children }) { return html\`<div id="root-chrome">\${children}</div>\`; }\n`,
+      'admin/page.js': `import { forbidden } from ${JSON.stringify(WEBJS_MODULE_URL)};\nexport default function Page() { forbidden(); }\n`,
+    },
+    page: 'admin/page.js',
+    layouts: ['layout.js'],
+    forbiddens: [],
+  });
+  const resp = await ssrPage(route, {}, new URL('http://localhost/admin'), { dev: false, appDir });
+  assert.equal(resp.status, 403);
+  const body = await resp.text();
+  assert.ok(body.includes('403: Forbidden'), 'the default body still renders');
+  assert.ok(body.includes('id="root-chrome"'), 'inside the layout chain');
+  assert.ok(openSegments(body).length > 0, 'so it carries markers and can soft-swap');
+  assertPaired(body);
+  assert.ok(body.includes('"/layout.js"'), 'and the layout that rendered boots');
+});
+
+test('boundary: the DEFAULT 404 page renders in its layouts too (no not-found.ts)', async () => {
+  const { route, appDir } = makeBoundaryApp({
+    files: {
+      'layout.js': HTML_IMPORT + `export default function Root({ children }) { return html\`<div id="root-chrome">\${children}</div>\`; }\n`,
+      'docs/page.js': `import { notFound } from ${JSON.stringify(WEBJS_MODULE_URL)};\nexport default function Page() { notFound(); }\n`,
+    },
+    page: 'docs/page.js',
+    layouts: ['layout.js'],
+    notFounds: [],
+  });
+  const resp = await ssrPage(route, {}, new URL('http://localhost/docs'), { dev: false, appDir });
+  assert.equal(resp.status, 404);
+  const body = await resp.text();
+  assert.ok(body.includes('404: Not found') && body.includes('id="root-chrome"'));
+  assert.ok(openSegments(body).length > 0);
+  assertPaired(body);
+});
+
+test('boundary: a route with no layouts keeps the bare default (nothing to wrap in)', async () => {
+  const { route, appDir } = makeBoundaryApp({
+    files: {
+      'admin/page.js': `import { forbidden } from ${JSON.stringify(WEBJS_MODULE_URL)};\nexport default function Page() { forbidden(); }\n`,
+    },
+    page: 'admin/page.js',
+    layouts: [],
+    forbiddens: [],
+  });
+  const resp = await ssrPage(route, {}, new URL('http://localhost/admin'), { dev: false, appDir });
+  assert.equal(resp.status, 403);
+  const body = await resp.text();
+  assert.ok(body.includes('403: Forbidden'));
+  assert.equal(markersOf(body).length, 0, 'no chain, so no markers and no pretence of one');
+});
+
 test('boundary: a boundary response is never storable and never reduced', async () => {
   // Two independent guarantees. The HTML cache refuses a non-200 outright, and
   // the reduced X-Webjs-Have path is structurally unreachable: the boundary
