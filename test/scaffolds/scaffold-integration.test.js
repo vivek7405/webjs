@@ -459,6 +459,36 @@ test('scaffoldApp api: writes API-only template (no layout, no components)', asy
   }
 });
 
+// #1418: a fresh scaffold used to report 5 high-severity npm audit advisories,
+// all of them GHSA-jmr9-qjv8-65gv in extract-zip, reached only through
+// @web/test-runner -> @web/test-runner-chrome -> puppeteer-core@24 ->
+// @puppeteer/browsers@2.13.2. extract-zip has no patched version, so the floor
+// has to sit at puppeteer-core, whose 25 line moved to @puppeteer/browsers@3
+// (no extract-zip at all). Both templates declare @web/test-runner, so both
+// need the override; the assertion runs over both because the manifest is
+// shared and an isApi branch added later could silently drop it from one.
+//
+// This proves the override is EMITTED, not that the audit is clean: a unit
+// test cannot install from the network. The clean-audit half is verified by
+// hand against a real scaffold and recorded on the PR.
+test('scaffoldApp: both templates pin a puppeteer-core floor clearing the extract-zip advisory (#1418)', async () => {
+  for (const template of ['full-stack', 'api']) {
+    const cwd = await tempCwd();
+    const restore = muteConsole();
+    try {
+      await scaffoldApp('audit-app', cwd, { template });
+      const pkg = JSON.parse(readFileSync(join(cwd, 'audit-app', 'package.json'), 'utf8'));
+      assert.equal(pkg.overrides?.['puppeteer-core'], '^25.7.0',
+        `${template} overrides puppeteer-core past the @puppeteer/browsers@2 line`);
+      assert.ok(pkg.devDependencies['@web/test-runner'],
+        `${template} still declares the runner the override exists for`);
+    } finally {
+      restore();
+      await rm(cwd, { recursive: true, force: true });
+    }
+  }
+});
+
 test('scaffoldApp full-stack: the auth card wires createAuth + dashboard + User model', async () => {
   const cwd = await tempCwd();
   const restore = muteConsole();
