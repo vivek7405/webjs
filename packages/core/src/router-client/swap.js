@@ -46,8 +46,35 @@ export let _swapCommit = Promise.resolve();
  *   layout's OWN markup changed and that lives outside every children range.
  *   `'page'` falls through to the normal two-tier logic, which morphs the
  *   deepest shared boundary and so preserves outer-layout component state.
+ * @param {(() => void) | null} [recordHistoryNow]  Record this navigation's
+ *   history entry (#1406). Called at each COMMIT point, immediately BEFORE the
+ *   DOM mutation, for the same reason `ingestSeeds` is: this function can still
+ *   decide to throw the response away after parsing it, and a `pushState`
+ *   issued for a swap that never happened is worse than a late one. It runs
+ *   BEFORE the incoming document replaces what is on screen, because WebKit
+ *   binds a same-document entry's back-forward gesture snapshot to the page
+ *   state at the moment the entry is recorded, and a snapshot taken against
+ *   the incoming (often shorter) document previews blank.
+ *
+ *   "Before the content swap" is the precise claim, NOT "before anything on
+ *   the page has changed". The page may already have been mutated by the time
+ *   this runs, and on one route class it reliably has: where the live chain
+ *   contains a boundary carrying a `loading.{js,ts}` template,
+ *   `applyOptimisticLoading` swapped that range for the skeleton and let the
+ *   engine clamp the offset before the fetch was even issued. (It is the
+ *   innermost boundary WITH a template, found by walking deepest-first and
+ *   skipping any without one, so usually not the deepest boundary: that is
+ *   normally the page's own, and a `loading` file sits next to a layout.) The
+ *   snapshot there is of this route's shell plus a skeleton, which still beats
+ *   the destination document, but it is not the page the reader left. Fixing
+ *   that class means recording the entry ahead of the optimistic swap too,
+ *   which is a separate change on a path nothing here measured.
+ *
+ *   The caller's thunk is one-shot, so it is safe to call here AND on the
+ *   caller's fall-through. Omitted or null on every path that records no
+ *   history (a revalidation, a refresh, the popstate restore).
  */
-export function applySwap(doc, frameId, revalidating, href, incomingBuild, incomingSrc, refresh) {
+export function applySwap(doc, frameId, revalidating, href, incomingBuild, incomingSrc, refresh, recordHistoryNow) {
   // SSR action seeding (#472): ingest the incoming page's seed payload BEFORE
   // its components are grafted into the live DOM and upgrade, so a
   // soft-navigated async component resolves from the seed instead of
@@ -237,6 +264,9 @@ export function applySwap(doc, frameId, revalidating, href, incomingBuild, incom
     const target = document.querySelector(`webjs-frame#${CSS.escape(frameId)}`);
     const source = doc.querySelector(`webjs-frame#${CSS.escape(frameId)}`);
     if (target && source) {
+      // #1406: record at the commit, ahead of the head merge below (a
+      // stylesheet it adds can change layout height) and of the frame swap.
+      if (recordHistoryNow) recordHistoryNow();
       // ADD-ONLY head merge: preserve runtime-generated head content
       // (Tailwind CSS injection, etc.) that the outer layout's scripts
       // already produced.
@@ -287,6 +317,14 @@ export function applySwap(doc, frameId, revalidating, href, incomingBuild, incom
   // and no history entry is written.
   if (refresh === 'shell') {
     ingestSeeds();
+    // Reads as a contradiction with "no history entry is written" above, so:
+    // the prose is authoritative and this call cannot fire. A refresh always
+    // reaches `fetchAndApply` with `recordHistory` false (`navigator.js` passes
+    // `!isPopState && !refresh`), so the thunk is null here, every time. It is
+    // written anyway so "the entry is recorded at the commit" holds at EVERY
+    // commit point without a reader having to prove reachability first, which
+    // is what stops the next person adding a commit point from omitting it.
+    if (recordHistoryNow) recordHistoryNow();
     swapFullBody(doc);
     return;
   }
@@ -306,6 +344,10 @@ export function applySwap(doc, frameId, revalidating, href, incomingBuild, incom
     // Committed: this response is being applied, so its seeds are the ones the
     // user is about to look at.
     ingestSeeds();
+    // #1406: and the history entry is recorded here, while the outgoing page is
+    // still in the DOM at its own scroll offset. This is the path the iOS
+    // back-swipe defect was measured on.
+    if (recordHistoryNow) recordHistoryNow();
     const { mode, live, incoming } = plan;
     // ADD-ONLY head merge: the outer layout stays mounted, so its head-bound
     // runtime state (Tailwind injection, etc.) must not be invalidated.
@@ -367,6 +409,7 @@ export function applySwap(doc, frameId, revalidating, href, incomingBuild, incom
   // restore or its revalidation, where a full load is not an option
   // because the user is already viewing the page).
   ingestSeeds();   // committed: past both discard branches above
+  if (recordHistoryNow) recordHistoryNow();
   swapFullBody(doc);
 }
 

@@ -473,3 +473,72 @@ test('scroll restoration: back-button restores window scroll position', async ()
     await browser.close();
   }
 });
+
+test('history: a scrolled forward nav records its entry before the swap (#1406)', async () => {
+  // The sibling of the restore test above, on the FORWARD half. WebKit binds a
+  // same-document entry's back-forward gesture snapshot to the page state when
+  // the entry is recorded, so an entry recorded after the swap describes the
+  // destination and the iOS edge back-swipe previews it blank. The pixels are
+  // iOS-only; what is assertable anywhere is the state the browser captures
+  // from, which is what was wrong.
+  await ensureServer();
+  const browser = await chromium.launch();
+  const page = await (await browser.newContext()).newPage();
+  try {
+    await page.goto(`${BASE}/ui/button`);
+    await page.waitForLoadState('domcontentloaded');
+
+    // Wrap pushState BEFORE the click and record what the document held at the
+    // moment the entry was recorded.
+    //
+    // The recorded signal is the rendered H1, NOT `location.pathname`. The url
+    // does not change until the wrapped `pushState` is applied, so a pathname
+    // read inside the wrapper returns the outgoing route whatever the ordering
+    // is, and asserting on it would pass with the fix reverted. The H1 is the
+    // real discriminator: it is the destination's already-swapped heading if
+    // the entry is recorded too late.
+    await page.evaluate(() => {
+      const orig = history.pushState;
+      /** @type {{ heading: string, scrollY: number } | null} */
+      window.__wjPushAt = null;
+      history.pushState = function (...args) {
+        if (!window.__wjPushAt) {
+          const h1 = document.querySelector('h1');
+          window.__wjPushAt = {
+            heading: (h1 && h1.textContent || '').trim(),
+            scrollY: window.scrollY,
+          };
+        }
+        return orig.apply(this, args);
+      };
+    });
+
+    await page.evaluate(() => window.scrollTo(0, 800));
+    await page.waitForTimeout(50);
+    const beforeScroll = await page.evaluate(() => window.scrollY);
+    assert.ok(beforeScroll >= 700, `precondition: we actually scrolled (got ${beforeScroll})`);
+
+    // In-page click, for the same reason the restore test uses one: Playwright's
+    // own click scrolls the target into view first, which would move the window
+    // before the router recorded its position.
+    await page.locator('a[href="/ui/card"]').first()
+      .evaluate((el) => /** @type {HTMLElement} */ (el).click());
+    await page.waitForFunction(() => location.pathname.endsWith('/ui/card'),
+      { timeout: 4000 });
+
+    const at = await page.evaluate(() => window.__wjPushAt);
+    assert.ok(at, 'the navigation recorded a history entry');
+    assert.equal(at.heading, 'Button',
+      `the outgoing page was still rendered when the entry was recorded (got "${at.heading}")`);
+    // Corroborating rather than discriminating: these two gallery pages settle
+    // to similar heights, so 800 is a valid offset in both and the engine has
+    // nothing to clamp. It still guards the offset against a future change that
+    // moves the scroll-to-top ahead of the push. The clamp itself is asserted
+    // in `packages/core/test/routing/browser/nav-history-before-swap.test.js`,
+    // whose fixture navigates a 3000px page to a short one on purpose.
+    assert.ok(at.scrollY >= beforeScroll - 20,
+      `and at the outgoing scroll offset (was ${beforeScroll}, at push ${at.scrollY})`);
+  } finally {
+    await browser.close();
+  }
+});

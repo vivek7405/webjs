@@ -35,14 +35,23 @@ export const STREAM_MIME = 'text/vnd.webjs-stream.html';
  *   2. On link click, STRICTLY scan both the live DOM and the incoming HTML
  *      into segment → {routeKey, range} maps. Any pairing violation poisons
  *      the scan.
- *   3. Two-tier decision (Next.js remount parity): a CHANGED route-key
- *      REPLACES (fresh remount) at the PARENT of the shallowest changed
- *      boundary (whose range contains the changed layout's own markup),
- *      else MORPH (keyed reconcile preserving input values, scroll, popover
- *      state, and node identity) at the deepest shared boundary.
+ *   3. Two-tier DECISION (Next.js remount parity), nothing applied yet: a
+ *      CHANGED route-key REPLACES (fresh remount) at the PARENT of the
+ *      shallowest changed boundary (whose range contains the changed layout's
+ *      own markup), else MORPH (keyed reconcile preserving input values,
+ *      scroll, popover state, and node identity) at the deepest shared
+ *      boundary.
  *   4. A poisoned scan or no shared boundary degrades to a FULL PAGE LOAD:
  *      bounded and correct, never a guessed recovery.
- *   5. Merge head, re-run scripts, upgrade custom elements, pushState.
+ *   5. Commit, in this order: `history.pushState`, then merge head, then apply
+ *      the replace/morph from step 3, then re-run scripts and upgrade custom
+ *      elements. Only the push moved (#1406); the rest of the sequence is
+ *      unchanged. The push leads because
+ *      WebKit binds a same-document entry's
+ *      back-forward gesture snapshot to the page state when the entry is
+ *      recorded, so recording it after the content swap makes an iOS
+ *      back-swipe preview the destination instead of the page being returned
+ *      to (#1406).
  *
  * Optimizations bundled into the same response cycle:
  *   - `X-Webjs-Have` request header lists `segment:route-key` entries for

@@ -5163,3 +5163,146 @@ test('applySwap: a DISCARDED background revalidation never ingests its seeds (#1
     globalThis.document.body.innerHTML = savedBody;
   }
 });
+
+/* --------------------------------------------------------------------------
+ * #1406: the history entry is recorded AT THE COMMIT, before the DOM mutation.
+ *
+ * WebKit binds a same-document `pushState` entry's back-forward gesture
+ * snapshot to the page state at the moment the entry is recorded, so an entry
+ * recorded after the swap describes the destination document rather than the
+ * page it belongs to, and the iOS edge back-swipe previews it blank.
+ *
+ * The push therefore rides into `applySwap` as a commit-time callback. These
+ * pin the three halves of that contract: it fires before the mutation on a
+ * committing swap, it does NOT fire on a swap that commits nothing, and the
+ * caller's deliberate fall-through still records history on those paths so
+ * they behave exactly as they did before.
+ *
+ * The scroll half of the defect needs real layout, so it lives in the browser
+ * suite at `browser/nav-history-before-swap.test.js`.
+ * ------------------------------------------------------------------------ */
+
+test('applySwap: the history callback fires BEFORE the DOM mutation (#1406)', () => {
+  const savedBody = globalThis.document.body.innerHTML;
+  const savedHead = globalThis.document.head.innerHTML;
+  const savedLocation = globalThis.location;
+  try {
+    globalThis.document.head.innerHTML = '';
+    let assigned = null;
+    globalThis.location = /** @type any */ ({ get href() { return 'http://x/current'; }, set href(v) { assigned = v; } });
+    globalThis.sessionStorage.clear();
+    globalThis.document.body.innerHTML =
+      '<!--wj:children:/:/--><main id="hb-old">OUTGOING</main><!--/wj:children:/-->';
+    const incoming = new globalThis.DOMParser().parseFromString(
+      '<!doctype html><html><head></head><body>'
+      + '<!--wj:children:/:/--><main id="hb-new">INCOMING</main><!--/wj:children:/-->'
+      + '</body></html>', 'text/html');
+
+    /** @type {string[]} */
+    const seenAtPush = [];
+    _applySwap(incoming, null, false, 'http://x/next', undefined, undefined, undefined,
+      () => { seenAtPush.push(globalThis.document.body.textContent || ''); });
+
+    assert.equal(assigned, null, 'precondition: this case soft-swaps rather than degrading');
+    assert.equal(seenAtPush.length, 1, 'the callback fired exactly once on a committing swap');
+    assert.match(seenAtPush[0], /OUTGOING/,
+      'the outgoing page is still in the DOM when the entry is recorded');
+    assert.doesNotMatch(seenAtPush[0], /INCOMING/,
+      'and the incoming page has not been grafted in yet');
+    // And the swap really did happen afterwards, so this is an ordering
+    // assertion rather than an assertion that nothing ran.
+    assert.match(globalThis.document.body.textContent || '', /INCOMING/,
+      'the swap still committed after the entry was recorded');
+  } finally {
+    globalThis.location = savedLocation;
+    globalThis.document.head.innerHTML = savedHead;
+    globalThis.document.body.innerHTML = savedBody;
+  }
+});
+
+test('applySwap: a frame-missing response commits nothing, so it records no history (#1406)', () => {
+  const savedBody = globalThis.document.body.innerHTML;
+  const savedLocation = globalThis.location;
+  try {
+    globalThis.location = /** @type any */ ({ get href() { return 'http://x/current'; }, set href(_v) {} });
+    globalThis.sessionStorage.clear();
+    globalThis.document.body.innerHTML = '<main>no frame here</main>';
+    const incoming = new globalThis.DOMParser().parseFromString(
+      '<!doctype html><html><head></head><body><main>nor here</main></body></html>', 'text/html');
+
+    let called = 0;
+    const disposition = _applySwap(incoming, 'missing-frame', false, 'http://x/next',
+      undefined, undefined, undefined, () => { called++; });
+
+    assert.equal(disposition, 'none', 'precondition: the frame was in neither tree');
+    assert.equal(called, 0, 'a swap that commits nothing records no history entry of its own');
+  } finally {
+    globalThis.location = savedLocation;
+    globalThis.document.body.innerHTML = savedBody;
+  }
+});
+
+test('applySwap: an integrity degradation commits nothing, so it records no history (#1406)', () => {
+  const savedBody = globalThis.document.body.innerHTML;
+  const savedHead = globalThis.document.head.innerHTML;
+  const savedLocation = globalThis.location;
+  try {
+    globalThis.document.head.innerHTML = '';
+    let assigned = null;
+    globalThis.location = /** @type any */ ({ get href() { return 'http://x/current'; }, set href(v) { assigned = v; } });
+    globalThis.sessionStorage.clear();
+    // Two valid scans that share no segment: a divergent shell, which is the
+    // one case with no trustworthy plan and no safe in-place recovery.
+    globalThis.document.body.innerHTML =
+      '<!--wj:children:/a:/a--><main>old</main><!--/wj:children:/a-->';
+    const incoming = new globalThis.DOMParser().parseFromString(
+      '<!doctype html><html><head></head><body>'
+      + '<!--wj:children:/b:/b--><main>new</main><!--/wj:children:/b-->'
+      + '</body></html>', 'text/html');
+
+    let called = 0;
+    const disposition = _applySwap(incoming, null, false, 'http://x/next',
+      undefined, undefined, undefined, () => { called++; });
+
+    assert.equal(disposition, 'none', 'precondition: it degraded rather than guessing a swap');
+    assert.equal(assigned, 'http://x/next', 'and it really did hard-navigate');
+    assert.equal(called, 0, 'a degradation records no history entry of its own');
+  } finally {
+    globalThis.location = savedLocation;
+    globalThis.document.head.innerHTML = savedHead;
+    globalThis.document.body.innerHTML = savedBody;
+  }
+});
+
+test("navigate: the caller's fall-through still records history on a degradation (#1406)", async () => {
+  // The deliberate fall-through in `fetchAndApply`: a `'none'` outcome records
+  // the entry AND hard-navigates, which is what it did before the callback was
+  // introduced. This is the assertion that the reorder changed the ORDER on
+  // committing swaps and nothing else.
+  const savedBody = globalThis.document.body.innerHTML;
+  const { restore } = installNavigationMocks({
+    contentType: 'text/html',
+    body: '<!doctype html><html><head></head><body>'
+      + '<!--wj:children:/b:/b--><main>new</main><!--/wj:children:/b-->'
+      + '</body></html>',
+  });
+  /** @type {string[]} */
+  const pushed = [];
+  globalThis.history = /** @type any */ ({
+    pushState: (_a, _b, url) => { pushed.push(String(url)); },
+    replaceState: () => {},
+  });
+  try {
+    globalThis.sessionStorage.clear();
+    globalThis.document.body.innerHTML =
+      '<!--wj:children:/a:/a--><main>old</main><!--/wj:children:/a-->';
+
+    await navigate('http://localhost/diverged');
+
+    assert.deepEqual(pushed, ['http://localhost/diverged'],
+      'the degradation still advanced the URL exactly once, as it did before #1406');
+  } finally {
+    restore();
+    globalThis.document.body.innerHTML = savedBody;
+  }
+});
