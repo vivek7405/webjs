@@ -55,6 +55,11 @@
  *   Treat that as a bug in your markup rather than a feature: this dialog
  *   interrupts the user to demand an explicit choice and blocks Escape, so
  *   naming it "Alert dialog" tells them nothing about what they are deciding.
+ *   `role="alertdialog"` and the name both sit on the NATIVE `<dialog>`, a
+ *   valid ARIA-in-HTML override of that element's implicit `dialog` role, so
+ *   exactly one dialog-family node is exposed rather than an `alertdialog`
+ *   nested inside a `dialog`. There is no `aria-modal`: the platform already
+ *   exposes a `showModal()`-opened dialog as modal.
  *
  * Design tokens used: --background, --border, --muted-foreground.
  *
@@ -417,18 +422,23 @@ export class UiAlertDialogContent extends WebComponent({
       panel.setAttribute('aria-describedby', authored);
       return;
     }
+    // Clear the previous open's value before resolving again. The panel keeps
+    // its attributes between opens, so a guard that skips when the attribute is
+    // already present can never re-resolve, and a removed description node
+    // leaves a stale aria-describedby pointing at a dead IDREF.
+    panel.removeAttribute('aria-describedby');
     const desc =
       this.querySelector('[data-slot="alert-dialog-description"]') ?? this.querySelector('p');
-    if (desc && !panel.hasAttribute('aria-describedby')) {
+    if (desc) {
       panel.setAttribute('aria-describedby', ensureId(desc as HTMLElement, 'ui-alert-desc'));
     }
   }
 
   _wireLabels(): void {
-    const panel = this.querySelector('[data-slot="alert-dialog-content"]');
+    const panel = this.querySelector('dialog[data-slot="alert-dialog-native"]');
     if (!panel) return;
     // A name the author put on <ui-alert-dialog-content> is where they
-    // naturally write it, but role="alertdialog" lives on the inner panel.
+    // naturally write it, but role="alertdialog" lives on the native <dialog>.
     //
     // Each authored-name branch RETURNS rather than falling through to the
     // title wiring. Falling through would set aria-labelledby from the title
@@ -449,9 +459,13 @@ export class UiAlertDialogContent extends WebComponent({
       this._wireDescription(panel);
       return;
     }
+    // Same re-resolve rule: clear what a previous open wrote, or a removed
+    // title node leaves a stale aria-labelledby that points at a dead IDREF AND
+    // suppresses the floor below, which exists to prevent exactly that state.
+    panel.removeAttribute('aria-labelledby');
     const title =
       this.querySelector('[data-slot="alert-dialog-title"]') ?? this.querySelector('h1, h2, h3');
-    if (title && !panel.hasAttribute('aria-labelledby')) {
+    if (title) {
       panel.setAttribute('aria-labelledby', ensureId(title as HTMLElement, 'ui-alert-title'));
     }
     this._wireDescription(panel);
@@ -472,15 +486,13 @@ export class UiAlertDialogContent extends WebComponent({
     const parentOpen = !!this._parent()?.open;
     return html`<dialog
       data-slot="alert-dialog-native"
+      role="alertdialog"
       class=${NATIVE_DIALOG_CLASS}
       ${ref(this.#dialog)}
       @cancel=${this._onNativeCancel}
       @close=${this._onNativeClose}
     ><div
       data-slot="alert-dialog-content"
-      role="alertdialog"
-      aria-modal="true"
-      tabindex="-1"
       data-size=${this.size}
       data-state=${parentOpen ? 'open' : 'closed'}
       class=${alertDialogContentClass()}

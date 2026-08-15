@@ -486,6 +486,12 @@ jobs:
       # under a Chromium iPhone context (faithful touch events, no real device).
       - name: Run ui touch e2e
         run: npm run test:e2e:touch --workspace=@webjsdev/ui
+      # Accessibility-tree e2e for the ui dialog / alert-dialog / sonner ARIA
+      # (#1080/#1245): reads Chrome's computed accessibility tree over CDP, which
+      # is what a screen reader consumes, rather than re-checking the attributes
+      # the components wrote. Headless, so no display server is needed.
+      - name: Run ui a11y-tree e2e
+        run: npm run test:e2e:a11y-tree --workspace=@webjsdev/ui
 
   # Cross-runtime e2e (#523), split into its OWN job (#774) so it runs in
   # PARALLEL with the Node-served e2e above instead of as a trailing step

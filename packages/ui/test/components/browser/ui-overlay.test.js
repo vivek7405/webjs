@@ -112,11 +112,22 @@ suite('ui-dialog', () => {
     `);
     await tick();
     const dialog = root.querySelector('ui-dialog');
-    // data-state lives on the inner [role="dialog"] element rendered
-    // inside the <ui-dialog-content> host.
-    const contentInner = dialog.querySelector('ui-dialog-content [role="dialog"]');
+    // data-state lives on the inner content div rendered inside the
+    // <ui-dialog-content> host. Located by its data-slot, NOT by [role="dialog"]:
+    // the role moved onto the native <dialog> in #1245, and the two were only
+    // ever on the same element by coincidence. data-state is a styling hook and
+    // the role is an accessibility contract, so a locator that conflates them
+    // breaks whenever either one moves.
+    const contentInner = dialog.querySelector('ui-dialog-content [data-slot="dialog-content"]');
     assert.ok(contentInner, 'inner content element exists in DOM');
     assert.equal(contentInner.getAttribute('data-state'), 'closed');
+    // Re-pointing the locator above removed this file's only implicit proof
+    // that the role exists at all, so assert it directly on the element that
+    // owns it. Otherwise the dialog could lose its role entirely and every
+    // browser-layer test here would still pass.
+    const nativeDialog = dialog.querySelector('dialog[data-slot="dialog-native"]');
+    assert.equal(nativeDialog.getAttribute('role'), 'dialog', 'native <dialog> carries role=dialog');
+    assert.equal(contentInner.hasAttribute('role'), false, 'and the content panel carries no second dialog role');
     assert.equal(getComputedStyle(dialog.querySelector('ui-dialog-content')).display, 'none', 'host hidden when closed');
     root.remove();
   });
@@ -993,7 +1004,7 @@ suite('ui-alert-dialog', () => {
     }
   });
 
-  test('trigger click opens via show(); content has role="alertdialog"', async () => {
+  test('trigger click opens via show(); native <dialog> has role="alertdialog"', async () => {
     const root = await mount(html`
       <ui-alert-dialog>
         <ui-alert-dialog-trigger><button>Delete</button></ui-alert-dialog-trigger>
@@ -1008,12 +1019,23 @@ suite('ui-alert-dialog', () => {
     root.querySelector('ui-alert-dialog-trigger [data-slot="alert-dialog-trigger"]').click();
     await tick();
     assert.ok(ad.hasAttribute('open'), 'host gets [open] attribute');
-    const inner = ad.querySelector('ui-alert-dialog-content [role="alertdialog"]');
-    assert.ok(inner, 'inner alertdialog rendered');
+    // Located by data-slot, NOT by [role="alertdialog"]. The role moved onto
+    // the native <dialog>, so a role-based locator here would resolve to the
+    // same node as `native` below and this would be a weaker duplicate of that
+    // assertion rather than a check that the content panel rendered.
+    const inner = ad.querySelector('ui-alert-dialog-content [data-slot="alert-dialog-content"]');
+    assert.ok(inner, 'inner content panel rendered');
     // showModal() reaches the own-rendered native <dialog> through the
     // ref()/createRef() handle, so the native element is actually open.
     const native = ad.querySelector('dialog[data-slot="alert-dialog-native"]');
     assert.ok(native && native.open, 'ref()-driven showModal opened the native <dialog>');
+    // The role lives on the native <dialog>, which is what this test's name is
+    // about. Asserted here rather than through a role-based locator, so the
+    // check is on the element and cannot quietly become a lookup that passes
+    // because it found some other node. This is the browser layer's only
+    // assertion of the alertdialog role.
+    assert.equal(native.getAttribute('role'), 'alertdialog', 'native <dialog> carries role=alertdialog');
+    assert.equal(inner.hasAttribute('role'), false, 'and the content panel carries no second dialog role');
     ad.hide();
     root.remove();
   });

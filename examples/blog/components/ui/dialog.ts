@@ -76,6 +76,86 @@ import { WebComponent, html, unsafeHTML, prop } from '@webjsdev/core';
 import { ref, createRef } from '@webjsdev/core/directives';
 import { buttonClass } from './button.ts';
 
+// Gives an id to an element that lacks one, so it can be referenced.
+function ensureId(el: HTMLElement, prefix: string): string {
+  if (!el.id) el.id = `${prefix}-${Math.random().toString(36).slice(2, 9)}`;
+  return el.id;
+}
+
+// Names and describes the dialog panel from its title / description nodes.
+// A dialog only ever appears via showModal(), so resolving this at open time
+// is correct and avoids any SSR id-stability concern.
+//
+// The panel here is the native <dialog>, which is the element carrying
+// role="dialog", so the name has to land on it rather than on the inner
+// content div. Declaring a role WITHOUT a name is the failure this exists to
+// prevent: a modal that reports itself as a dialog and then has nothing to
+// announce is worse than one the reader treats as ordinary content.
+//
+// The title lookup covers this app's <ui-dialog-title> and <ui-dialog-description>
+// markup as well as the data-slot and bare-heading forms, since those tags are
+// not registered here and so leave no heading behind.
+function wireDialogLabels(host: Element): void {
+  const panel = host.querySelector('dialog[data-slot="dialog-native"]');
+  if (!panel) return;
+
+  const authoredLabelledBy = host.getAttribute('aria-labelledby');
+  if (authoredLabelledBy) {
+    panel.setAttribute('aria-labelledby', authoredLabelledBy);
+    wireDialogDescription(host, panel);
+    return;
+  }
+  const authoredLabel = host.getAttribute('aria-label');
+  if (authoredLabel) {
+    panel.setAttribute('aria-label', authoredLabel);
+    panel.removeAttribute('aria-labelledby');
+    wireDialogDescription(host, panel);
+    return;
+  }
+
+  // Clear what a PREVIOUS open wrote before resolving again. The panel keeps
+  // its attributes between opens, so a guard that skips when the attribute is
+  // already there can never re-resolve: remove the title node and re-open, and
+  // the stale aria-labelledby survives, points at a dead IDREF, resolves to no
+  // name, and suppresses the floor below that exists to prevent exactly that.
+  panel.removeAttribute('aria-labelledby');
+
+  const title =
+    host.querySelector('[data-slot="dialog-title"]') ??
+    host.querySelector('ui-dialog-title') ??
+    host.querySelector('h1, h2, h3');
+  if (title) {
+    panel.setAttribute('aria-labelledby', ensureId(title as HTMLElement, 'ui-dialog-title'));
+  }
+  wireDialogDescription(host, panel);
+
+  // APG: a modal MUST have an accessible name. Everything above supplies one
+  // only when the author gave it a title node or named it directly, so this is
+  // the floor that makes an unnamed modal impossible. Not a substitute for a
+  // real title.
+  if (!panel.hasAttribute('aria-labelledby') && !panel.hasAttribute('aria-label')) {
+    panel.setAttribute('aria-label', 'Dialog');
+  }
+}
+
+function wireDialogDescription(host: Element, panel: Element): void {
+  const authored = host.getAttribute('aria-describedby');
+  if (authored) {
+    panel.setAttribute('aria-describedby', authored);
+    return;
+  }
+  // Same re-resolve rule as the name above: clear the previous open's value
+  // first, or a removed description node leaves a dead IDREF behind.
+  panel.removeAttribute('aria-describedby');
+  const desc =
+    host.querySelector('[data-slot="dialog-description"]') ??
+    host.querySelector('ui-dialog-description') ??
+    host.querySelector('p');
+  if (desc) {
+    panel.setAttribute('aria-describedby', ensureId(desc as HTMLElement, 'ui-dialog-desc'));
+  }
+}
+
 // --------------------------------------------------------------------------
 // Class helpers for subparts.
 // --------------------------------------------------------------------------
@@ -398,6 +478,7 @@ export class UiDialogContent extends WebComponent({
   }
 
   showModal(): void {
+    wireDialogLabels(this);
     const native = this.#dialog.value;
     if (native && !native.open) native.showModal();
   }
@@ -412,15 +493,13 @@ export class UiDialogContent extends WebComponent({
     const parentOpen = !!this._parent()?.open;
     return html`<dialog
       data-slot="dialog-native"
+      role="dialog"
       class=${NATIVE_DIALOG_CLASS}
       ${ref(this.#dialog)}
       @close=${this._onNativeClose}
       @click=${this._onNativeBackdropClick}
     ><div
       data-slot="dialog-content"
-      role="dialog"
-      aria-modal="true"
-      tabindex="-1"
       data-state=${parentOpen ? 'open' : 'closed'}
       class=${dialogContentClass()}
     >

@@ -47,6 +47,10 @@
  *   floor to make an unnamed modal impossible, NOT a substitute: give the
  *   dialog a real title, since "Dialog" tells a screen reader user nothing
  *   about what they have been interrupted with.
+ *   `role="dialog"` and the name both sit on the NATIVE `<dialog>`, not on the
+ *   inner content div, so exactly one dialog-family node is exposed in the
+ *   accessibility tree. There is no `aria-modal`: a `showModal()`-opened
+ *   native dialog is already exposed as modal by the platform.
  *
  * Design tokens used: --background, --border, --muted-foreground.
  *
@@ -111,9 +115,14 @@ function wireDialogDescription(host: Element, panel: Element): void {
     panel.setAttribute('aria-describedby', authored);
     return;
   }
+  // Clear the previous open's value before resolving again. The panel keeps its
+  // attributes between opens, so a guard that skips when the attribute is
+  // already present can never re-resolve: remove the description node and
+  // re-open, and the stale aria-describedby survives pointing at a dead IDREF.
+  panel.removeAttribute('aria-describedby');
   const desc =
     host.querySelector('[data-slot="dialog-description"]') ?? host.querySelector('p');
-  if (desc && !panel.hasAttribute('aria-describedby')) {
+  if (desc) {
     panel.setAttribute('aria-describedby', ensureId(desc as HTMLElement, 'ui-dialog-desc'));
   }
 }
@@ -122,7 +131,7 @@ export function wireDialogLabels(host: Element, panelSelector: string): void {
   const panel = host.querySelector(panelSelector);
   if (!panel) return;
   // A name the author put on <ui-dialog-content> is where they naturally write
-  // it, but role="dialog" lives on the inner panel, so forward it there.
+  // it, but role="dialog" lives on the native <dialog>, so forward it there.
   //
   // This RETURNS once an authored name is forwarded, rather than falling
   // through to the title wiring below. Falling through would set
@@ -144,9 +153,13 @@ export function wireDialogLabels(host: Element, panelSelector: string): void {
     wireDialogDescription(host, panel);
     return;
   }
+  // Same re-resolve rule: clear what a previous open wrote, or a removed title
+  // node leaves a stale aria-labelledby that points at a dead IDREF AND
+  // suppresses the floor below, which exists to prevent exactly that state.
+  panel.removeAttribute('aria-labelledby');
   const title =
     host.querySelector('[data-slot="dialog-title"]') ?? host.querySelector('h1, h2, h3');
-  if (title && !panel.hasAttribute('aria-labelledby')) {
+  if (title) {
     panel.setAttribute('aria-labelledby', ensureId(title as HTMLElement, 'ui-dialog-title'));
   }
   wireDialogDescription(host, panel);
@@ -505,7 +518,7 @@ export class UiDialogContent extends WebComponent({
   }
 
   showModal(): void {
-    wireDialogLabels(this, '[data-slot="dialog-content"]');
+    wireDialogLabels(this, 'dialog[data-slot="dialog-native"]');
     const native = this._native();
     if (native && !native.open) native.showModal();
   }
@@ -520,15 +533,13 @@ export class UiDialogContent extends WebComponent({
     const parentOpen = !!this._parent()?.open;
     return html`<dialog
       data-slot="dialog-native"
+      role="dialog"
       class=${NATIVE_DIALOG_CLASS}
       ${ref(this.#dialog)}
       @close=${this._onNativeClose}
       @click=${this._onNativeBackdropClick}
     ><div
       data-slot="dialog-content"
-      role="dialog"
-      aria-modal="true"
-      tabindex="-1"
       data-state=${parentOpen ? 'open' : 'closed'}
       class=${dialogContentClass()}
     >

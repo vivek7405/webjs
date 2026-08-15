@@ -174,6 +174,23 @@ describe('Blog smoke (Tier-1/Tier-2 migration)', { skip: skip && 'blog or its DB
       assert.match(html, new RegExp(`<${tag}\\b`), `expected <${tag}> on /ui-demo`);
     }
 
+    // The dialog role belongs on the native <dialog>, and NOWHERE else in the
+    // rendered output. The native element has an implicit dialog role of its
+    // own, so a second one on the inner content div exposes two nested
+    // dialog-family nodes to a screen reader. This is the first paint, which is
+    // where render() puts the role, so it is observable here.
+    assert.match(
+      html,
+      /<dialog[^>]*data-slot="dialog-native"[^>]*role="dialog"|<dialog[^>]*role="dialog"[^>]*data-slot="dialog-native"/,
+      'the native <dialog> should carry role="dialog"',
+    );
+    const contentDiv = html.match(/<div[^>]*data-slot="dialog-content"[^>]*>/)?.[0] ?? '';
+    assert.ok(contentDiv, 'the dialog content panel should render');
+    assert.doesNotMatch(contentDiv, /\brole=/, `the content panel must carry no second dialog role: ${contentDiv}`);
+    // aria-modal is redundant on a showModal()-opened native dialog, which the
+    // platform already exposes as modal.
+    assert.doesNotMatch(html, /aria-modal/, '/ui-demo should serve no aria-modal');
+
     // No stale Tier-1 tags.
     for (const tag of ['ui-button', 'ui-card', 'ui-card-header', 'ui-input', 'ui-label', 'ui-alert', 'ui-badge']) {
       assert.doesNotMatch(html, new RegExp(`<${tag}\\b`), `/ui-demo should not render <${tag}>`);

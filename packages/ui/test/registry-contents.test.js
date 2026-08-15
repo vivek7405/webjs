@@ -189,7 +189,12 @@ test('card : exposes all 7 subpart class helpers (no custom elements)', { skip }
 test('dialog : delegates to native <dialog> for modal behavior', { skip }, () => {
   const src = readSource('dialog');
   assert.match(src, /'role',\s*'dialog'|"role",\s*"dialog"|role="dialog"/);
-  assert.match(src, /aria-modal/);
+  // No aria-modal assertion: the role moved onto the native <dialog> (#1245),
+  // and a showModal()-opened native dialog is already exposed as modal by the
+  // platform, so the attribute would be redundant on the node that owns the
+  // role. That the dialog is EXPOSED as modal is asserted where it can
+  // actually be observed, against the computed accessibility tree, in
+  // test/e2e/a11y-tree.e2e.mjs. A source regex could never have proven it.
   // Native dialog is what owns Escape, Tab cycling, and focus restoration.
   assert.match(src, /showModal/);
   assert.match(src, /HTMLDialogElement/);
@@ -376,5 +381,39 @@ test('the A11y block reaches the agent-facing doc header', { skip }, async () =>
     dropped,
     [],
     `these components' A11y blocks sit below an @tag, so extractDocHeader drops them and an agent never sees the obligations: ${dropped.join(', ')}`,
+  );
+});
+
+// #1245: a non-error toast carries NO role, so it resolves under exactly one
+// live root (the polite viewport) instead of two nested ones.
+//
+// This is a SOURCE-SHAPE assertion, and it is the only layer that can catch the
+// regression it guards. The obvious spelling of "no role on an ordinary toast"
+// is a nullish hole, `role=${item.type === 'error' ? 'alert' : null}`, which is
+// WRONG: the client renderer removes a nullish attribute but the SERVER
+// renderer stringifies it, serving `role=""`, and an empty role is not a role,
+// so the toast silently falls back to `generic`. The browser test in
+// test/components/browser/ui-a11y.test.js runs only the client renderer, so
+// `hasAttribute('role') === false` passes identically for the branch and for
+// the nullish hole, which means it cannot tell them apart. The SSR layer cannot
+// reach it either: `items` is an empty instance signal, so a viewport always
+// renders zero toasts server-side and a toast's role never reaches the server
+// renderer through markup at all. That leaves the shape of the template as the
+// only observable, so assert it here.
+test('sonner : branches the toast role rather than emitting a nullish hole', { skip }, () => {
+  // Strip comments first. The prose in this file explains WHY role="status"
+  // was removed, so a naive scan of the whole source matches the very
+  // explanation and the test can never pass.
+  const code = readSource('sonner')
+    .replace(/\/\*[\s\S]*?\*\//g, '')
+    .replace(/^\s*\/\/.*$/gm, '');
+  assert.match(code, /role="alert"/, 'an error toast still carries role=alert');
+  assert.ok(
+    !/role=\$\{[^}]*\}/.test(code),
+    'the toast role is written as a hole, so a falsy arm serves role="" from the server renderer; branch the whole attribute instead',
+  );
+  assert.ok(
+    !/role="status"/.test(code),
+    'a non-error toast still carries role=status, which nests a second live region inside the polite viewport',
   );
 });

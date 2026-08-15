@@ -1176,6 +1176,61 @@ describe('E2E: Blog example', { skip: !process.env.WEBJS_E2E && 'set WEBJS_E2E=1
     assert.ok(result.hasButtonClassOutput, 'buttonClass() Tailwind output should be present');
   });
 
+  test('/ui-demo: an opened dialog exposes ONE dialog node, and it is named', async () => {
+    // The role sits on the native <dialog>, which already has an implicit
+    // dialog role, so a second one on the content panel would expose two nested
+    // dialog-family nodes. Declaring the role also obliges the element to carry
+    // a NAME: a modal that announces itself as a dialog with nothing to read is
+    // worse than one a reader treats as ordinary content. Naming is wired at
+    // showModal() time, so it can only be observed with the dialog open.
+    await page.goto(baseUrl + '/ui-demo', { waitUntil: 'domcontentloaded', timeout: 10000 });
+    await sleep(1500);
+
+    const opened = await page.evaluate(() => {
+      const btn = [...document.querySelectorAll('button')]
+        .find((b) => /open dialog/i.test(b.textContent || ''));
+      if (!btn) return false;
+      btn.click();
+      return true;
+    });
+    assert.ok(opened, 'the "Open dialog" trigger should be present');
+    await sleep(600);
+
+    const seen = await page.evaluate(() => {
+      const host = document.querySelector('ui-dialog');
+      const native = host?.querySelector('dialog[data-slot="dialog-native"]');
+      const panel = host?.querySelector('[data-slot="dialog-content"]');
+      if (!native || !panel) return null;
+      const labelledBy = native.getAttribute('aria-labelledby');
+      const describedBy = native.getAttribute('aria-describedby');
+      const nameTarget = labelledBy ? document.getElementById(labelledBy) : null;
+      const descTarget = describedBy ? document.getElementById(describedBy) : null;
+      return {
+        open: native.open,
+        nativeRole: native.getAttribute('role'),
+        panelHasRole: panel.hasAttribute('role'),
+        // Whether the IDREF actually resolves, which a dead one would not.
+        nameResolves: !!nameTarget,
+        descResolves: !!descTarget,
+        name: (nameTarget?.textContent || native.getAttribute('aria-label') || '').trim(),
+        desc: (descTarget?.textContent || '').trim(),
+      };
+    });
+
+    assert.ok(seen, 'the native <dialog> and its content panel should both be found');
+    assert.ok(seen.open, 'the dialog should be open');
+    assert.equal(seen.nativeRole, 'dialog', 'the native <dialog> carries role="dialog"');
+    assert.equal(seen.panelHasRole, false, 'the content panel carries no second dialog role');
+    // Assert the RESOLVED title, not merely that some name exists. A
+    // non-empty check passes on the generic "Dialog" floor alone, so it would
+    // stay green with the entire title lookup deleted and could never observe
+    // that the wiring found this demo's <ui-dialog-title>.
+    assert.ok(seen.nameResolves, 'aria-labelledby must point at a live element, not a dead IDREF');
+    assert.equal(seen.name, 'Edit profile', 'the name comes from the demo title node');
+    assert.ok(seen.descResolves, 'aria-describedby must point at a live element');
+    assert.match(seen.desc, /Make changes to your profile/, 'the description comes from the demo description node');
+  });
+
   test('/ui-demo: clicking a button does not crash the page', async () => {
     const errors = [];
     page.on('pageerror', (e) => errors.push(e.message));
