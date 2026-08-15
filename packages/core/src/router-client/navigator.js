@@ -13,7 +13,7 @@ import { parseHTML } from './dom-parse.js';
 import { onClick, onPopState, onSubmit } from './events.js';
 import { fetchAndApply } from './fetch-apply.js';
 import { clearFormBusy, markFormBusy } from './frames.js';
-import { clearPrefetchHover, clearPrefetchRefused, clearPrefetchViewTimers, onPrefetchIntent, onPrefetchOut, prefetchCache, prefetchEvict, refreshPrefetchObservers, teardownPrefetchViewObserver } from './prefetch.js';
+import { clearPrefetchHover, clearPrefetchRefused, clearPrefetchViewTimers, onPrefetchIntent, onPrefetchOut, prefetchCache, prefetchClearAll, prefetchEvict, refreshPrefetchObservers, teardownPrefetchViewObserver } from './prefetch.js';
 // `restoreGeneration` is imported READ-ONLY: the deferred restore captures it
 // and re-compares after the frame, so it must be the live binding. Writes go
 // through bumpRestoreGeneration(), since ESM forbids assigning an import.
@@ -244,12 +244,15 @@ export async function loadFrame(frameEl, url) {
 
   // A self-load is a freshness request, so it does BOTH halves (#1407): it
   // declines to consume a warm entry (above), and it drops the copy it has
-  // superseded. Only once the swap actually COMMITTED, though: an aborted load,
-  // a transport failure, a non-HTML body and a `webjs:frame-missing` all leave
-  // the frame showing its old content, so the warm entry still matches what is
-  // on screen and evicting it would cost the next click a round trip for
-  // nothing. `applied` is exactly that question (`ok` is not, since a 422 or a
-  // notFound() page still commits).
+  // superseded. Only once the swap actually COMMITTED, though, which `applied`
+  // is exactly the question for (`ok` is not, since a 422 or a notFound() page
+  // still commits). The clearest case is a `webjs:frame-missing` or an abort by
+  // a newer nav: the frame keeps showing its old content, which the warm entry
+  // still matches, so evicting would cost the next click a round trip for
+  // nothing. A transport failure or a non-HTML body do NOT leave the page
+  // untouched (`handleNavigationError` either swaps an error alert into the
+  // deepest layout range or hard-navigates), but they commit nothing for this
+  // FRAME either, so the same gate is right for them by the same rule.
   if (outcome && outcome.applied) prefetchEvict(target.href, id);
   return outcome;
 }
@@ -278,7 +281,7 @@ export function revalidate(url) {
   // that costs one skipped warm-up for that key until the TTL, which is the
   // cheaper side of the trade. `refreshPage`, where the SOURCE may have changed,
   // clears them itself.
-  if (!url) { snapshotCache.clear(); prefetchCache.clear(); return; }
+  if (!url) { snapshotCache.clear(); prefetchClearAll(); return; }
   const u = new URL(url, location.href);
   const key = u.pathname + u.search;
   snapshotCache.delete(key);
@@ -717,7 +720,7 @@ export async function performSubmission(href, method, body, frameId, form) {
     // mutation would otherwise be served stale on a later forward click.
     if (!isSafe && myToken === currentNavigationToken) {
       snapshotCache.clear();
-      prefetchCache.clear();
+      prefetchClearAll();
     }
   } finally {
     if (busyForm) clearFormBusy(busyForm, myToken, url.href, outcomeOk);

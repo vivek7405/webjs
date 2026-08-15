@@ -277,10 +277,13 @@ suite('Client router: frame-dimensioned link prefetch (#1407)', () => {
   });
 
   test('a self-load that does NOT commit leaves the warm entry alone (#1407)', async () => {
-    // The evict half is conditional on the swap committing. An aborted load, a
-    // transport failure, a non-HTML body and a `webjs:frame-missing` all leave
-    // the frame showing its old content, which the warm entry still matches, so
-    // dropping it would cost the next click a round trip for nothing.
+    // The evict half is conditional on the swap committing. This drives the
+    // `webjs:frame-missing` path, where the premise is cleanest and provable:
+    // the response carries no matching frame, so the swap leaves the region
+    // untouched and the frame keeps showing content the warm entry still
+    // matches. Evicting there would cost the next click a round trip for
+    // nothing. (A transport failure would also commit nothing, but it does not
+    // leave the PAGE untouched, so it is the wrong shape to assert on.)
     setup('/tasks?status=failload');
     try {
       const target = location.origin + '/tasks?status=failload';
@@ -288,15 +291,25 @@ suite('Client router: frame-dimensioned link prefetch (#1407)', () => {
       await afterPrefetchAttempt();
       assert.ok(_prefetchPeek(target, 'tasks'), 'precondition: the framed entry is warm');
 
-      // The self-load's own fetch fails, so nothing is applied.
-      window.fetch = async () => { throw new Error('offline'); };
-      const frame = document.getElementById('tasks');
-      const outcome = await _loadFrame(frame, '/tasks?status=failload');
-      await settle();
+      // The self-load's response carries no `webjs-frame#tasks`, so nothing
+      // commits for this frame.
+      window.fetch = async () => new Response(
+        '<!doctype html><html><head></head><body><p>no frame here</p></body></html>',
+        { status: 200, headers: { 'content-type': 'text/html', 'x-webjs-build': '' } },
+      );
+      const warn = console.warn;
+      console.warn = () => {};   // the frame-missing branch warns by design
+      let outcome;
+      try {
+        outcome = await _loadFrame(document.getElementById('tasks'), '/tasks?status=failload');
+        await settle();
+      } finally { console.warn = warn; }
 
       assert.equal(outcome.applied, false, 'precondition: the self-load committed nothing');
+      assert.equal(document.getElementById('frame-body').textContent, 'ORIGINAL',
+        'and the frame still shows its old content');
       assert.ok(_prefetchPeek(target, 'tasks'),
-        'the warm entry survived, since the frame still shows what it matches');
+        'so the warm entry survived, since it still matches what is on screen');
     } finally { teardown(); }
   });
 

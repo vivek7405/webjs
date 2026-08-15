@@ -429,7 +429,7 @@ export function prefetch(href, frameId) {
       const pageSrc = pageTag ? pageTag.getAttribute('data-webjs-src') : null;
       if ((build && pageBuild && build !== pageBuild) || (src && pageSrc && src !== pageSrc)) {
         snapshotCache.clear();
-        prefetchCache.clear();
+        prefetchClearAll(key);
         // A new build can change whether a route streams, so a refusal recorded
         // against the old one says nothing about the new one (#1407).
         clearPrefetchRefused();
@@ -745,6 +745,29 @@ export function refreshPrefetchObservers() {
 }
 
 /**
+ * Drop EVERY speculative entry, closing the same in-flight window
+ * `prefetchEvict` closes for one key (#1407). Every caller means "what is held
+ * predates the change": a mutation applying, a deploy landing, a blanket
+ * `revalidate()`. A bare `prefetchCache.clear()` is undone by any speculative
+ * fetch that is mid-body-read, which is not hypothetical on the post-mutation
+ * path: a hover 100ms earlier is still open when the write applies, and it then
+ * stores its PRE-mutation body right after the clear, which is exactly the
+ * staleness `revalidate` exists to prevent.
+ */
+export function prefetchClearAll(exceptKey) {
+  prefetchCache.clear();
+  for (const key of prefetchInflight) {
+    // Never supersede the fetch that is CALLING this. The deploy-detection
+    // branch runs inside a prefetch's own `.then`, and it got there by reading
+    // the new build id off its own response, so its bytes are the freshest
+    // thing in the process. Marking its key would make it discard its own
+    // result and, with it, never announce `webjs:prefetch`.
+    if (key === exceptKey) continue;
+    prefetchSuperseded.add(key);
+  }
+}
+
+/**
  * Drop the speculative entry for one url in one dimension (#1407). Used by
  * `loadFrame`: a `<webjs-frame src>` self-load refuses to CONSUME a warm entry
  * because it is a freshness request, and the other half of that is dropping the
@@ -759,18 +782,15 @@ export function refreshPrefetchObservers() {
 export function prefetchEvict(href, frameId) {
   const key = cacheKey(href, frameId);
   prefetchCache.delete(key);
-  // Deleting the stored copy is only half of it. A speculative fetch for the
-  // same key may be in flight (it stores when its body finishes reading) or
-  // parked in the queue (it starts later), and either would put the entry back
-  // after this returns. Mark the in-flight one so its store is a no-op, and
-  // drop the queued one before it ever starts.
+  // Deleting the stored copy is only half of it: a speculative fetch already IN
+  // FLIGHT stores when its body finishes reading, so it would put the entry
+  // straight back. Mark it so that store is a no-op instead.
+  //
+  // A QUEUED prefetch is deliberately left alone. It has not issued its request
+  // yet, so when it runs it fetches bytes strictly fresher than the ones this
+  // eviction is discarding. Dropping it would prevent no staleness and would
+  // leave that link cold with no refusal memo to explain why.
   if (prefetchInflight.has(key)) prefetchSuperseded.add(key);
-  if (prefetchQueued.delete(key)) {
-    for (let i = prefetchQueue.length - 1; i >= 0; i--) {
-      const q = prefetchQueue[i];
-      if (cacheKey(q.href, q.frameId) === key) prefetchQueue.splice(i, 1);
-    }
-  }
 }
 
 /** Test-only: peek the speculative cache for a href without consuming it. */
