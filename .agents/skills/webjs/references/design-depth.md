@@ -7,9 +7,14 @@ every UI task; this one is on demand.
 
 ## Building a palette from an accent
 
-The kit ships a neutral `--primary` on purpose, so an app states its own brand.
-`webjsui init --accent <name>` sets it, and everything below is what to do when
-you are choosing the accent by hand.
+The kit ships a neutral `--primary` on purpose, so an app states its own brand
+rather than inheriting one. `webjsui init --base-color <name>` picks the NEUTRAL
+ramp; the accent is yours to set, by editing `--primary`, `--primary-foreground`
+and `--ring` in your own theme block. That is not a gap: the kit is copied into
+your repo and you own every line of it, and an accent shipped as a default would
+make every app built on the kit share one brand.
+
+Everything below is how to choose that accent.
 
 **One accent, one neutral, and the semantic roles.** That is a complete palette.
 An app with three brand colours has no brand colour, because none of them wins.

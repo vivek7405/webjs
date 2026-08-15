@@ -191,7 +191,16 @@ function rawPaletteUtilities(files) {
  * component instead of a token. Exempt where a literal is the only option.
  */
 function literalColourValues(files) {
-  return scan(files, /#[0-9a-fA-F]{3,8}\b|\b(rgb|rgba|hsl|oklch)\(/g, (f) => !LITERAL_COLOUR_EXEMPT.test(f.rel));
+  // A hex only counts in a COLOUR POSITION: after a `:` (a CSS declaration or
+  // an object property) or a `,` (a gradient stop). An issue reference reads
+  // `(#492)` in prose, and blanking comments was not enough to stop it, since
+  // the same reference appears in a metadata `description` string. Charging an
+  // app for citing a ticket makes the whole line untrustworthy.
+  return scan(
+    files,
+    /[:,]\s*#[0-9a-fA-F]{3,8}\b|\b(rgb|rgba|hsl|oklch)\(/g,
+    (f) => !LITERAL_COLOUR_EXEMPT.test(f.rel),
+  );
 }
 
 /**
