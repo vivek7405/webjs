@@ -49,6 +49,63 @@ export function pageSegmentPath(pageFile) {
 }
 
 /**
+ * Like layoutSegmentPath but for a BOUNDARY file (error / not-found /
+ * forbidden / unauthorized). Strips the boundary filename, yielding the
+ * segment the boundary sits at:
+ *
+ *   app/error.ts                        -> '/'
+ *   app/docs/error.ts                   -> '/docs'
+ *   app/(marketing)/about/not-found.ts  -> '/(marketing)/about'
+ *   app/global-not-found.ts             -> '/'   (root-only by definition)
+ *
+ * Route groups are KEPT, for the reason stated on layoutSegmentPath: two
+ * routes at one URL prefix served by different `(group)` layouts must not
+ * look like a shared layout.
+ *
+ * The filename match is anchored to a separator or the start of the path, and
+ * the `global-` forms are matched FIRST. Without the anchor, `not-found` also
+ * matches INSIDE `global-not-found.ts`, which yielded the nonsense segment
+ * `/global-` for a boundary that is root-only and must derive `/`.
+ *
+ * @param {string} boundaryFile  Absolute path to the boundary source file.
+ * @returns {string}
+ */
+export function boundarySegmentPath(boundaryFile) {
+  const p = boundaryFile
+    .replace(/^.*\/app\//, '')
+    .replace(
+      /(?:^|\/)(?:global-error|global-not-found|error|not-found|forbidden|unauthorized)\.[jt]sx?$/,
+      '',
+    );
+  return p === '' ? '/' : '/' + p;
+}
+
+/**
+ * The layouts that wrap a boundary at `boundarySeg`: every layout whose own
+ * segment is that segment or an ancestor of it, in the chain's original
+ * outermost-first order (#1298).
+ *
+ * A layout DEEPER than the boundary never rendered, so it is excluded. The
+ * boundary's OWN segment layout is INCLUDED, which is Next's hierarchy
+ * (`layout.js` then `error.js` then `page.js`, so the boundary sits INSIDE its
+ * segment's layout). That is also why an error thrown by a layout is not
+ * caught by the boundary at its own segment: the boundary is nested inside the
+ * thing that threw, so the next boundary OUT handles it.
+ *
+ * The prefix test breaks on a segment, so '/doc' never matches '/docs'.
+ *
+ * @param {string[]} layouts  route.layouts, outermost first.
+ * @param {string} boundarySeg
+ * @returns {string[]}
+ */
+export function layoutsForBoundary(layouts, boundarySeg) {
+  return (layouts || []).filter((f) => {
+    const seg = layoutSegmentPath(f);
+    return seg === boundarySeg || boundarySeg.startsWith(seg === '/' ? '/' : seg + '/');
+  });
+}
+
+/**
  * Derive a region's ROUTE-KEY from its segment path pattern and the render's
  * resolved params. The route-key is the CONCRETE resolved URL path for the
  * region: dynamic `[param]` / catch-all `[...param]` / optional-catch-all
@@ -169,6 +226,8 @@ export function wrapWithChildrenMarker(tree, segmentPath, params) {
 /** Internal helpers re-exported for unit testing. */
 export const _layoutSegmentPath = layoutSegmentPath;
 export const _pageSegmentPath = pageSegmentPath;
+export const _boundarySegmentPath = boundarySegmentPath;
+export const _layoutsForBoundary = layoutsForBoundary;
 export const _regionRouteKey = regionRouteKey;
 export const _wrapWithChildrenMarker = wrapWithChildrenMarker;
 

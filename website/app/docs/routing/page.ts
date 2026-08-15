@@ -423,6 +423,23 @@ export default function NotFound() {
       means error boundaries are nested. A deeply-placed <code>error.ts</code> catches
       errors for its subtree without affecting the rest of the site.
     </p>
+    <p>
+      The boundary renders <strong>inside the layouts at and above its own segment</strong>,
+      so the surrounding chrome stays on screen and a client-router navigation into a
+      failing page is still a soft navigation. A layout deeper than the boundary is not
+      rendered, since it never rendered on the way in either.
+    </p>
+    <p>
+      A boundary sits inside its own segment's layout, so it cannot catch that layout.
+      This is Next's rule and it exists for a plain reason: re-running the layout that
+      just threw would only throw again. On a 500 the error walks outward to the next
+      <code>error.ts</code>, and on to <code>global-error.ts</code> once the chain is
+      exhausted. The <code>not-found.ts</code>, <code>forbidden.ts</code> and
+      <code>unauthorized.ts</code> boundaries have no outward walk: each renders the
+      single nearest file, so a throwing layout degrades that one response to the
+      boundary without its chrome, keeping the status. See
+      <a href="/docs/error-handling">Error handling</a> for the full rules.
+    </p>
 
     <code-block>// app/error.ts: root error boundary
 import { html } from '@webjsdev/core';
@@ -450,7 +467,9 @@ export default function ErrorBoundary({ error }: { error: unknown }) {
       <code>searchParams</code>, <code>url</code>) along with the <code>error</code>
       property. Errors from <code>notFound()</code> and <code>redirect()</code> are
       <strong>not</strong> caught by error boundaries. Those are handled specially by the
-      framework.
+      framework. A <code>not-found.ts</code>, <code>forbidden.ts</code> or
+      <code>unauthorized.ts</code> boundary receives that same context object and is
+      wrapped in its layouts the same way.
     </p>
 
     <!-- ===== METADATA ===== -->

@@ -495,7 +495,59 @@ export async function handleCore(req, ctx) {
   }
   // Unmatched anywhere: prefer the root not-found.{js,ts}, then a
   // global-not-found.{js,ts} (#848), else the default 404 page.
-  return ssrNotFound(state.routeTable.notFound || state.routeTable.globalNotFound, { dev, appDir, req, url });
+  // The APM / overlay sinks ride along here too: a root not-found that throws
+  // or fails to load must reach them, not only the console (#1298). Built
+  // inline rather than reused, because the ssrOpts above is scoped to the
+  // matched-page branch, which this path did not take.
+  //
+  // No `route` is passed on purpose: nothing matched, so there is no layout
+  // chain to render the boundary inside, and the response stays a bare
+  // document with no boot script.
+  // Same supersede rule the matched-page branch follows (#1047 / #893): a
+  // LATER successful render of this same url clears the frame it retained, so
+  // an intermittently-failing not-found (a query behind it, not a source edit,
+  // which the rebuild already clears) cannot leave a frame that paints over a
+  // page that has since recovered. Scoped to this url, so a good render here
+  // never erases an error still current for a page the user is looking at.
+  const devErrorUrl = withBasePath(url.pathname, basePath()) + url.search;
+  // Gated on !isPrefetch as well as dev, exactly as the matched-page branch
+  // gates its whole supersede closure. The clear below infers "this render
+  // succeeded" from "the retained frame is still the one I captured", and that
+  // inference is only valid when a sink was installed to write a new one. A
+  // prefetch installs none, so a prefetch of a url that throws AGAIN would
+  // look like a recovery and wipe a frame that is still current, which is the
+  // #893 gap the retention exists to close.
+  const isPrefetch = req.headers.get('x-webjs-prefetch') === '1';
+  const before = dev && !isPrefetch ? state.lastDevError : null;
+  const resp = await ssrNotFound(state.routeTable.notFound || state.routeTable.globalNotFound, {
+    dev,
+    appDir,
+    req,
+    url,
+    onError: reportError ? (e) => reportError(e, req, 'ssr') : undefined,
+    // The frame's url must be stamped exactly as the matched-page branch
+    // stamps it, or the overlay's scope gate refuses it: the browser compares
+    // against `location.pathname + location.search`, so dropping the query
+    // suppresses the overlay on any unrouted url that carries one, and
+    // dropping the base path suppresses it on EVERY url of a sub-path deploy
+    // (the ingress strip already removed the prefix from `url`, while the
+    // browser's location still has it). A refused frame goes to the pending
+    // slot and is then discarded, so the overlay simply never paints.
+    //
+    // Dropped for a speculative prefetch, on the same #1047 rule the
+    // matched-page branch follows: hovering a link to a broken page must not
+    // raise an overlay on the page you are actually on, nor become
+    // `state.lastDevError` for the SSE to replay into a fresh tab. Prefetch is
+    // on by default and fetches unrouted hrefs too, so this is reachable.
+    onDevError: dev && !isPrefetch
+      ? (e) => reportDevError(e, { kind: 'render', url: devErrorUrl })
+      : undefined,
+  });
+  if (
+    before && state.lastDevError === before
+    && before.kind === 'render' && before.url === devErrorUrl
+  ) state.lastDevError = null;
+  return resp;
 }
 
 /** @param {Request} req @param {string} path */

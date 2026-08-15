@@ -214,6 +214,52 @@ describe('E2E: dev error overlay URL scope (#1047)', {
     } finally { await other.close(); }
   });
 
+  test('navigating into a page whose render throws is a SOFT navigation (#1298)', async () => {
+    // Until #1298 this could not be written at all: a boundary was served with
+    // no layout chain, so it carried none of the keyed wj:children markers, the
+    // router's scan found no shared boundary, and the click was a full document
+    // load. That is why every other test in this file reaches /crash with a
+    // plain `page.goto` or only prefetches it, and never clicks through to it.
+    const fallbacks = [];
+    await gotoReady(page, `${base}/good`);
+    await page.evaluate(() => {
+      window.__wjCtx = 'alive';
+      window.__wjFallbacks = [];
+      document.addEventListener('webjs:navigation-fallback', (e) => {
+        window.__wjFallbacks.push(e.detail && e.detail.cause);
+      });
+      // Tag the layout's own DOM so its IDENTITY can be checked after the swap,
+      // not merely its presence: a re-created node would look the same.
+      document.querySelector('main').__wjIdentity = 'same-main';
+      document.querySelector('counter-el').__wjIdentity = 'same-counter';
+    });
+    // Give the counter some hydrated state to lose.
+    await page.click('#bump');
+    await page.waitForFunction(() => /bumped 1/.test(document.querySelector('#bump').textContent));
+
+    await page.evaluate(() => document.querySelector('#to-crash').click());
+    await page.waitForSelector('#crash-boundary', { timeout: 5000 });
+
+    assert.match(page.url(), /\/crash$/);
+    assert.equal(
+      await page.evaluate(() => window.__wjCtx), 'alive',
+      'the document was never reloaded, so it really was a soft navigation',
+    );
+    fallbacks.push(...await page.evaluate(() => window.__wjFallbacks));
+    assert.deepEqual(fallbacks, [], 'the router did not degrade to a full page load');
+
+    const identity = await page.evaluate(() => ({
+      main: document.querySelector('main') && document.querySelector('main').__wjIdentity,
+      counter: document.querySelector('counter-el') && document.querySelector('counter-el').__wjIdentity,
+      bump: document.querySelector('#bump') && document.querySelector('#bump').textContent,
+      boundary: document.querySelector('#crash-boundary').textContent,
+    }));
+    assert.equal(identity.main, 'same-main', 'the layout element itself survived, not a copy of it');
+    assert.equal(identity.counter, 'same-counter', 'and so did the interactive component inside it');
+    assert.match(identity.bump, /bumped 1/, 'its hydrated state survived too');
+    assert.match(identity.boundary, /this page threw during render/, 'the boundary rendered the real error');
+  });
+
   test('merely PREFETCHING a link to a throwing page raises no overlay', async () => {
     // The listener goes on BEFORE the navigation, for two reasons. The prefetch
     // strategy is device-adaptive, and on the `viewport` branch (no hover

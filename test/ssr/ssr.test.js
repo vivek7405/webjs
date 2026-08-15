@@ -1538,6 +1538,13 @@ test('preloadCrossOriginAttr: adds crossorigin=anonymous for cross-origin URLs o
   assert.equal(preloadCrossOriginAttr('/__webjs/vendor/dayjs@1.11.20.js'), '');
 });
 
+/** Run `fn` with console.error muted: several cases provoke a real crash. */
+const SILENT = async (fn) => {
+  const prev = console.error;
+  console.error = () => {};
+  try { return await fn(); } finally { console.error = prev; }
+};
+
 /* ------------ ssrNotFound + not-found.js rendering ------------ */
 
 test('ssrNotFound: no notFound file → plain 404 fallback', async () => {
@@ -1560,15 +1567,28 @@ test('ssrNotFound: renders the user-supplied not-found.js module', async () => {
 });
 
 test('ssrNotFound: not-found.js that throws falls back to an inline error body', async () => {
+  // The fallback body is DEV-only as of #1298. This used to render the thrown
+  // message in production too, which leaks a value the author does not control
+  // (a driver message, a path, a DSN) to the client. The 500 path has always
+  // drawn that line; these pages now do as well.
   const sub = mkdtempSync(join(tmpDir, 'nf-err-'));
   const notFoundFile = join(sub, 'not-found.js');
   writeFileSync(notFoundFile,
     `export default function NotFound() { throw new Error('boom'); }\n`);
-  const resp = await ssrNotFound(notFoundFile, { dev: false, appDir: sub });
-  assert.equal(resp.status, 404);
-  const body = await resp.text();
-  assert.ok(body.includes('404: Not found'));
-  assert.ok(body.includes('boom'));
+
+  // SILENT: the boundary crash is REPORTED to console.error as of #1298, and
+  // this test provokes it deliberately.
+  const dev = await SILENT(() => ssrNotFound(notFoundFile, { dev: true, appDir: sub }));
+  assert.equal(dev.status, 404);
+  const devBody = await dev.text();
+  assert.ok(devBody.includes('404: Not found'));
+  assert.ok(devBody.includes('boom'), 'dev still shows the failure');
+
+  const prod = await SILENT(() => ssrNotFound(notFoundFile, { dev: false, appDir: sub }));
+  assert.equal(prod.status, 404);
+  const prodBody = await prod.text();
+  assert.ok(prodBody.includes('404: Not found'), 'prod still identifies the status');
+  assert.ok(!prodBody.includes('boom'), 'but never renders the thrown message');
 });
 
 /* ------------ ssrPage: redirect / notFound / error boundaries ------------ */
@@ -1750,6 +1770,890 @@ test('ssrPage: dev=true exposes the error stack, prod hides it', async () => {
     assert.ok(!prodBody.includes('stacky'));
     assert.ok(prodBody.includes('Something went wrong'));
   } finally { console.error = prev; }
+});
+
+/* ------------ boundaries render inside their layout chain (#1298) ------------ */
+
+/**
+ * Build a nested app on disk and return a route object for its page.
+ *
+ * `files` maps an app-relative path to source. `layouts` and `errors` are
+ * app-relative paths listed OUTERMOST first, matching what the router builds.
+ */
+function makeBoundaryApp({ files, page, layouts = [], errors = [], notFounds = [], forbiddens = [] }) {
+  const sub = mkdtempSync(join(tmpDir, 'boundary-'));
+  const appDir = join(sub, 'app');
+  for (const [rel, src] of Object.entries(files)) {
+    const abs = join(appDir, rel);
+    mkdirSync(dirname(abs), { recursive: true });
+    writeFileSync(abs, src);
+  }
+  const abs = (rel) => join(appDir, rel);
+  return {
+    appDir,
+    route: {
+      file: abs(page),
+      layouts: layouts.map(abs),
+      errors: errors.map(abs),
+      notFounds: notFounds.map(abs),
+      forbiddens: forbiddens.map(abs),
+      metadataFiles: [],
+    },
+  };
+}
+
+/** Every `wj:children` marker in DOM order. */
+const markersOf = (html) => [...html.matchAll(/<!--(\/?)wj:children:([^:>]+)(?::([^>]*))?-->/g)]
+  .map((m) => ({ close: m[1] === '/', segment: m[2], key: m[3] }));
+
+/** The set of segment ids opened, sorted, for set-equality assertions. */
+const openSegments = (html) => markersOf(html).filter((m) => !m.close).map((m) => m.segment).sort();
+
+/** Assert every open has exactly one matching close, and no id repeats (#1015). */
+function assertPaired(html) {
+  const ms = markersOf(html);
+  const opens = ms.filter((m) => !m.close).map((m) => m.segment);
+  const closes = ms.filter((m) => m.close).map((m) => m.segment);
+  assert.deepEqual([...opens].sort(), [...closes].sort(), 'every open has a matching close');
+  assert.equal(new Set(opens).size, opens.length, 'no segment id is duplicated');
+  // Properly nested: walking the list as a stack must never mispair.
+  const stack = [];
+  for (const m of ms) {
+    if (!m.close) stack.push(m.segment);
+    else assert.equal(stack.pop(), m.segment, 'markers are properly nested');
+  }
+  assert.equal(stack.length, 0, 'no marker left open');
+}
+
+const HTML_IMPORT = `import { html } from ${JSON.stringify(HTML_MODULE_URL)};\n`;
+
+/** Root layout + /docs layout + a throwing /docs/crash page + /docs/error.js. */
+function crashApp(extra = {}) {
+  return makeBoundaryApp({
+    files: {
+      'layout.js': HTML_IMPORT + `export default function Root({ children }) { return html\`<div id="root-chrome">\${children}</div>\`; }\n`,
+      'docs/layout.js': HTML_IMPORT + `export default function Docs({ children }) { return html\`<div id="docs-chrome">\${children}</div>\`; }\n`,
+      'docs/crash/page.js': `export default function Page() { throw new Error('kaboom'); }\n`,
+      'docs/error.js': HTML_IMPORT + `export default function Err({ error }) { return html\`<p id="boundary">\${error.message}</p>\`; }\n`,
+      ...(extra.files || {}),
+    },
+    page: 'docs/crash/page.js',
+    layouts: ['layout.js', 'docs/layout.js'],
+    errors: ['docs/error.js'],
+    ...(extra.route || {}),
+  });
+}
+
+test('boundary: a 500 renders inside the layouts at and above the boundary segment (#1298)', async () => {
+  // The headline. Before this the catch rendered the boundary standalone and
+  // handed it to wrapInDocument, so the response carried NO keyed markers, the
+  // client router's scan found no shared boundary, and every navigation into a
+  // throwing page degraded to a full document load.
+  const { route, appDir } = crashApp();
+  const resp = await SILENT(() => ssrPage(route, {}, new URL('http://localhost/docs/crash'), { dev: false, appDir }));
+  assert.equal(resp.status, 500);
+  const body = await resp.text();
+
+  assert.ok(body.includes('id="boundary"'), 'the boundary rendered');
+  assert.ok(body.includes('id="root-chrome"'), 'the root layout wraps it');
+  assert.ok(body.includes('id="docs-chrome"'), 'the /docs layout wraps it');
+  const segs = openSegments(body);
+  assert.deepEqual(segs, ['/', '/docs', '/docs/crash']);
+  assertPaired(body);
+});
+
+test('boundary: the 500 emits the SAME segment-id set a 200 at that depth does', async () => {
+  // The strongest available assertion: it catches every mistake in the
+  // page-region skip rule at once, which is the part most likely to be got
+  // subtly wrong (a mismatched pair degrades the swap, so it would look fixed
+  // in a diff and still hard-load).
+  const crash = crashApp();
+  const fine = makeBoundaryApp({
+    files: {
+      'layout.js': HTML_IMPORT + `export default function Root({ children }) { return html\`<div>\${children}</div>\`; }\n`,
+      'docs/layout.js': HTML_IMPORT + `export default function Docs({ children }) { return html\`<div>\${children}</div>\`; }\n`,
+      'docs/fine/page.js': HTML_IMPORT + `export default function Page() { return html\`<p>fine</p>\`; }\n`,
+    },
+    page: 'docs/fine/page.js',
+    layouts: ['layout.js', 'docs/layout.js'],
+  });
+
+  const bad = await SILENT(() => ssrPage(crash.route, {}, new URL('http://localhost/docs/crash'), { dev: false, appDir: crash.appDir }));
+  const ok = await ssrPage(fine.route, {}, new URL('http://localhost/docs/fine'), { dev: false, appDir: fine.appDir });
+  assert.equal(bad.status, 500);
+  assert.equal(ok.status, 200);
+
+  const shape = (segs) => segs.map((s) => s.split('/').length);
+  const badSegs = openSegments(await bad.text());
+  const okSegs = openSegments(await ok.text());
+  assert.deepEqual(shape(badSegs), shape(okSegs));
+  assert.deepEqual(badSegs.slice(0, 2), okSegs.slice(0, 2), 'the shared layout regions are identical');
+});
+
+test('boundary: a layout DEEPER than the boundary is not rendered and not booted', async () => {
+  // The boundary sits at /docs, so the /docs/deep layout never ran on the
+  // happy path either. Wrapping it would render markup the failing page never
+  // produced, and shipping its module would boot a layout that is not on screen.
+  const { route, appDir } = makeBoundaryApp({
+    files: {
+      'layout.js': HTML_IMPORT + `export default function Root({ children }) { return html\`<div id="root-chrome">\${children}</div>\`; }\n`,
+      'docs/error.js': HTML_IMPORT + `export default function Err() { return html\`<p id="boundary">b</p>\`; }\n`,
+      'docs/deep/layout.js': HTML_IMPORT + `export default function Deep({ children }) { return html\`<div id="deep-chrome">\${children}</div>\`; }\n`,
+      'docs/deep/page.js': `export default function Page() { throw new Error('kaboom'); }\n`,
+    },
+    page: 'docs/deep/page.js',
+    layouts: ['layout.js', 'docs/deep/layout.js'],
+    errors: ['docs/error.js'],
+  });
+  const resp = await SILENT(() => ssrPage(route, {}, new URL('http://localhost/docs/deep'), { dev: false, appDir }));
+  const body = await resp.text();
+  assert.ok(!body.includes('id="deep-chrome"'), 'the deeper layout did not render');
+  assert.ok(!body.includes('"/docs/deep/layout.js"'), 'the deeper layout is not in the boot script');
+  // And its segment id must not be emitted either. The page sits at
+  // /docs/deep, which is the EXCLUDED layout's own segment, so emitting the
+  // page region under that id would advertise a region the excluded layout's
+  // markup was never in. The client would send that id in X-Webjs-Have and the
+  // next navigation into /docs/deep would short-circuit on it, returning a
+  // fragment that assumes chrome this page never had.
+  assert.deepEqual(openSegments(body), ['/']);
+  assertPaired(body);
+});
+
+test('boundary: an excluded layout id is never advertised, so the NEXT nav keeps its chrome', async () => {
+  // The end-to-end consequence of the rule above, asserted through the header
+  // the client would really send. This is the shape that made the defect
+  // expensive: the boundary response looks fine on its own and corrupts the
+  // navigation AFTER it.
+  const { route, appDir } = makeBoundaryApp({
+    files: {
+      'layout.js': HTML_IMPORT + `export default function Root({ children }) { return html\`<div id="root-chrome">\${children}</div>\`; }\n`,
+      'docs/layout.js': HTML_IMPORT + `export default function Docs({ children }) { return html\`<div id="docs-chrome">\${children}</div>\`; }\n`,
+      'docs/page.js': `export default function Page() { throw new Error('boom'); }\n`,
+      'error.js': HTML_IMPORT + `export default function Err() { return html\`<p id="root-boundary">err</p>\`; }\n`,
+    },
+    page: 'docs/page.js',
+    layouts: ['layout.js', 'docs/layout.js'],
+    errors: ['error.js'],
+  });
+  const resp = await SILENT(() => ssrPage(route, {}, new URL('http://localhost/docs'), { dev: false, appDir }));
+  const body = await resp.text();
+  assert.ok(!body.includes('id="docs-chrome"'), 'the /docs layout is above the boundary, so it did not render');
+  assert.ok(
+    !openSegments(body).includes('/docs'),
+    'and its id is absent, so the client cannot claim to hold a layout it never received',
+  );
+  assert.deepEqual(openSegments(body), ['/']);
+  assertPaired(body);
+});
+
+test('boundary: the boot script ships the boundary module, not the page module (#1298)', async () => {
+  // The boundary is what rendered, so it is what has to upgrade its custom
+  // elements. The page module never ran, so booting it was always wrong.
+  const { route, appDir } = crashApp();
+  const resp = await SILENT(() => ssrPage(route, {}, new URL('http://localhost/docs/crash'), { dev: false, appDir }));
+  const body = await resp.text();
+  assert.ok(body.includes('"/docs/error.js"'), 'the boundary module is booted');
+  assert.ok(!body.includes('"/docs/crash/page.js"'), 'the page module is not booted');
+});
+
+test('boundary: the #963 inert / import-only substitution still applies to the boot set', async () => {
+  // An import-only layout is replaced by the component URLs it would have
+  // emitted, exactly as on the happy path. Without this an import-only module
+  // with a bare `.server.*` import loads whole and crashes the boundary's boot
+  // on the throw-at-load stub, killing every sibling registration with it.
+  const { route, appDir } = crashApp();
+  const importOnly = new Map([[join(appDir, 'docs/layout.js'), [join(appDir, 'components/thing.js')]]]);
+  const resp = await SILENT(() => ssrPage(route, {}, new URL('http://localhost/docs/crash'), {
+    dev: false, appDir, importOnlyRouteModules: importOnly,
+  }));
+  const body = await resp.text();
+  assert.ok(body.includes('"/components/thing.js"'), 'the substitute component URL is booted');
+  assert.ok(!body.includes('"/docs/layout.js"'), 'the import-only layout module itself is not');
+
+  const inert = new Set([join(appDir, 'docs/layout.js')]);
+  const resp2 = await SILENT(() => ssrPage(route, {}, new URL('http://localhost/docs/crash'), {
+    dev: false, appDir, inertRouteModules: inert,
+  }));
+  const body2 = await resp2.text();
+  assert.ok(!body2.includes('"/docs/layout.js"'), 'an inert layout is dropped from the boot set');
+});
+
+test('boundary: a throwing LAYOUT renders the boundary OUTSIDE it, not the one at its own segment', async () => {
+  // Next's hierarchy is layout -> error -> page, so error.js sits INSIDE its
+  // segment's layout and therefore cannot catch it. Here /docs/layout.js
+  // throws, so /docs/error.js is unusable and the root error.js must handle it.
+  // The walk terminates because each step outward wraps a strictly smaller set.
+  const { route, appDir } = makeBoundaryApp({
+    files: {
+      'layout.js': HTML_IMPORT + `export default function Root({ children }) { return html\`<div id="root-chrome">\${children}</div>\`; }\n`,
+      'error.js': HTML_IMPORT + `export default function Err() { return html\`<p id="root-boundary">outer</p>\`; }\n`,
+      'docs/layout.js': `export default function Docs() { throw new Error('layout boom'); }\n`,
+      'docs/error.js': HTML_IMPORT + `export default function Err() { return html\`<p id="docs-boundary">inner</p>\`; }\n`,
+      'docs/page.js': HTML_IMPORT + `export default function Page() { return html\`<p>ok</p>\`; }\n`,
+    },
+    page: 'docs/page.js',
+    layouts: ['layout.js', 'docs/layout.js'],
+    errors: ['error.js', 'docs/error.js'],
+  });
+  const resp = await SILENT(() => ssrPage(route, {}, new URL('http://localhost/docs'), { dev: false, appDir }));
+  assert.equal(resp.status, 500);
+  const body = await resp.text();
+  assert.ok(body.includes('id="root-boundary"'), 'the next boundary OUT handled it');
+  assert.ok(!body.includes('id="docs-boundary"'), 'the boundary inside the throwing layout was not used');
+  assert.ok(body.includes('id="root-chrome"'), 'the root layout still wraps it');
+  assertPaired(body);
+});
+
+test('boundary: a throwing ROOT layout still reaches global-error, returned verbatim', async () => {
+  // global-error is the one boundary that stays unwrapped: it writes its own
+  // shell (invariant 8), wrapping it would re-run the code that just threw,
+  // and it ships no boot script by design.
+  const { route, appDir } = makeBoundaryApp({
+    files: {
+      'layout.js': `export default function Root() { throw new Error('root boom'); }\n`,
+      'error.js': HTML_IMPORT + `export default function Err() { return html\`<p>never</p>\`; }\n`,
+      'global-error.js': HTML_IMPORT + `export default function GE() { return html\`<html><body><p id="ge">global</p></body></html>\`; }\n`,
+      'page.js': HTML_IMPORT + `export default function Page() { return html\`<p>ok</p>\`; }\n`,
+    },
+    page: 'page.js',
+    layouts: ['layout.js'],
+    errors: ['error.js'],
+  });
+  const resp = await SILENT(() => ssrPage(route, {}, new URL('http://localhost/'), {
+    dev: false, appDir, globalError: join(appDir, 'global-error.js'),
+  }));
+  assert.equal(resp.status, 500);
+  const body = await resp.text();
+  assert.ok(body.includes('id="ge"'), 'global-error rendered');
+  assert.equal(markersOf(body).length, 0, 'no boundary markers');
+  assert.ok(!body.includes('<script type="module">'), 'no boot script');
+});
+
+test('boundary: a thrown notFound() renders the nearest not-found inside its layouts', async () => {
+  const { route, appDir } = makeBoundaryApp({
+    files: {
+      'layout.js': HTML_IMPORT + `export default function Root({ children }) { return html\`<div id="root-chrome">\${children}</div>\`; }\n`,
+      'docs/layout.js': HTML_IMPORT + `export default function Docs({ children }) { return html\`<div id="docs-chrome">\${children}</div>\`; }\n`,
+      'docs/not-found.js': HTML_IMPORT + `export default function NF() { return html\`<p id="nf">missing</p>\`; }\n`,
+      'docs/[slug]/page.js': `import { notFound } from ${JSON.stringify(WEBJS_MODULE_URL)};\nexport default function Page() { notFound(); }\n`,
+    },
+    page: 'docs/[slug]/page.js',
+    layouts: ['layout.js', 'docs/layout.js'],
+    notFounds: ['docs/not-found.js'],
+  });
+  const resp = await ssrPage(route, { slug: 'gone' }, new URL('http://localhost/docs/gone'), { dev: false, appDir });
+  assert.equal(resp.status, 404);
+  const body = await resp.text();
+  assert.ok(body.includes('id="nf"'));
+  assert.ok(body.includes('id="root-chrome"') && body.includes('id="docs-chrome"'));
+  assert.deepEqual(openSegments(body), ['/', '/docs', '/docs/[slug]']);
+  assertPaired(body);
+  // The page region's key carries the RESOLVED param, so a param change
+  // remounts it the same way a 200 would.
+  const pageRegion = markersOf(body).find((m) => !m.close && m.segment === '/docs/[slug]');
+  assert.equal(pageRegion.key, '/docs/gone');
+});
+
+test('boundary: a thrown forbidden() renders inside its layouts and receives a real ctx', async () => {
+  // The boundary modules used to be called with an empty object, so a wrapped
+  // layout had no params to build its own links from.
+  const { route, appDir } = makeBoundaryApp({
+    files: {
+      'layout.js': HTML_IMPORT + `export default function Root({ children }) { return html\`<div id="root-chrome">\${children}</div>\`; }\n`,
+      'admin/[org]/forbidden.js': HTML_IMPORT + `export default function F({ params }) { return html\`<p id="fb">\${params.org}</p>\`; }\n`,
+      'admin/[org]/page.js': `import { forbidden } from ${JSON.stringify(WEBJS_MODULE_URL)};\nexport default function Page() { forbidden(); }\n`,
+    },
+    page: 'admin/[org]/page.js',
+    layouts: ['layout.js'],
+    forbiddens: ['admin/[org]/forbidden.js'],
+  });
+  const resp = await ssrPage(route, { org: 'acme' }, new URL('http://localhost/admin/acme'), { dev: false, appDir });
+  assert.equal(resp.status, 403);
+  const body = await resp.text();
+  assert.ok(body.includes('id="fb"'));
+  assert.ok(body.includes('acme'), 'the boundary received params');
+  assert.ok(body.includes('id="root-chrome"'), 'the root layout wraps it');
+  assert.deepEqual(openSegments(body), ['/', '/admin/[org]']);
+  assertPaired(body);
+  // The chain rendered, so its modules must boot. Chrome that paints and never
+  // hydrates is worse than no chrome: its controls look live and are not.
+  assert.ok(body.includes('"/layout.js"'), 'the wrapping layout module boots');
+  assert.ok(body.includes('"/admin/[org]/forbidden.js"'), 'and so does the boundary that rendered');
+});
+
+test('boundary: a 404 for a URL that matched no route stays a bare document', async () => {
+  // ssrNotFound with no route has no chain to wrap in, so there is no shared
+  // shell to swap into and a hard load is the correct outcome.
+  const sub = mkdtempSync(join(tmpDir, 'unrouted-'));
+  const appDir = join(sub, 'app');
+  mkdirSync(appDir, { recursive: true });
+  const nf = join(appDir, 'not-found.js');
+  writeFileSync(nf, HTML_IMPORT + `export default function NF() { return html\`<p id="nf">nope</p>\`; }\n`);
+  const resp = await ssrNotFound(nf, { dev: false, appDir, url: new URL('http://localhost/nothing') });
+  assert.equal(resp.status, 404);
+  const body = await resp.text();
+  assert.ok(body.includes('id="nf"'));
+  assert.equal(markersOf(body).length, 0, 'no markers, since there is no chain');
+  assert.ok(!body.includes('<script type="module">'), 'and no boot script, since no chain rendered');
+});
+
+test('boundary: instrumentation-client boots FIRST on a boundary page too (#848)', async () => {
+  // The boundary page is where the app's client error reporting matters most,
+  // so it must not be the one page that runs app modules without it.
+  const { route, appDir } = crashApp({
+    files: { 'instrumentation-client.js': `console.log('boot');\n` },
+  });
+  const resp = await SILENT(() => ssrPage(route, {}, new URL('http://localhost/docs/crash'), {
+    dev: false, appDir, instrumentationClient: join(appDir, 'instrumentation-client.js'),
+  }));
+  const body = await resp.text();
+  const boot = body.match(/<script type="module">([\s\S]*?)<\/script>/);
+  assert.ok(boot, 'the boundary page has a boot script');
+  const imports = [...boot[1].matchAll(/import\s+"([^"]+)"/g)].map((m) => m[1]);
+  assert.equal(imports[0], '/instrumentation-client.js', 'and instrumentation is its FIRST import');
+  assert.ok(imports.includes('/docs/error.js'), 'the boundary module still boots');
+});
+
+test('boundary: a layout that throws while wrapping a 403 is REPORTED, not swallowed', async () => {
+  // These paths execute layout modules for the first time since #1298, so a
+  // genuine layout crash would otherwise vanish: a chrome-less boundary page
+  // with nothing saying why, and an APM sink that never heard about it.
+  const { route, appDir } = makeBoundaryApp({
+    files: {
+      'layout.js': `export default function Root() { throw new Error('layout-boom-403'); }\n`,
+      'admin/forbidden.js': HTML_IMPORT + `export default function F() { return html\`<p id="fb">no</p>\`; }\n`,
+      'admin/page.js': `import { forbidden } from ${JSON.stringify(WEBJS_MODULE_URL)};\nexport default function Page() { forbidden(); }\n`,
+    },
+    page: 'admin/page.js',
+    layouts: ['layout.js'],
+    forbiddens: ['admin/forbidden.js'],
+  });
+  const seen = [];
+  const resp = await SILENT(() => ssrPage(route, {}, new URL('http://localhost/admin'), {
+    dev: false, appDir, onError: (e) => seen.push(e),
+  }));
+  assert.equal(resp.status, 403, 'it still degrades to the standalone 403 rather than failing');
+  const body = await resp.text();
+  assert.ok(body.includes('id="fb"'), 'the boundary itself still rendered');
+  assert.equal(markersOf(body).length, 0, 'with no markers, since the chain could not render');
+  assert.ok(!body.includes('<script type="module">'), 'and no boot set for a chain that did not render');
+  assert.equal(seen.length, 1, 'the layout throw reached the onError sink');
+  assert.match(String(seen[0].message), /layout-boom-403/);
+});
+
+test('boundary: a layout control-flow throw is NOT reported as an error', async () => {
+  // A redirect() from a layout is a routing decision, not a crash. Reporting it
+  // would fire the app's APM sink and paint a false dev error overlay OVER the
+  // 403 the user is looking at. It is not honoured either: the status is
+  // already decided and the boundary page IS the answer to this request.
+  const { route, appDir } = makeBoundaryApp({
+    files: {
+      'layout.js': `import { redirect } from ${JSON.stringify(WEBJS_MODULE_URL)};\nexport default function Root() { redirect('/login'); }\n`,
+      'admin/forbidden.js': HTML_IMPORT + `export default function F() { return html\`<p id="fb">no</p>\`; }\n`,
+      'admin/page.js': `import { forbidden } from ${JSON.stringify(WEBJS_MODULE_URL)};\nexport default function Page() { forbidden(); }\n`,
+    },
+    page: 'admin/page.js',
+    layouts: ['layout.js'],
+    forbiddens: ['admin/forbidden.js'],
+  });
+  const seen = [];
+  const devSeen = [];
+  const resp = await SILENT(() => ssrPage(route, {}, new URL('http://localhost/admin'), {
+    dev: true, appDir, onError: (e) => seen.push(e), onDevError: (e) => devSeen.push(e),
+  }));
+  assert.equal(resp.status, 403, 'the boundary still answers, and its status is preserved');
+  const body = await resp.text();
+  assert.ok(body.includes('id="fb"'), 'the boundary rendered');
+  assert.deepEqual(seen, [], 'a control-flow sentinel never reaches the APM sink');
+  assert.deepEqual(devSeen, [], 'nor the dev error overlay');
+});
+
+test('boundary: a layout that throws on the 500 path is reported, not lost', async () => {
+  // The fallthrough to the next boundary out is the right behaviour, but the
+  // sinks otherwise only ever hear the ORIGINAL page error, so a boundary or
+  // layout that crashed while handling it would vanish completely.
+  const { route, appDir } = makeBoundaryApp({
+    files: {
+      'layout.js': HTML_IMPORT + `export default function Root({ children }) { return html\`<div id="root-chrome">\${children}</div>\`; }\n`,
+      'error.js': HTML_IMPORT + `export default function Err() { return html\`<p id="root-boundary">outer</p>\`; }\n`,
+      'docs/layout.js': `export default function Docs() { throw new Error('layout-boom-500'); }\n`,
+      'docs/error.js': HTML_IMPORT + `export default function Err() { return html\`<p id="docs-boundary">inner</p>\`; }\n`,
+      'docs/page.js': `export default function Page() { throw new Error('page-boom'); }\n`,
+    },
+    page: 'docs/page.js',
+    layouts: ['layout.js', 'docs/layout.js'],
+    errors: ['error.js', 'docs/error.js'],
+  });
+  const seen = [];
+  const resp = await SILENT(() => ssrPage(route, {}, new URL('http://localhost/docs'), {
+    dev: false, appDir, onError: (e) => seen.push(e),
+  }));
+  assert.equal(resp.status, 500);
+  const body = await resp.text();
+  assert.ok(body.includes('id="root-boundary"'), 'it still falls through to the boundary outside the throwing layout');
+  const messages = seen.map((e) => String(e && e.message));
+  assert.ok(messages.includes('page-boom'), 'the original page error is still reported');
+  assert.ok(messages.includes('layout-boom-500'), 'and so is the layout crash that used to vanish');
+});
+
+test('boundary: one throwing layout is reported ONCE, not once per boundary', async () => {
+  // The walk tries each boundary in the chain, and layoutsForBoundary selects
+  // by segment ancestry rather than boundary depth, so a root layout that
+  // throws fails EVERY attempt. Identity dedup would not help: a layout that
+  // constructs its error yields a fresh object per attempt, so the key is the
+  // STAGE plus its name, message and construction site.
+  const { route, appDir } = makeBoundaryApp({
+    files: {
+      'layout.js': `export default function Root() { throw new Error('root-layout-boom'); }\n`,
+      'error.js': HTML_IMPORT + `export default function Err() { return html\`<p>outer</p>\`; }\n`,
+      'docs/error.js': HTML_IMPORT + `export default function Err() { return html\`<p>inner</p>\`; }\n`,
+      'docs/page.js': `export default function Page() { throw new Error('page-boom'); }\n`,
+    },
+    page: 'docs/page.js',
+    layouts: ['layout.js'],
+    // Both boundaries resolve to the SAME wrapped set (the root layout), which
+    // is the shape that produced the duplicate report.
+    errors: ['error.js', 'docs/error.js'],
+  });
+  const seen = [];
+  const resp = await SILENT(() => ssrPage(route, {}, new URL('http://localhost/docs'), {
+    dev: false, appDir, onError: (e) => seen.push(e),
+  }));
+  assert.equal(resp.status, 500);
+  const layoutHits = seen.filter((e) => /root-layout-boom/.test(String(e && e.message)));
+  assert.equal(layoutHits.length, 1, 'the layout crash is reported exactly once for the request');
+  assert.equal(
+    seen.filter((e) => /page-boom/.test(String(e && e.message))).length, 1,
+    'and the original page error is still reported exactly once',
+  );
+});
+
+test('boundary: a secondary failure never steals the dev overlay from the root cause', async () => {
+  // The overlay holds ONE retained frame per URL and the dev handler's slot is
+  // last-write-wins, so pushing the secondary failure after the page error
+  // would replace the root cause with a symptom, and it would survive a
+  // reconnect (#1047 scopes that slot per URL).
+  const { route, appDir } = makeBoundaryApp({
+    files: {
+      'layout.js': `export default function Root() { throw new Error('layout-boom'); }\n`,
+      'error.js': HTML_IMPORT + `export default function Err() { return html\`<p>outer</p>\`; }\n`,
+      'page.js': `export default function Page() { throw new Error('page-boom'); }\n`,
+    },
+    page: 'page.js',
+    layouts: ['layout.js'],
+    errors: ['error.js'],
+  });
+  const devSeen = [];
+  await SILENT(() => ssrPage(route, {}, new URL('http://localhost/'), {
+    dev: true, appDir, onDevError: (e) => devSeen.push(e),
+  }));
+  assert.equal(devSeen.length, 1, 'exactly one frame reached the overlay');
+  assert.match(String(devSeen[0].message), /page-boom/, 'and it is the ROOT CAUSE, not the secondary failure');
+});
+
+test('boundary: a broken global-error is reported, not silently swallowed', async () => {
+  // The app's last-resort boundary failing used to reach no sink, no overlay
+  // and no console line, leaving only the generic default 500 page.
+  const { route, appDir } = makeBoundaryApp({
+    files: {
+      'global-error.js': `export default function GE() { throw new Error('global-error-boom'); }\n`,
+      // A REAL error boundary in the chain, which is the shape that matters:
+      // control only reaches global-error because this one threw first, so a
+      // dedup keyed on "any secondary failure already reported" would swallow
+      // global-error's own crash on every route that has an error.ts at all.
+      'error.js': `export default function Err() { throw new Error('boundary-boom'); }\n`,
+      'page.js': `export default function Page() { throw new Error('page-boom'); }\n`,
+    },
+    page: 'page.js',
+    layouts: [],
+    errors: ['error.js'],
+  });
+  const seen = [];
+  const resp = await SILENT(() => ssrPage(route, {}, new URL('http://localhost/'), {
+    dev: false, appDir, globalError: join(appDir, 'global-error.js'), onError: (e) => seen.push(e),
+  }));
+  assert.equal(resp.status, 500);
+  const body = await resp.text();
+  assert.ok(body.includes('Something went wrong'), 'it still degrades to the default 500 page');
+  const messages = seen.map((e) => String(e && e.message));
+  assert.ok(messages.includes('global-error-boom'), 'the global-error crash reached the sink');
+  assert.ok(messages.includes('boundary-boom'), 'and so did the boundary that failed before it');
+  assert.ok(messages.includes('page-boom'), 'alongside the original page error');
+});
+
+test('boundary: dedup collapses REPEATS of one cause, not distinct failures', async () => {
+  // The dedup exists for one layout that fails every attempt. It must not
+  // silence a genuinely different secondary failure: an inner boundary that
+  // throws its own error, then an outer attempt whose layout crashes, are two
+  // causes and both belong in the sink.
+  const { route, appDir } = makeBoundaryApp({
+    files: {
+      'layout.js': `export default function Root() { throw new Error('shared-layout-boom'); }\n`,
+      'error.js': HTML_IMPORT + `export default function Err() { return html\`<p>outer</p>\`; }\n`,
+      'docs/error.js': `export default function Err() { throw new TypeError('inner-boundary-boom'); }\n`,
+      'docs/page.js': `export default function Page() { throw new Error('page-boom'); }\n`,
+    },
+    page: 'docs/page.js',
+    layouts: ['layout.js'],
+    errors: ['error.js', 'docs/error.js'],
+  });
+  const seen = [];
+  await SILENT(() => ssrPage(route, {}, new URL('http://localhost/docs'), {
+    dev: false, appDir, onError: (e) => seen.push(e),
+  }));
+  const messages = seen.map((e) => String(e && e.message));
+  assert.ok(messages.includes('inner-boundary-boom'), 'the inner boundary crash is reported');
+  assert.ok(messages.includes('shared-layout-boom'), 'and the LATER, unrelated layout crash is not swallowed by it');
+});
+
+test('boundary: a LAYOUT crash that produced the 500 is reported once, not twice', async () => {
+  // The commonest shape of all, and the one the dedup set has to be SEEDED for.
+  // When the layout is what threw, it becomes the original error AND is re-run
+  // around every boundary it wraps, so the same cause arrives twice.
+  const { route, appDir } = makeBoundaryApp({
+    files: {
+      'layout.js': `export default function Root() { throw new Error('only-layout-boom'); }\n`,
+      'error.js': HTML_IMPORT + `export default function Err() { return html\`<p id="b">boundary</p>\`; }\n`,
+      // The page renders fine: the LAYOUT is the sole failure.
+      'page.js': HTML_IMPORT + `export default function Page() { return html\`<p>ok</p>\`; }\n`,
+    },
+    page: 'page.js',
+    layouts: ['layout.js'],
+    errors: ['error.js'],
+  });
+  const seen = [];
+  const resp = await SILENT(() => ssrPage(route, {}, new URL('http://localhost/'), {
+    dev: false, appDir, onError: (e) => seen.push(e),
+  }));
+  assert.equal(resp.status, 500);
+  const hits = seen.filter((e) => /only-layout-boom/.test(String(e && e.message)));
+  assert.equal(hits.length, 1, 'reported once, not once as the original and again as a secondary');
+});
+
+test('boundary: a throw whose value cannot be stringified still degrades, never escapes', async () => {
+  // The dedup key runs INSIDE the catch that keeps the response alive, so it
+  // must be total. `String(Object.create(null))` throws, and a key computation
+  // that throws would take ssrPage's 500 page down with it.
+  const { route, appDir } = makeBoundaryApp({
+    files: {
+      'error.js': `export default function Err() { throw Object.create(null); }\n`,
+      'page.js': `export default function Page() { throw Object.create(null); }\n`,
+    },
+    page: 'page.js',
+    layouts: [],
+    errors: ['error.js'],
+  });
+  const resp = await SILENT(() => ssrPage(route, {}, new URL('http://localhost/'), { dev: false, appDir }));
+  assert.equal(resp.status, 500, 'it degraded to the default 500 rather than throwing out of ssrPage');
+  assert.ok((await resp.text()).includes('Something went wrong'));
+});
+
+test('boundary: two boundaries failing through ONE shared helper are both reported', async () => {
+  // These two share a construction site, so the error alone cannot separate
+  // them: it is the STAGE in the key (the boundary walk versus the
+  // global-error attempt) that keeps global-error's own crash from being
+  // swallowed by the earlier boundary's.
+  const { route, appDir } = makeBoundaryApp({
+    files: {
+      'boom.js': `export function boom() { throw new Error('shared-helper-boom'); }\n`,
+      'error.js': `import { boom } from './boom.js';\nexport default function Err() { boom(); }\n`,
+      'global-error.js': `import { boom } from './boom.js';\nexport default function GE() { boom(); }\n`,
+      'page.js': `export default function Page() { throw new Error('page-boom'); }\n`,
+    },
+    page: 'page.js',
+    layouts: [],
+    errors: ['error.js'],
+  });
+  const seen = [];
+  const resp = await SILENT(() => ssrPage(route, {}, new URL('http://localhost/'), {
+    dev: false, appDir, globalError: join(appDir, 'global-error.js'), onError: (e) => seen.push(e),
+  }));
+  assert.equal(resp.status, 500);
+  const hits = seen.filter((e) => /shared-helper-boom/.test(String(e && e.message)));
+  assert.equal(hits.length, 2, 'the boundary and global-error each report, despite one construction site');
+});
+
+test('boundary: an unprintable throw degrades in DEV too, and never escapes', async () => {
+  // The prod path was covered; dev formats the error into the page, and that
+  // formatting is itself inside the catch that keeps the response alive.
+  const { route, appDir } = makeBoundaryApp({
+    files: {
+      'page.js': `export default function Page() { throw Object.create(null); }\n`,
+    },
+    page: 'page.js',
+    layouts: [],
+    errors: [],
+  });
+  const resp = await SILENT(() => ssrPage(route, {}, new URL('http://localhost/'), { dev: true, appDir }));
+  assert.equal(resp.status, 500, 'dev degrades to the 500 page rather than throwing out of ssrPage');
+  assert.match(await resp.text(), /unprintable value/, 'and says so instead of crashing while formatting');
+});
+
+test('boundary: a crashing 403 boundary does not leak its error to the client in prod', async () => {
+  // The 500 path has always drawn this line; these pages were rendering the
+  // thrown message into the response body in production.
+  const { route, appDir } = makeBoundaryApp({
+    files: {
+      'admin/forbidden.js': `export default function F() { throw new Error('SECRET_DB_DSN_LEAK'); }\n`,
+      'admin/page.js': `import { forbidden } from ${JSON.stringify(WEBJS_MODULE_URL)};\nexport default function Page() { forbidden(); }\n`,
+    },
+    page: 'admin/page.js',
+    layouts: [],
+    forbiddens: ['admin/forbidden.js'],
+  });
+  const prod = await SILENT(() => ssrPage(route, {}, new URL('http://localhost/admin'), { dev: false, appDir }));
+  assert.equal(prod.status, 403);
+  const prodBody = await prod.text();
+  assert.ok(!prodBody.includes('SECRET_DB_DSN_LEAK'), 'prod never renders the thrown message');
+  assert.ok(prodBody.includes('403'), 'but still identifies the status');
+
+  const dev = await SILENT(() => ssrPage(route, {}, new URL('http://localhost/admin'), { dev: true, appDir }));
+  assert.match(await dev.text(), /SECRET_DB_DSN_LEAK/, 'dev still shows it, which is the point of dev');
+});
+
+test('boundary: an unprintable throw from a 403 boundary degrades, never escapes', async () => {
+  const { route, appDir } = makeBoundaryApp({
+    files: {
+      'admin/forbidden.js': `export default function F() { throw Object.create(null); }\n`,
+      'admin/page.js': `import { forbidden } from ${JSON.stringify(WEBJS_MODULE_URL)};\nexport default function Page() { forbidden(); }\n`,
+    },
+    page: 'admin/page.js',
+    layouts: [],
+    forbiddens: ['admin/forbidden.js'],
+  });
+  const resp = await SILENT(() => ssrPage(route, {}, new URL('http://localhost/admin'), { dev: true, appDir }));
+  assert.equal(resp.status, 403, 'it degrades rather than escaping ssrBoundaryHtml and ssrPage');
+  assert.match(await resp.text(), /unprintable value/);
+});
+
+test('boundary: a crashing boundary module is REPORTED, so prod is not silent', async () => {
+  // Sanitizing the body removed the only production-visible trace of this
+  // failure. Sanitizing without reporting moves a failure out of sight rather
+  // than out of the response, on a request that already returned a 4xx to a
+  // real user.
+  const { route, appDir } = makeBoundaryApp({
+    files: {
+      'admin/forbidden.js': `export default function F() { throw new Error('BOUNDARY_MODULE_BOOM'); }\n`,
+      'admin/page.js': `import { forbidden } from ${JSON.stringify(WEBJS_MODULE_URL)};\nexport default function Page() { forbidden(); }\n`,
+    },
+    page: 'admin/page.js',
+    layouts: [],
+    forbiddens: ['admin/forbidden.js'],
+  });
+  const seen = [];
+  const resp = await SILENT(() => ssrPage(route, {}, new URL('http://localhost/admin'), {
+    dev: false, appDir, onError: (e) => seen.push(e),
+  }));
+  assert.equal(resp.status, 403);
+  assert.ok(!(await resp.text()).includes('BOUNDARY_MODULE_BOOM'), 'the body stays sanitized');
+  assert.equal(seen.length, 1, 'but the failure reached the sink');
+  assert.match(String(seen[0].message), /BOUNDARY_MODULE_BOOM/);
+});
+
+test('boundary: a 404 boundary that fails to LOAD is reported too', async () => {
+  // The load failure path, not the render one: a syntax error in not-found.ts.
+  const sub = mkdtempSync(join(tmpDir, 'nf-load-'));
+  const appDir = join(sub, 'app');
+  mkdirSync(appDir, { recursive: true });
+  const nf = join(appDir, 'not-found.js');
+  writeFileSync(nf, `export default function NF({ x { return; }\n`);
+  const seen = [];
+  const resp = await SILENT(() => ssrNotFound(nf, {
+    dev: false, appDir, url: new URL('http://localhost/gone'), onError: (e) => seen.push(e),
+  }));
+  assert.equal(resp.status, 404);
+  assert.equal(seen.length, 1, 'a boundary that cannot even be imported is not silent either');
+});
+
+test('boundary: a boundary whose own TREE fails is reported ONCE, and not as a layout', async () => {
+  // The standalone fallback re-renders the SAME tree, so a tree-level failure
+  // throws twice: once from the wrapped attempt and once from the fallback.
+  // Reporting before the fallback ran would report it twice and label the
+  // first one a layout crash, when no layout threw at all.
+  const { route, appDir } = makeBoundaryApp({
+    files: {
+      'layout.js': HTML_IMPORT + `export default function Root({ children }) { return html\`<div>\${children}</div>\`; }\n`,
+      // Fails while the tree is RENDERED, not while it is built, so the
+      // wrapped attempt and the standalone fallback fail identically on the
+      // same tree. A rejected promise in a hole is the simplest such shape:
+      // renderToString awaits it.
+      'admin/forbidden.js': HTML_IMPORT + `export default function F() {
+        return html\`<p>\${{ toString() { throw new Error('TREE_RENDER_BOOM'); } }}</p>\`;
+      }\n`,
+      'admin/page.js': `import { forbidden } from ${JSON.stringify(WEBJS_MODULE_URL)};\nexport default function Page() { forbidden(); }\n`,
+    },
+    page: 'admin/page.js',
+    layouts: ['layout.js'],
+    forbiddens: ['admin/forbidden.js'],
+  });
+  const seen = [];
+  const resp = await SILENT(() => ssrPage(route, {}, new URL('http://localhost/admin'), {
+    dev: false, appDir, onError: (e) => seen.push(e),
+  }));
+  assert.equal(resp.status, 403, 'it still answers with the boundary status');
+  const hits = seen.filter((e) => /TREE_RENDER_BOOM/.test(String(e && e.message)));
+  assert.equal(hits.length, 1, 'reported once, not once per render attempt');
+});
+
+test('boundary: when the layout AND the tree are broken, BOTH are reported', async () => {
+  // The previous shape inferred the phase by re-rendering, so with both broken
+  // the standalone attempt threw too, the tree error was discarded, and the
+  // LAYOUT error was reported under the boundary label. Two failures, one
+  // report, wrong name. The phase is recorded at its source now.
+  const { route, appDir } = makeBoundaryApp({
+    files: {
+      'layout.js': `export default function Root() { throw new Error('LAYOUT_HALF_BOOM'); }\n`,
+      'admin/forbidden.js': HTML_IMPORT + `export default function F() {
+        return html\`<p>\${{ toString() { throw new Error('TREE_HALF_BOOM'); } }}</p>\`;
+      }\n`,
+      'admin/page.js': `import { forbidden } from ${JSON.stringify(WEBJS_MODULE_URL)};\nexport default function Page() { forbidden(); }\n`,
+    },
+    page: 'admin/page.js',
+    layouts: ['layout.js'],
+    forbiddens: ['admin/forbidden.js'],
+  });
+  const seen = [];
+  const resp = await SILENT(() => ssrPage(route, {}, new URL('http://localhost/admin'), {
+    dev: true, appDir, onError: (e) => seen.push(e),
+  }));
+  assert.equal(resp.status, 403, 'it still answers with the boundary status');
+  const messages = seen.map((e) => String(e && e.message));
+  assert.ok(messages.includes('LAYOUT_HALF_BOOM'), 'the layout crash is reported');
+  assert.ok(messages.includes('TREE_HALF_BOOM'), 'and the tree crash is not lost behind it');
+  // The dev body shows the TREE error, since that is the one that defeated the
+  // fallback and left the page with nothing to render.
+  assert.match(await resp.text(), /TREE_HALF_BOOM/);
+});
+
+test('boundary: a layout failing in a TEMPLATE HOLE still degrades to the boundary', async () => {
+  // The idiomatic async layout: it returns fine and fails while being
+  // serialized. The phase marker cannot see this, because by then the layout's
+  // output is fused into one tree with the boundary's, so the FALLBACK is what
+  // diagnoses it: the boundary renders alone, therefore the chain was at fault.
+  // Getting this wrong serves a bare heading instead of the boundary page.
+  const { route, appDir } = makeBoundaryApp({
+    files: {
+      'layout.js': HTML_IMPORT + `export default function Root({ children }) {
+        return html\`<nav>\${{ toString() { throw new Error('LAYOUT_HOLE_BOOM'); } }}</nav>\${children}\`;
+      }\n`,
+      'admin/forbidden.js': HTML_IMPORT + `export default function F() { return html\`<p id="fb">no access</p>\`; }\n`,
+      'admin/page.js': `import { forbidden } from ${JSON.stringify(WEBJS_MODULE_URL)};\nexport default function Page() { forbidden(); }\n`,
+    },
+    page: 'admin/page.js',
+    layouts: ['layout.js'],
+    forbiddens: ['admin/forbidden.js'],
+  });
+  const seen = [];
+  const resp = await SILENT(() => ssrPage(route, {}, new URL('http://localhost/admin'), {
+    dev: false, appDir, onError: (e) => seen.push(e),
+  }));
+  assert.equal(resp.status, 403);
+  const body = await resp.text();
+  assert.ok(body.includes('id="fb"'), 'the boundary page is served, not a bare heading');
+  assert.equal(markersOf(body).length, 0, 'chrome-less, since the chain could not render');
+  assert.ok(!body.includes('<script type="module">'), 'and no boot set for a chain that did not render');
+  const hits = seen.filter((e) => /LAYOUT_HOLE_BOOM/.test(String(e && e.message)));
+  assert.equal(hits.length, 1, 'the layout failure is reported exactly once');
+});
+
+test('boundary: a route with NO layouts does not re-render the boundary tree', async () => {
+  // A legal app with no root layout: the framework emits the shell. The wrap
+  // set is empty, so renderBoundaryInChain reduces to the same renderToString
+  // the fallback would repeat. Re-running it executes the tree twice and can
+  // report a layout crash on a route that has no layouts at all.
+  let renders = 0;
+  globalThis.__boundaryRenderCount = () => { renders += 1; };
+  const { route, appDir } = makeBoundaryApp({
+    files: {
+      'admin/forbidden.js': HTML_IMPORT + `export default function F() {
+        globalThis.__boundaryRenderCount();
+        return html\`<p>\${{ toString() { throw new Error('NO_LAYOUT_BOOM'); } }}</p>\`;
+      }\n`,
+      'admin/page.js': `import { forbidden } from ${JSON.stringify(WEBJS_MODULE_URL)};\nexport default function Page() { forbidden(); }\n`,
+    },
+    page: 'admin/page.js',
+    layouts: [],
+    forbiddens: ['admin/forbidden.js'],
+  });
+  const seen = [];
+  const resp = await SILENT(() => ssrPage(route, {}, new URL('http://localhost/admin'), {
+    dev: false, appDir, onError: (e) => seen.push(e),
+  }));
+  assert.equal(resp.status, 403);
+  assert.equal(renders, 1, 'the boundary module was rendered once, not retried');
+  const hits = seen.filter((e) => /NO_LAYOUT_BOOM/.test(String(e && e.message)));
+  assert.equal(hits.length, 1, 'and reported once');
+});
+
+test('boundary: the DEFAULT 403 page renders in its layouts too (no forbidden.ts)', async () => {
+  // The common case: most apps ship no forbidden.ts, so the framework's own
+  // page is what renders. Leaving it bare means the headline fix does not
+  // apply to them at all.
+  const { route, appDir } = makeBoundaryApp({
+    files: {
+      'layout.js': HTML_IMPORT + `export default function Root({ children }) { return html\`<div id="root-chrome">\${children}</div>\`; }\n`,
+      'admin/page.js': `import { forbidden } from ${JSON.stringify(WEBJS_MODULE_URL)};\nexport default function Page() { forbidden(); }\n`,
+    },
+    page: 'admin/page.js',
+    layouts: ['layout.js'],
+    forbiddens: [],
+  });
+  const resp = await ssrPage(route, {}, new URL('http://localhost/admin'), { dev: false, appDir });
+  assert.equal(resp.status, 403);
+  const body = await resp.text();
+  assert.ok(body.includes('403: Forbidden'), 'the default body still renders');
+  assert.ok(body.includes('id="root-chrome"'), 'inside the layout chain');
+  assert.ok(openSegments(body).length > 0, 'so it carries markers and can soft-swap');
+  assertPaired(body);
+  assert.ok(body.includes('"/layout.js"'), 'and the layout that rendered boots');
+});
+
+test('boundary: the DEFAULT 404 page renders in its layouts too (no not-found.ts)', async () => {
+  const { route, appDir } = makeBoundaryApp({
+    files: {
+      'layout.js': HTML_IMPORT + `export default function Root({ children }) { return html\`<div id="root-chrome">\${children}</div>\`; }\n`,
+      'docs/page.js': `import { notFound } from ${JSON.stringify(WEBJS_MODULE_URL)};\nexport default function Page() { notFound(); }\n`,
+    },
+    page: 'docs/page.js',
+    layouts: ['layout.js'],
+    notFounds: [],
+  });
+  const resp = await ssrPage(route, {}, new URL('http://localhost/docs'), { dev: false, appDir });
+  assert.equal(resp.status, 404);
+  const body = await resp.text();
+  assert.ok(body.includes('404: Not found') && body.includes('id="root-chrome"'));
+  assert.ok(openSegments(body).length > 0);
+  assertPaired(body);
+});
+
+test('boundary: a route with no layouts keeps the bare default (nothing to wrap in)', async () => {
+  const { route, appDir } = makeBoundaryApp({
+    files: {
+      'admin/page.js': `import { forbidden } from ${JSON.stringify(WEBJS_MODULE_URL)};\nexport default function Page() { forbidden(); }\n`,
+    },
+    page: 'admin/page.js',
+    layouts: [],
+    forbiddens: [],
+  });
+  const resp = await ssrPage(route, {}, new URL('http://localhost/admin'), { dev: false, appDir });
+  assert.equal(resp.status, 403);
+  const body = await resp.text();
+  assert.ok(body.includes('403: Forbidden'));
+  assert.equal(markersOf(body).length, 0, 'no chain, so no markers and no pretence of one');
+});
+
+test('boundary: a boundary response is never storable and never reduced', async () => {
+  // Two independent guarantees. The HTML cache refuses a non-200 outright, and
+  // the reduced X-Webjs-Have path is structurally unreachable: the boundary
+  // render passes `have` as null, so there is no short-circuit branch to take.
+  const { route, appDir } = crashApp();
+  const req = new Request('http://localhost/docs/crash', { headers: { 'x-webjs-have': '/:/' } });
+  const resp = await SILENT(() => ssrPage(route, {}, new URL('http://localhost/docs/crash'), { dev: false, appDir, req }));
+  assert.equal(resp.status, 500);
+  const body = await resp.text();
+  assert.ok(body.includes('id="root-chrome"'), 'the root layout is rendered, not short-circuited away');
+  assert.ok(body.includes('<!doctype') || body.includes('<!DOCTYPE'), 'a full document, not a fragment');
+  assert.equal(resp.headers.get('vary'), null, 'not marked Vary: X-Webjs-Have');
 });
 
 /* ------------ metadata: generateMetadata fn, openGraph, preload links ------------ */

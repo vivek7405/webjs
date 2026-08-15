@@ -297,7 +297,18 @@ Inner.register('x-inner');`,
 // The error-boundary render applies the SAME substitution (#963): an
 // import-only page with a bare server import is dropped from the ERROR
 // page's boot too, so the throw-at-load stub never crashes the error page.
-test('an error-boundary render drops the import-only page from its boot (#963)', async () => {
+//
+// Since #1298 the boundary's boot set is what actually RENDERED, the boundary
+// module plus the layouts wrapping it, so the page is not in the set to be
+// substituted for at all. The #963 property this locks is unchanged and in
+// fact stronger: the import-only page's module cannot reach the error page's
+// boot by any route. What is no longer emitted is the page's frontier
+// COMPONENT, and that is the point: the page threw, so its `<x-counter>` is
+// not in the boundary's DOM and booting the module that upgrades it registered
+// a custom element for nothing. The substitution itself still runs, on the
+// wrapping layouts, asserted in the sibling case below and in
+// `test/ssr/ssr.test.js`.
+test('an error-boundary render drops the import-only page from its boot (#963, #1298)', async () => {
   const dir = makeApp({
     'lib/auth.server.ts': `export async function auth() { throw new Error('boom'); }`,
     'app/error.ts': `import { html } from '@webjsdev/core';
@@ -317,7 +328,8 @@ export default async () => { await auth(); return html\`<x-counter></x-counter>\
     assert.match(html, /class="err"/, 'the error boundary rendered');
     const boot = bootOf(html);
     assert.doesNotMatch(boot, /\/app\/page\.ts/, 'the import-only page module stays dropped on the error path');
-    assert.match(boot, /\/components\/counter\.ts/, 'the frontier component is emitted instead');
+    assert.doesNotMatch(boot, /\/components\/counter\.ts/, 'nor its frontier component, whose element the boundary never rendered');
+    assert.match(boot, /\/app\/error\.ts/, 'the boundary module, which DID render, is what boots');
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }

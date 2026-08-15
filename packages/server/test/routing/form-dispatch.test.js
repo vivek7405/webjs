@@ -628,6 +628,33 @@ export default () => html\`<form action=\${nf}></form>\`;
   assert.equal((await submit(app, '/missing', {})).status, 404);
 });
 
+test('action that throws notFound() renders the NEAREST not-found, like the page path', async () => {
+  // The form path used the ROOT not-found only, so the same url produced two
+  // different 404s depending on whether the throw came from the page render or
+  // from a form action on it. #848 made the page path nearest-wins; this is the
+  // other half.
+  const app = await createRequestHandler({
+    appDir: makeApp({
+      'app/not-found.ts': `import { html } from ${CORE};\nexport default () => html\`<main id="root-nf">root 404</main>\`;\n`,
+      'app/shop/not-found.ts': `import { html } from ${CORE};\nexport default () => html\`<main id="shop-nf">shop 404</main>\`;\n`,
+      'modules/nf/actions/nf.server.ts': `'use server';\nimport { notFound } from ${CORE};\nexport async function nf() { notFound(); }\n`,
+      'app/shop/page.ts': `
+import { html } from ${CORE};
+import { nf } from '../../modules/nf/actions/nf.server.ts';
+export default () => html\`<form action=\${nf}></form>\`;
+`,
+    }),
+    dev: true,
+  });
+  await app.warmup();
+
+  const resp = await submit(app, '/shop', {});
+  assert.equal(resp.status, 404);
+  const body = await resp.text();
+  assert.match(body, /shop-nf/, 'the nearest not-found rendered');
+  assert.doesNotMatch(body, /root-nf/, 'not the root one');
+});
+
 test('GET render is unchanged: no actionData, status 200', async () => {
   const app = await createRequestHandler({ appDir: makeApp(SIGNUP_APP), dev: true });
   await app.warmup();

@@ -5,7 +5,7 @@ const BARREL_FLOORS = [
   { path: '../../packages/core/src/router-client.js', floor: 69 },
   { path: '../../packages/core/src/slot.js', floor: 31 },
   { path: '../../packages/server/src/vendor.js', floor: 26 },
-  { path: '../../packages/server/src/ssr.js', floor: 19 },
+  { path: '../../packages/server/src/ssr.js', floor: 21 },
   { path: '../../packages/server/src/dev.js', floor: 16 },
   { path: '../../packages/cli/lib/doctor.js', floor: 9 },
   { path: '../../packages/core/src/render-server.js', floor: 2 },

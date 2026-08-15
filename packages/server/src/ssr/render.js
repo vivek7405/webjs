@@ -13,7 +13,7 @@ import {
 } from '../html-cache.js';
 import { requestedFrameId, extractFrameSubtree } from '../frame-render.js';
 import { makeThenable } from '../thenable-params.js';
-import { buildDocumentParts, wrapInDocument, layoutSegmentPath, pageSegmentPath, regionRouteKey, wrapWithChildrenMarker } from './document.js';
+import { buildDocumentParts, wrapInDocument, layoutSegmentPath, pageSegmentPath, boundarySegmentPath, layoutsForBoundary, regionRouteKey, wrapWithChildrenMarker } from './document.js';
 import { escapeHtml } from './escape.js';
 import {
   cachedHtmlResponse, getNonce, htmlResponse, streamingHtmlResponse,
@@ -245,6 +245,115 @@ async function loadingTemplates(route, ctx, dev) {
   return parts.join('');
 }
 
+/**
+ * Wrap a tree in a layout chain, emitting the KEYED boundary comment pair
+ * (#1015) around each layout's `${children}`.
+ *
+ * This is the ONE emitter: the happy path and every boundary render call it, so
+ * the segment ids and route-keys they produce cannot drift apart (#1298). Drift
+ * there is the worst available outcome, because the client router's scan then
+ * finds a mismatched pair and hard-loads anyway, which looks fixed in a diff.
+ *
+ * `have` is the X-Webjs-Have short-circuit. It is null on every boundary path,
+ * so a boundary response is structurally incapable of being reduced.
+ *
+ * @param {unknown} tree  The inner tree (the page, or a boundary in its place).
+ * @param {string[]} layouts  Layout files, outermost first.
+ * @param {Record<string, unknown>} ctx
+ * @param {boolean} dev
+ * @param {Record<string, string>} params  Resolved route params for the keys.
+ * @param {Map<string, string> | null} have
+ * @returns {Promise<{ tree: unknown, reduced: boolean }>}
+ */
+async function wrapLayoutChain(tree, layouts, ctx, dev, params, have) {
+  for (let i = layouts.length - 1; i >= 0; i--) {
+    const segmentPath = layoutSegmentPath(layouts[i]);
+    // Short-circuit ONLY when the client's copy of this layout was rendered
+    // for the SAME route-key: a param change at a dynamic layout must
+    // re-render the layout's own markup (#1015).
+    if (have && have.get(segmentPath) === regionRouteKey(segmentPath, params)) {
+      // REDUCED response (#1009): the outer layouts were skipped, so these
+      // bytes are only valid for a client that already HAS them. The caller
+      // marks the response `private` so no shared cache can store it, and
+      // additionally `Vary: X-Webjs-Have` for caches that honour it. The
+      // `private` is the guarantee, not the Vary: Cloudflare and others honour
+      // only `Accept-Encoding` (#1140).
+      return { tree: wrapWithChildrenMarker(tree, segmentPath, params), reduced: true };
+    }
+    const mod = await loadModule(layouts[i], dev);
+    if (!mod.default) continue;
+    tree = await mod.default({
+      ...ctx,
+      children: wrapWithChildrenMarker(tree, segmentPath, params),
+    });
+  }
+  return { tree, reduced: false };
+}
+
+/**
+ * Render a boundary tree in the PAGE's position, wrapped in the layouts that
+ * wrap that boundary, so the response carries the same keyed boundary comments
+ * a successful render of this URL would and the client router can soft-swap it
+ * (#1298). Before this, a boundary went straight to `wrapInDocument` with no
+ * layouts, so it carried no markers at all, the router's scan found no shared
+ * boundary, and every navigation into a failing page was a full document load.
+ *
+ * Buffered on purpose: no `suspenseCtx`, so a `<webjs-suspense>` inside a
+ * wrapped layout emits its fallback and never resolves (render-server/stream.js).
+ * That is the trade for a boundary response whose status and headers are final
+ * before the first byte, which matters more on a 500 than streaming does.
+ *
+ * A throw from a wrapped layout propagates to the CALLER. That is what makes a
+ * throwing layout fall through to the next boundary OUT instead of looping:
+ * each step outward wraps a strictly smaller set, so the walk converges.
+ *
+ * @param {unknown} tree  The boundary module's rendered tree.
+ * @param {{ file: string, layouts: string[] }} route
+ * @param {string} boundaryFile
+ * @param {Record<string, unknown>} ctx
+ * @param {boolean} dev
+ * @returns {Promise<string>}
+ */
+async function renderBoundaryInChain(tree, route, boundaryFile, ctx, dev) {
+  const params = { ...(/** @type {Record<string,string>} */ (ctx.params) || {}) };
+  const wrapLayouts = layoutsForBoundary(route.layouts, boundarySegmentPath(boundaryFile));
+  // The boundary occupies the PAGE's region, so it gets the page's own keyed
+  // pair, EXCEPT when the page's segment is also a LAYOUT's segment. Then the
+  // id is that layout's and emitting it here would be a lie in one of two ways.
+  //
+  // If that layout is the innermost wrapped one, its children slot already
+  // delimits this exact range and two boundaries under one id break keyed
+  // pairing: the happy path skips for the same reason.
+  //
+  // If that layout was EXCLUDED (the boundary sits above it, so it never
+  // rendered), the id is worse than redundant. The response would advertise a
+  // region under the excluded layout's id with none of its markup inside, the
+  // client would then send that id in `X-Webjs-Have`, and the next navigation
+  // into that layout's subtree would short-circuit on it and return a fragment
+  // that assumes chrome the page never had. The user lands on the next page
+  // with that layout missing entirely.
+  //
+  // So the SET of emitted ids is a subset of the happy path's, never a
+  // different set: an id only ever appears here if a layout at that segment
+  // rendered, or no layout owns that segment at all.
+  const pageSeg = pageSegmentPath(route.file);
+  const layoutSegs = new Set((route.layouts || []).map(layoutSegmentPath));
+  if (!layoutSegs.has(pageSeg)) tree = wrapWithChildrenMarker(tree, pageSeg, params);
+  // MARK a layout-phase failure. The caller has to tell "a wrapped layout
+  // threw" apart from "the boundary's own tree is broken", and it cannot infer
+  // it by re-rendering: when BOTH are broken the standalone attempt throws too,
+  // and an inference would report the layout error under the boundary's label
+  // and lose the tree's entirely. The phase is known exactly here, so it is
+  // recorded rather than guessed.
+  let chain;
+  try {
+    chain = await wrapLayoutChain(tree, wrapLayouts, ctx, dev, params, null);
+  } catch (e) {
+    throw markLayoutPhase(e);
+  }
+  return renderToString(chain.tree, { ssr: true, dev });
+}
+
 async function renderChain(route, ctx, dev, suspenseCtx, have, pageModule) {
   // Reuse a caller-supplied page module when present. The only producer is the
   // HTML-cache path above, which loads the module to read `export const
@@ -309,75 +418,489 @@ async function renderChain(route, ctx, dev, suspenseCtx, have, pageModule) {
   // layout's boundary pair (so the client can identify the splice
   // target) and return: outer layouts are not rendered at all,
   // saving CPU and wire bytes.
-  for (let i = route.layouts.length - 1; i >= 0; i--) {
-    const segmentPath = layoutSegmentPath(route.layouts[i]);
-    // Short-circuit ONLY when the client's copy of this layout was rendered
-    // for the SAME route-key: a param change at a dynamic layout must
-    // re-render the layout's own markup (#1015).
-    if (have && have.get(segmentPath) === regionRouteKey(segmentPath, params)) {
-      tree = wrapWithChildrenMarker(tree, segmentPath, params);
-      const body = await renderToString(tree, { ssr: true, suspenseCtx });
-      // REDUCED response (#1009): the outer layouts were skipped, so these
-      // bytes are only valid for a client that already HAS them. The caller
-      // marks the response `private` so no shared cache can store it, and
-      // additionally `Vary: X-Webjs-Have` for caches that honour it. The
-      // `private` is the guarantee, not the Vary: Cloudflare and others honour
-      // only `Accept-Encoding` (#1140).
-      return { html: body + (await loadingTemplates(route, ctx, dev)), reduced: true };
-    }
-    const mod = await loadModule(route.layouts[i], dev);
-    if (!mod.default) continue;
-    tree = await mod.default({
-      ...ctx,
-      children: wrapWithChildrenMarker(tree, segmentPath, params),
-    });
+  // The loop itself lives in wrapLayoutChain, shared with the boundary render
+  // path (#1298) so both emit identical segment ids and route-keys.
+  const chain = await wrapLayoutChain(tree, route.layouts, ctx, dev, params, have);
+  const body = await renderToString(chain.tree, { ssr: true, suspenseCtx });
+  return { html: body + (await loadingTemplates(route, ctx, dev)), reduced: chain.reduced };
+}
+
+/**
+ * Render the framework's DEFAULT boundary body inside the matched route's
+ * layout chain (#1298), so a route with no boundary file of its own still
+ * keeps its chrome and still soft-navigates.
+ *
+ * Returns null when the chain cannot render, which degrades to the bare
+ * default the caller already holds: this is the last-resort page, so it must
+ * never be the thing that fails. A layout crash here is reported like any
+ * other rather than being swallowed.
+ *
+ * @param {string} raw  The default body markup.
+ * @param {{ dev: boolean, appDir: string, route?: { file: string, layouts: string[] },
+ *   ctx?: Record<string, unknown>, params?: Record<string, string>, url?: URL }} opts
+ * @returns {Promise<{ body: string, moduleUrls: string[] } | null>}
+ */
+async function defaultBoundaryInChain(raw, opts) {
+  const route = opts.route;
+  if (!route || !route.layouts || route.layouts.length === 0) return null;
+  const ctx = opts.ctx || boundaryCtx(opts.params, opts.url, undefined);
+  try {
+    const params = { ...(/** @type {Record<string,string>} */ (ctx.params) || {}) };
+    const chain = await wrapLayoutChain(rawTemplate(raw), route.layouts, ctx, opts.dev, params, null);
+    return {
+      body: await renderToString(chain.tree, { ssr: true, dev: opts.dev }),
+      moduleUrls: boundaryModuleUrls(null, route.layouts, opts),
+    };
+  } catch (e) {
+    reportBoundaryLayoutError(e, opts, { overlay: true });
+    return null;
   }
-  const body = await renderToString(tree, { ssr: true, suspenseCtx });
-  return { html: body + (await loadingTemplates(route, ctx, dev)), reduced: false };
+}
+
+/**
+ * Wrap a raw HTML string as a synthetic TemplateResult so it can go through
+ * the layout chain. The string lives in `strings` (static template parts), not
+ * `values`, because a hole is HTML-escaped on render and this markup is the
+ * framework's own.
+ *
+ * @param {string} raw
+ * @returns {{ _$webjs: 'template', strings: string[], values: unknown[] }}
+ */
+function rawTemplate(raw) {
+  return { _$webjs: 'template', strings: [raw], values: [] };
+}
+
+/**
+ * The layouts that will wrap a boundary FILE on this route (#1298). One place,
+ * so the render path and the boot set cannot disagree about what wrapped, and
+ * so the catch can ask whether anything wrapped at all.
+ *
+ * @param {{ layouts: string[] }} route
+ * @param {string} boundaryFile
+ * @returns {string[]}
+ */
+function wrapLayoutsFor(route, boundaryFile) {
+  return layoutsForBoundary(route.layouts, boundarySegmentPath(boundaryFile));
+}
+
+/**
+ * Marker for a throw that came from the LAYOUT-wrapping phase of a boundary
+ * render, as opposed to the boundary's own tree (#1298). Non-enumerable, so it
+ * never shows up in a serialized error, and best-effort: a frozen or primitive
+ * throw simply goes unmarked and is treated as a tree failure, which reports it
+ * once under the boundary label rather than dropping it.
+ */
+const LAYOUT_PHASE = Symbol('webjs.boundaryLayoutPhase');
+
+/** @param {unknown} err @returns {unknown} */
+function markLayoutPhase(err) {
+  if (err && typeof err === 'object') {
+    try { Object.defineProperty(err, LAYOUT_PHASE, { value: true, enumerable: false }); } catch { /* frozen */ }
+  }
+  return err;
+}
+
+/** @param {unknown} err @returns {boolean} */
+function isLayoutPhase(err) {
+  return !!(err && typeof err === 'object' && /** @type {any} */ (err)[LAYOUT_PHASE]);
+}
+
+/**
+ * Render a thrown value as text for a DEV error page, safely.
+ *
+ * `String(err)` is not total: `String(Object.create(null))` throws on both
+ * runtimes, and a getter on a subclass can throw too. Every caller here is
+ * already inside a catch whose job is to keep the response alive, so an
+ * uncaught throw while FORMATTING the failure escapes the handler and takes
+ * the error page down with it, turning a handled 500 into an unhandled one.
+ *
+ * @param {unknown} err
+ * @returns {string}
+ */
+function safeErrorText(err) {
+  try {
+    if (err instanceof Error) return String(err.stack || err.message);
+    return String(err);
+  } catch {
+    return '[unprintable value]';
+  }
+}
+
+/**
+ * A per-request dedup key for a secondary boundary failure: the STAGE it came
+ * from plus the error's name, message and construction site. Identity cannot
+ * be used, because a layout that
+ * constructs its error yields a fresh object each time it is re-run, and the
+ * whole point is to collapse exactly those repeats while letting a genuinely
+ * different failure through.
+ *
+ * The CONSTRUCTION SITE (the first stack frame), not the whole stack. The
+ * frames below it record how the throw was reached, and the same layout
+ * re-rendered around a different boundary is reached differently every time,
+ * so a full-stack key would never collapse the repeats it exists for.
+ *
+ * That leaves the construction site shared by two genuinely different
+ * failures that go through one helper, which is why the caller's STAGE is part
+ * of the key rather than the error alone: the boundary walk and the
+ * `global-error` attempt are different stages, so a shared helper failing in
+ * both is reported twice, while one layout failing repeatedly INSIDE the walk
+ * is reported once. The stage is what distinguishes them; the stack cannot.
+ *
+ * Returns null when no safe key can be derived, which means DO NOT DEDUPE.
+ * Failing open is the only acceptable direction here: a duplicate report is
+ * noise, a dropped one is a crash nobody hears about. That covers a non-Error
+ * throw (two unrelated plain objects would otherwise share `[object Object]`)
+ * and anything whose property access or stringification throws, which is a
+ * real shape: `String(Object.create(null))` throws, and this runs INSIDE the
+ * catch that is supposed to keep the response alive, so a throw here would
+ * escape `ssrPage` and take the 500 page with it.
+ *
+ * @param {unknown} err
+ * @param {string} stage  Which attempt produced this throw. Part of the key.
+ * @returns {string | null}
+ */
+function boundaryErrorKey(err, stage) {
+  if (!(err instanceof Error)) return null;
+  try {
+    const site = String(err.stack || '').split('\n')[1] || '';
+    return `${stage}\u0000${String(err.name)}:${String(err.message)}:${site.trim()}`;
+  } catch {
+    return null;
+  }
+}
+
+/** Stage labels, which are part of the dedup key (see boundaryErrorKey). */
+const STAGE_WALK = 'an error boundary or its layout threw while handling a render error';
+const STAGE_GLOBAL_ERROR = 'global-error threw while handling a render error';
+const STAGE_BOUNDARY = 'a boundary module threw or failed to load';
+
+/**
+ * Report a throw from a layout wrapped around a boundary page (#1298) to the
+ * same sinks a page-render error reaches, then let the caller degrade to the
+ * standalone render. Best-effort on both sinks: a throwing sink must never
+ * affect the response.
+ *
+ * A CONTROL-FLOW sentinel is not an error and is never reported. This is the
+ * same classification the page path makes before it calls `onError` (a
+ * `redirect()` / `notFound()` / `forbidden()` / `unauthorized()` is a routing
+ * decision, not a crash), and it matters more here: reporting one would fire
+ * the app's APM sink and paint a false dev error overlay OVER the 403 the user
+ * is looking at.
+ *
+ * The sentinel is not HONOURED either, and that is deliberate. The status is
+ * already decided by the time a boundary renders, and the boundary page IS the
+ * answer to this request; letting a layout redirect out of it would replace a
+ * 403 the app asked for with a bounce the app did not, on a path where the
+ * redirect target could itself be forbidden. So the render degrades to the
+ * standalone boundary body, exactly as it does for a real layout crash, and
+ * the status the boundary carries is preserved.
+ *
+ * Deduplicated per request by CAUSE, via the caller's `seen` set. The 500 path
+ * tries each boundary in the chain, and a throwing layout that is an ancestor
+ * of several of them fails EVERY attempt: `layoutsForBoundary` selects by
+ * segment ancestry rather than by boundary depth, so two boundaries at
+ * different segments can resolve to the same layout set. Without dedup a root
+ * layout that throws is reported once per boundary in the chain.
+ *
+ * The key is the error's name, message and throw site rather than its identity,
+ * because a layout that constructs its error (`throw new Error(...)`) yields a
+ * fresh object per attempt. Deduplicating on "any secondary failure already
+ * reported" instead would be wrong in the other direction: an inner boundary
+ * throwing a TypeError would silence a LATER, unrelated root-layout crash, and
+ * would make the `global-error` report below unreachable on every route whose
+ * chain contains a real `error.{js,ts}`, since reaching that block at all means
+ * an earlier attempt already threw. Distinct causes are each reported once.
+ *
+ * `overlay` says whether this failure may claim the DEV OVERLAY. The overlay
+ * holds one retained frame per URL and the dev handler's slot is last-write
+ * wins, so a secondary failure pushed after the original page error would
+ * replace the root cause with a symptom, and the replacement would survive a
+ * reconnect. So the 500 path passes false (the page error already claimed the
+ * slot and is what the developer needs to see), while the 403 / 401 / 404
+ * paths pass true, since nothing else claimed it there: their trigger is a
+ * control-flow sentinel, which is never reported.
+ *
+ * @param {unknown} err
+ * @param {{ onError?: (e: unknown) => void, onDevError?: (e: unknown) => void }} opts
+ * @param {{ what?: string, seen?: Set<string>, overlay?: boolean }} [cfg]
+ */
+function reportBoundaryLayoutError(err, opts, cfg = {}) {
+  if (isRedirect(err) || isNotFound(err) || isForbidden(err) || isUnauthorized(err)) return;
+  if (cfg.seen) {
+    const key = boundaryErrorKey(err, cfg.what || '');
+    // A null key means no safe key could be derived, so report rather than
+    // risk dropping. See boundaryErrorKey.
+    if (key !== null) {
+      if (cfg.seen.has(key)) return;
+      cfg.seen.add(key);
+    }
+  }
+  const what = cfg.what || 'a layout threw while wrapping a boundary page';
+  if (typeof opts.onError === 'function') {
+    try { opts.onError(err); } catch { /* a throwing sink must not affect the response */ }
+  }
+  if (cfg.overlay !== false && typeof opts.onDevError === 'function') {
+    try { opts.onDevError(err); } catch { /* a throwing sink must not affect the response */ }
+  }
+  console.error(`[webjs] ${what}:`, err);
+}
+
+/**
+ * The boot module set for a boundary response: what actually RENDERED, the
+ * boundary module plus the layouts wrapping it (#1298).
+ *
+ * Applies the SAME inert / import-only substitution as the happy-path boot
+ * (#963), so a boundary never ships a route module the normal render drops.
+ * Pre-substitution, an import-only layout with a bare `.server.*` import
+ * (legal, it never loads client-side) would load here whole and crash the
+ * boundary page's boot on the throw-at-load stub, killing the sibling
+ * component registrations in the same module script.
+ *
+ * The substitution applies to the boundary file harmlessly: only page and
+ * layout files are fed to the elision analysis, so a boundary is never inert
+ * and never import-only, gets no verdict, and is pushed as-is. Every boundary
+ * kind is a `browserEntryFiles` entry (browser-entries.js), so each of these
+ * URLs is servable through the auth gate.
+ *
+ * @param {string | null} boundaryFile  Null for the framework's default body,
+ *   which has no module of its own; only the layouts boot then.
+ * @param {string[]} wrapLayouts
+ * @param {{ appDir: string, inertRouteModules?: Set<string>,
+ *   importOnlyRouteModules?: Map<string, string[]>,
+ *   instrumentationClient?: string }} opts
+ * @returns {string[]}
+ */
+function boundaryModuleUrls(boundaryFile, wrapLayouts, opts) {
+  /** @type {string[]} */
+  const urls = [];
+  const seen = new Set();
+  const push = (abs) => {
+    const u = toUrlPath(abs, opts.appDir);
+    if (!seen.has(u)) { seen.add(u); urls.push(u); }
+  };
+  for (const f of (boundaryFile ? [boundaryFile, ...wrapLayouts] : [...wrapLayouts])) {
+    if (opts.inertRouteModules && opts.inertRouteModules.has(f)) continue;
+    const emit = opts.importOnlyRouteModules && opts.importOnlyRouteModules.get(f);
+    if (emit) emit.forEach(push);
+    else push(f);
+  }
+  // instrumentation-client.{js,ts} (#848) rides the SAME first-import contract
+  // it has on the happy path: it runs before app modules so the app's client
+  // error reporting is installed before anything can throw. A boundary page is
+  // where that matters most, so it must not be the one place it is missing.
+  // The set is never empty by the time we get here (the boundary file is
+  // always pushed above, since only pages and layouts are fed to the elision
+  // analysis, so a boundary is never inert and never import-only), which is
+  // why this needs no non-empty guard.
+  if (opts.instrumentationClient) {
+    const u = toUrlPath(opts.instrumentationClient, opts.appDir);
+    const i = urls.indexOf(u);
+    if (i !== -1) urls.splice(i, 1);
+    urls.unshift(u);
+  }
+  return urls;
+}
+
+/**
+ * The ctx a boundary module and its wrapped layouts receive (#1298). Same shape
+ * as the page render's, so a layout cannot tell a boundary render from a normal
+ * one. Boundary modules used to be called with an empty object, which left a
+ * wrapped layout with no `params` to build its own links from.
+ * @param {Record<string, string> | undefined} params
+ * @param {URL | undefined} url
+ * @param {unknown} actionData
+ */
+function boundaryCtx(params, url, actionData) {
+  return {
+    params: makeThenable(params || {}),
+    searchParams: makeThenable(url ? Object.fromEntries(url.searchParams.entries()) : {}),
+    url: url ? url.toString() : '',
+    actionData,
+  };
 }
 
 /**
  * Render a simple boundary page (forbidden / unauthorized, #848) at the given
- * default heading. Loads the nearest boundary module when one exists (its
- * default export receives no props, like not-found), else emits the default
- * heading. Mirrors ssrNotFoundHtml.
+ * default heading. Loads the nearest boundary module when one exists, else
+ * emits the default heading. Mirrors ssrNotFoundHtml.
+ *
+ * When the caller supplies the matched `route` (#1298), the boundary renders
+ * inside the layouts wrapping it, so a 403 / 401 soft-swaps like any other
+ * response. Two bounded attempts, never a loop: a throwing layout degrades to
+ * the standalone render this has always produced.
+ *
  * @param {string | null} file
  * @param {string} heading  e.g. '403: Forbidden'
- * @param {{ dev: boolean, appDir: string, req?: Request }} opts
+ * @param {{ dev: boolean, appDir: string, req?: Request, url?: URL,
+ *   route?: { file: string, layouts: string[] },
+ *   ctx?: Record<string, unknown>, params?: Record<string, string> }} opts
  */
 async function ssrBoundaryHtml(file, heading, opts) {
   let body = `<h1>${heading}</h1>`;
+  /** @type {string[]} */
+  let moduleUrls = [];
+  // No boundary FILE, but a route matched: the framework's own default page is
+  // what renders, and it belongs inside the layouts just as a custom one does.
+  // This is the COMMON case for 403 / 401, since most apps ship no
+  // forbidden.ts, and leaving it bare would mean the headline fix does not
+  // apply to them at all. Wrapped in the route's full chain, because the
+  // default boundary has no segment of its own and stands in for the page.
+  if (!file && opts.route) {
+    const wrapped = await defaultBoundaryInChain(`<h1>${heading}</h1>`, opts);
+    if (wrapped) { body = wrapped.body; moduleUrls = wrapped.moduleUrls; }
+  }
   if (file) {
+    const ctx = opts.ctx || boundaryCtx(opts.params, opts.url, undefined);
     try {
       const mod = await loadModule(file, opts.dev);
-      if (mod.default) body = await renderToString(await mod.default({}), { ssr: true, dev: opts.dev });
+      if (mod.default) {
+        const tree = await mod.default(ctx);
+        try {
+          if (opts.route) {
+            body = await renderBoundaryInChain(tree, opts.route, file, ctx, opts.dev);
+            // The chain rendered, so its modules have to boot: chrome that
+            // paints but never hydrates is worse than no chrome, because its
+            // controls look live and are not (#1298).
+            moduleUrls = boundaryModuleUrls(file, wrapLayoutsFor(opts.route, file), opts);
+          } else {
+            body = await renderToString(tree, { ssr: true, dev: opts.dev });
+          }
+        } catch (layoutErr) {
+          // When NO LAYOUT actually wrapped this boundary, the try body already
+          // ran this exact `renderToString(tree)`: with no route there is no
+          // chain at all, and with a route whose wrap set is empty (a legal
+          // app with no root layout, since the framework emits the shell)
+          // renderBoundaryInChain reduces to the same call. Re-running it would
+          // execute the boundary tree a second time to learn nothing, and a
+          // tree that is not idempotent under re-render could even SUCCEED on
+          // the retry and be reported as a layout crash that never happened.
+          // Rethrow: the outer catch reports it once, under the boundary label.
+          if (!opts.route || wrapLayoutsFor(opts.route, file).length === 0) throw layoutErr;
+          // Always attempt the standalone render, which is the degradation
+          // this path has always produced. Its OUTCOME is half the diagnosis
+          // and the phase marker is the other half; neither alone is enough.
+          //
+          // The marker records a layout that threw when it was CALLED. It
+          // cannot record a layout that fails while being SERIALIZED (the
+          // idiomatic `html`<nav>${getNav()}</nav>${children}`` with a
+          // rejecting hole), because by then its output is fused into one tree
+          // with the boundary's and `renderToString` cannot say which half
+          // threw. That is what the fallback answers: if the boundary renders
+          // alone, the fault was layout-side whether or not it was marked.
+          let treeErr = null;
+          try {
+            body = await renderToString(tree, { ssr: true, dev: opts.dev });
+            moduleUrls = [];
+          } catch (e) {
+            treeErr = e;
+          }
+          if (treeErr === null) {
+            // The boundary is fine on its own, so the chain is what failed.
+            reportBoundaryLayoutError(layoutErr, opts, { overlay: true });
+          } else {
+            // The boundary's own tree is broken too. Report a MARKED layout
+            // failure as the separate thing it is, then hand the outer catch
+            // the tree error: it is what defeated the fallback and what the
+            // dev body should show. An UNMARKED one is not reported here,
+            // because it may be this same tree error arriving twice.
+            if (isLayoutPhase(layoutErr)) {
+              reportBoundaryLayoutError(layoutErr, opts, { overlay: false });
+            }
+            throw treeErr;
+          }
+        }
+      }
     } catch (e) {
-      body = `<h1>${heading}</h1><pre>${escapeHtml(String(e))}</pre>`;
+      // The boundary module itself threw or failed to load. REPORT it: with
+      // the body sanitized below, this is otherwise completely silent in
+      // production, on a request that already returned a 4xx to a real user.
+      // Sanitizing without reporting moves a failure out of sight rather than
+      // out of the response, which is the opposite of the intent.
+      reportBoundaryLayoutError(e, opts, { what: STAGE_BOUNDARY, overlay: true });
+      // Dev shows the failure; prod shows only the heading. The 500 path has
+      // always drawn that line (a thrown error's message is not
+      // author-controlled and must not reach the client), and these pages were
+      // rendering it in production.
+      body = opts.dev
+        ? `<h1>${heading}</h1><pre>${escapeHtml(safeErrorText(e))}</pre>`
+        : `<h1>${heading}</h1>`;
+      moduleUrls = [];
     }
   }
   const nonce = opts.req ? getNonce(opts.req) : undefined;
   return wrapInDocument(body, {
     metadata: { title: heading.replace(/^\d+:\s*/, '') },
-    moduleUrls: [],
+    moduleUrls,
     dev: opts.dev,
     nonce,
   });
 }
 
+/**
+ * Render the 404 page. Same two-attempt wrapping contract as ssrBoundaryHtml
+ * (#1298). `opts.route` is absent when no route matched at all (an unrouted
+ * URL), and then there is no chain to wrap in, so the response stays the bare
+ * document it has always been.
+ * @param {string | null} notFoundFile
+ * @param {{ dev: boolean, appDir: string, req?: Request, url?: URL,
+ *   route?: { file: string, layouts: string[] },
+ *   ctx?: Record<string, unknown>, params?: Record<string, string> }} opts
+ */
 async function ssrNotFoundHtml(notFoundFile, opts) {
   let body = '<h1>404: Not found</h1>';
+  /** @type {string[]} */
+  let moduleUrls = [];
+  if (!notFoundFile && opts.route) {
+    const wrapped = await defaultBoundaryInChain('<h1>404: Not found</h1>', opts);
+    if (wrapped) { body = wrapped.body; moduleUrls = wrapped.moduleUrls; }
+  }
   if (notFoundFile) {
+    const ctx = opts.ctx || boundaryCtx(opts.params, opts.url, undefined);
     try {
       const mod = await loadModule(notFoundFile, opts.dev);
-      if (mod.default) body = await renderToString(await mod.default({}), { ssr: true, dev: opts.dev });
+      if (mod.default) {
+        const tree = await mod.default(ctx);
+        try {
+          if (opts.route) {
+            body = await renderBoundaryInChain(tree, opts.route, notFoundFile, ctx, opts.dev);
+            moduleUrls = boundaryModuleUrls(notFoundFile, wrapLayoutsFor(opts.route, notFoundFile), opts);
+          } else {
+            body = await renderToString(tree, { ssr: true, dev: opts.dev });
+          }
+        } catch (layoutErr) {
+          // Same diagnosis rule as ssrBoundaryHtml above, including the
+          // no-layout-wrapped short-circuit.
+          if (!opts.route || wrapLayoutsFor(opts.route, notFoundFile).length === 0) throw layoutErr;
+          let treeErr = null;
+          try {
+            body = await renderToString(tree, { ssr: true, dev: opts.dev });
+            moduleUrls = [];
+          } catch (e) {
+            treeErr = e;
+          }
+          if (treeErr === null) {
+            reportBoundaryLayoutError(layoutErr, opts, { overlay: true });
+          } else {
+            if (isLayoutPhase(layoutErr)) {
+              reportBoundaryLayoutError(layoutErr, opts, { overlay: false });
+            }
+            throw treeErr;
+          }
+        }
+      }
     } catch (e) {
-      body = `<h1>404: Not found</h1><pre>${escapeHtml(String(e))}</pre>`;
+      // Reported for the same reason as in ssrBoundaryHtml above.
+      reportBoundaryLayoutError(e, opts, { what: STAGE_BOUNDARY, overlay: true });
+      body = opts.dev
+        ? `<h1>404: Not found</h1><pre>${escapeHtml(safeErrorText(e))}</pre>`
+        : '<h1>404: Not found</h1>';
+      moduleUrls = [];
     }
   }
   const nonce = opts.req ? getNonce(opts.req) : undefined;
   return wrapInDocument(body, {
     metadata: { title: 'Not found' },
-    moduleUrls: [],
+    moduleUrls,
     dev: opts.dev,
     nonce,
   });
@@ -768,14 +1291,20 @@ export async function ssrPage(route, params, url, opts) {
       // Nearest not-found.{js,ts} in the page's chain wins (#848 fix: previously
       // this always rendered the bare default, ignoring even a root not-found);
       // fall back to a root global-not-found.{js,ts}, else the default page.
-      const html = await ssrNotFoundHtml(nearest(route.notFounds) || opts.globalNotFound || null, opts);
+      // Pass the matched route and this render's ctx so the boundary renders
+      // inside its layouts (#1298). A root-only global-not-found sits at '/',
+      // so it wraps in the root layout only, which is right.
+      const html = await ssrNotFoundHtml(
+        nearest(route.notFounds) || opts.globalNotFound || null,
+        { ...opts, url, route, ctx }
+      );
       return htmlResponse(html, 404, opts.req, url);
     }
     // forbidden() / unauthorized() sentinels (#848, Next 15/16 parity): render
     // the nearest forbidden.{js,ts} / unauthorized.{js,ts} boundary (innermost
     // wins), else a default page, at 403 / 401.
-    if (isForbidden(err)) return ssrForbidden(route, { ...opts, url });
-    if (isUnauthorized(err)) return ssrUnauthorized(route, { ...opts, url });
+    if (isForbidden(err)) return ssrForbidden(route, { ...opts, url, route, ctx });
+    if (isUnauthorized(err)) return ssrUnauthorized(route, { ...opts, url, route, ctx });
     // APM / Sentry sink (issue #239): a page render error that becomes a 500
     // (an error.js boundary OR the default 500 page) is an unhandled error the
     // app should see in its error tracker. Report it best-effort BEFORE
@@ -794,13 +1323,39 @@ export async function ssrPage(route, params, url, opts) {
     // error page's boot scripts (when moduleUrls is non-empty) and
     // the meta csp-nonce tag both pass strict-CSP enforcement.
     const errNonce = opts.req ? getNonce(opts.req) : undefined;
+    // One dedup set for the whole 500 path: the walk below and the
+    // global-error attempt after it collapse REPEATS of the same cause (a
+    // shared layout that fails every attempt) while still reporting a
+    // genuinely different failure, including global-error's own.
+    //
+    // SEEDED with the original error, which was just reported above. When a
+    // LAYOUT is what threw, the walk re-runs that same layout around each
+    // boundary it wraps (the root layout wraps every boundary), so the cause
+    // that produced this 500 is about to arrive again as a secondary failure.
+    // Without the seed the commonest layout crash of all is reported twice.
+    const secondary = new Set();
+    {
+      const originalKey = boundaryErrorKey(err, STAGE_WALK);
+      if (originalKey !== null) secondary.add(originalKey);
+    }
     // Try nearest error.js (innermost → outermost).
     for (let i = route.errors.length - 1; i >= 0; i--) {
       try {
         const mod = await loadModule(route.errors[i], opts.dev);
         if (!mod.default) continue;
         const tree = await mod.default({ ...ctx, error: err });
-        const body = await renderToString(tree, { ssr: true, dev: opts.dev });
+        // The layouts that wrap THIS boundary: its own segment and every
+        // ancestor (#1298). A layout deeper than the boundary never rendered.
+        const wrapLayouts = layoutsForBoundary(route.layouts, boundarySegmentPath(route.errors[i]));
+        // Render inside them, so the response carries the keyed wj:children
+        // pairs and a client-router navigation into this page stays SOFT.
+        // Inside the existing try on purpose: a layout that throws here is
+        // caught by the `catch (nested)` below and the loop moves one boundary
+        // OUT, whose wrapped set is strictly smaller. That bounded walk is how
+        // a throwing layout resolves, and why no failure-point tracking is
+        // needed (a throw out of renderToString is not attributable to one
+        // layout anyway, so tracking would be absent exactly when it mattered).
+        const body = await renderBoundaryInChain(tree, route, route.errors[i], ctx, opts.dev);
         // Apply the SAME inert / import-only substitution as the happy-path
         // boot (#963): the error page must not ship a page/layout module the
         // normal render drops. Pre-substitution, an import-only page with a
@@ -808,24 +1363,36 @@ export async function ssrPage(route, params, url, opts) {
         // load here whole and crash the error page's boot on the throw-at-load
         // stub, killing the sibling component registrations in the same
         // module script.
-        const errModuleUrls = [];
-        {
-          const seen = new Set();
-          const push = (abs) => {
-            const u = toUrlPath(abs, opts.appDir);
-            if (!seen.has(u)) { seen.add(u); errModuleUrls.push(u); }
-          };
-          for (const f of [route.file, ...route.layouts]) {
-            if (opts.inertRouteModules && opts.inertRouteModules.has(f)) continue;
-            const emit = opts.importOnlyRouteModules && opts.importOnlyRouteModules.get(f);
-            if (emit) emit.forEach(push);
-            else push(f);
-          }
-        }
+        //
+        // The set is what actually RENDERED (#1298): the boundary module and
+        // the layouts wrapping it. It used to be the page module plus every
+        // layout, so a boundary shipped the page (which never ran) and any
+        // deeper layout (which never ran either), while omitting the boundary
+        // itself, and a component the boundary rendered never upgraded. The
+        // substitution applies to the boundary file harmlessly: only page and
+        // layout files are fed to the elision analysis, so a boundary is never
+        // inert and never import-only, gets no verdict, and is pushed as-is.
+        const errModuleUrls = boundaryModuleUrls(route.errors[i], wrapLayouts, opts);
         const html = wrapInDocument(body, { metadata, moduleUrls: errModuleUrls, dev: opts.dev, nonce: errNonce });
         return htmlResponse(html, 500, opts.req, url);
       } catch (nested) {
-        // fall through to next error boundary
+        // Fall through to the next error boundary out. Since #1298 this also
+        // absorbs a throw from a WRAPPED LAYOUT, which is the case that makes a
+        // throwing layout render the boundary outside it (Next parity: a
+        // boundary sits inside its own segment's layout, so it cannot catch it).
+        //
+        // Report it on the way past. The fallthrough is the right BEHAVIOUR,
+        // but it is not a reason to lose the error: whatever this response ends
+        // up being, the sinks only ever hear about the ORIGINAL page error
+        // (reported above), so a boundary or a layout that crashed while
+        // handling it would vanish completely. A control-flow sentinel is
+        // filtered out by the reporter, since a boundary throwing notFound() is
+        // a routing decision rather than a crash.
+        reportBoundaryLayoutError(nested, opts, {
+          what: STAGE_WALK,
+          seen: secondary,
+          overlay: false,
+        });
       }
     }
     // Root global-error.{js,ts} (#848): the app-wide catch-all, tried after the
@@ -833,6 +1400,11 @@ export async function ssrPage(route, params, url, opts) {
     // own <!doctype><html><body>, like the root layout), since a root-layout
     // failure is exactly when it fires, so its rendered output is returned
     // verbatim without wrapInDocument. Status 500.
+    //
+    // Deliberately the one boundary #1298 does NOT wrap in layouts: it writes
+    // its own shell (invariant 8 allows only one), wrapping it in the root
+    // layout would re-run the code that just threw, and it ships no importmap
+    // or boot script by design, so it could not soft-swap even if wrapped.
     if (opts.globalError) {
       try {
         const mod = await loadModule(opts.globalError, opts.dev);
@@ -842,15 +1414,22 @@ export async function ssrPage(route, params, url, opts) {
           return htmlResponse(body, 500, opts.req, url);
         }
       } catch (nested) {
-        // fall through to the default 500 page
+        // Fall through to the default 500 page, but do not lose this. A broken
+        // global-error.{js,ts} is the app's LAST-RESORT boundary failing, and
+        // the developer would otherwise see only the generic default page and
+        // the original error, with nothing naming the boundary as the thing
+        // that failed.
+        reportBoundaryLayoutError(nested, opts, {
+          what: STAGE_GLOBAL_ERROR,
+          seen: secondary,
+          overlay: false,
+        });
       }
     }
     // Default: dev shows stack, prod shows a terse message (no stack trace leaks).
     console.error('[webjs] unhandled render error:', err);
     const body = opts.dev
-      ? `<h1>Server error</h1><pre style="white-space:pre-wrap">${escapeHtml(
-          err instanceof Error ? err.stack || err.message : String(err)
-        )}</pre>`
+      ? `<h1>Server error</h1><pre style="white-space:pre-wrap">${escapeHtml(safeErrorText(err))}</pre>`
       : `<h1>Server error</h1><p>Something went wrong. Please try again.</p>`;
     return htmlResponse(
       wrapInDocument(body, { metadata, moduleUrls: [], dev: opts.dev, nonce: errNonce }),
@@ -864,7 +1443,9 @@ export async function ssrPage(route, params, url, opts) {
 /**
  * 404 response for unmatched routes.
  * @param {string | null} notFoundFile
- * @param {{ dev: boolean, appDir: string, req?: Request, url?: URL }} opts
+ * @param {{ dev: boolean, appDir: string, req?: Request, url?: URL,
+ *   route?: import('../router.js').PageRoute,
+ *   ctx?: Record<string, unknown>, params?: Record<string, string> }} opts
  */
 export async function ssrNotFound(notFoundFile, opts) {
   const html = await ssrNotFoundHtml(notFoundFile, opts);
@@ -877,7 +1458,9 @@ export async function ssrNotFound(notFoundFile, opts) {
  * page-render catch (ssr.js) and the form-action write path (form-dispatch.js) so
  * both behave identically.
  * @param {{ forbiddens?: string[] }} route
- * @param {{ dev: boolean, appDir: string, req?: Request, url?: URL }} opts
+ * @param {{ dev: boolean, appDir: string, req?: Request, url?: URL,
+ *   route?: import('../router.js').PageRoute,
+ *   ctx?: Record<string, unknown>, params?: Record<string, string> }} opts
  */
 export async function ssrForbidden(route, opts) {
   const html = await ssrBoundaryHtml(nearest(route.forbiddens), '403: Forbidden', opts);
@@ -888,7 +1471,9 @@ export async function ssrForbidden(route, opts) {
  * 401 response for a thrown unauthorized() (#848). Renders the nearest
  * unauthorized.{js,ts} in the page's chain, else a default 401 page.
  * @param {{ unauthorizeds?: string[] }} route
- * @param {{ dev: boolean, appDir: string, req?: Request, url?: URL }} opts
+ * @param {{ dev: boolean, appDir: string, req?: Request, url?: URL,
+ *   route?: import('../router.js').PageRoute,
+ *   ctx?: Record<string, unknown>, params?: Record<string, string> }} opts
  */
 export async function ssrUnauthorized(route, opts) {
   const html = await ssrBoundaryHtml(nearest(route.unauthorizeds), '401: Unauthorized', opts);

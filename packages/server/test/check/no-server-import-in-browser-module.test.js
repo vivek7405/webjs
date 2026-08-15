@@ -378,6 +378,76 @@ export default async function NotFound() {
   }
 });
 
+// forbidden.ts / unauthorized.ts / global-not-found.ts joined the shipping set
+// with #1298: they render inside their layout chain now, and ship with it. The
+// rule has to see them, or the exact #963 crash it exists to catch (a
+// throw-at-load stub taking every sibling registration with it) passes a green
+// `webjs check`. A 403 that greets the signed-in user by name is the natural
+// shape, so this is not a hypothetical import.
+test('a forbidden boundary importing a server module IS flagged (#1298)', async () => {
+  const appDir = await makeApp({
+    'lib/auth.server.ts': AUTH_SERVER,
+    'app/admin/page.ts': `export default function Admin() { return '<h1>admin</h1>'; }\n`,
+    'app/admin/forbidden.ts': `import { auth } from '../../lib/auth.server.ts';
+export default async function Forbidden() {
+  const session = await auth();
+  return \`<h1>No access for \${session.user ?? 'guest'}</h1>\`;
+}
+`,
+  });
+  try {
+    const violations = await checkConventions(appDir);
+    const hits = find(violations, 'forbidden.ts');
+    assert.equal(hits.length, 1, 'a forbidden boundary that ships and imports a server module must be flagged');
+    assert.ok(hits[0].message.includes('auth.server.ts'), 'names the offending server import');
+    assert.ok(/forbidden boundary/.test(hits[0].message), 'identifies it as a forbidden boundary');
+  } finally {
+    await rm(appDir, { recursive: true, force: true });
+  }
+});
+
+test('an unauthorized boundary importing a server module IS flagged (#1298)', async () => {
+  const appDir = await makeApp({
+    'lib/auth.server.ts': AUTH_SERVER,
+    'app/private/page.ts': `export default function P() { return '<h1>private</h1>'; }\n`,
+    'app/private/unauthorized.ts': `import { auth } from '../../lib/auth.server.ts';
+export default async function Unauthorized() {
+  const session = await auth();
+  return \`<h1>Sign in (\${session.user ?? 'guest'})</h1>\`;
+}
+`,
+  });
+  try {
+    const violations = await checkConventions(appDir);
+    const hits = find(violations, 'unauthorized.ts');
+    assert.equal(hits.length, 1, 'an unauthorized boundary that ships and imports a server module must be flagged');
+    assert.ok(/unauthorized boundary/.test(hits[0].message), 'identifies it as an unauthorized boundary');
+  } finally {
+    await rm(appDir, { recursive: true, force: true });
+  }
+});
+
+test('a global-not-found page importing a server module IS flagged (#1298)', async () => {
+  const appDir = await makeApp({
+    'lib/auth.server.ts': AUTH_SERVER,
+    'app/page.ts': `export default function Home() { return '<h1>home</h1>'; }\n`,
+    'app/global-not-found.ts': `import { auth } from '../lib/auth.server.ts';
+export default async function GlobalNotFound() {
+  const session = await auth();
+  return \`<h1>404 for \${session.user ?? 'guest'}</h1>\`;
+}
+`,
+  });
+  try {
+    const violations = await checkConventions(appDir);
+    const hits = find(violations, 'global-not-found.ts');
+    assert.equal(hits.length, 1, 'a global-not-found page that ships and imports a server module must be flagged');
+    assert.ok(/global-not-found page/.test(hits[0].message), 'identifies it as a global-not-found page');
+  } finally {
+    await rm(appDir, { recursive: true, force: true });
+  }
+});
+
 test('a loading boundary importing a server module IS flagged', async () => {
   const appDir = await makeApp({
     'lib/auth.server.ts': AUTH_SERVER,
