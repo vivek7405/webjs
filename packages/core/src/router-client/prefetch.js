@@ -122,6 +122,20 @@ function notePrefetchRefused(key) {
 /** Keys with a fetch currently in flight (dedupe + concurrency gate). */
 const prefetchInflight = new Set();
 
+/**
+ * Keys whose IN-FLIGHT fetch has been superseded by an eviction (#1407).
+ * `prefetchEvict` can only delete what is already stored, and a speculative
+ * fetch stores when its body finishes reading, so an eviction landing inside
+ * that window would be undone the moment the response arrives. Reachable
+ * without contrivance: hover a framed tab (the dwell arms a fetch), then mutate
+ * that frame's `src` to the same url inside the request's window. A key parked
+ * here makes the pending store a no-op instead. Bounded by the in-flight set,
+ * since every entry is removed when its fetch settles.
+ *
+ * @type {Set<string>}
+ */
+const prefetchSuperseded = new Set();
+
 /** hrefs waiting for a free concurrency slot (FIFO), and their keys. */
 const prefetchQueue = [];
 
@@ -460,11 +474,15 @@ export function prefetch(href, frameId) {
       }
       const finalUrl = resp.redirected && resp.url ? resp.url : href;
       const html = await resp.text();
+      // An eviction landed while this was in flight, so the entry it would
+      // store is already superseded (#1407). Drop it rather than resurrect it.
+      if (prefetchSuperseded.has(key)) return;
       prefetchStore(key, { html, build, src, finalUrl, frameId: frameId || null, at: nowMs() });
     })
     .catch(() => { /* speculative: swallow */ })
     .finally(() => {
       prefetchInflight.delete(key);
+      prefetchSuperseded.delete(key);
       drainPrefetchQueue();
     });
 }
@@ -739,7 +757,20 @@ export function refreshPrefetchObservers() {
  * @param {string | null} [frameId]
  */
 export function prefetchEvict(href, frameId) {
-  prefetchCache.delete(cacheKey(href, frameId));
+  const key = cacheKey(href, frameId);
+  prefetchCache.delete(key);
+  // Deleting the stored copy is only half of it. A speculative fetch for the
+  // same key may be in flight (it stores when its body finishes reading) or
+  // parked in the queue (it starts later), and either would put the entry back
+  // after this returns. Mark the in-flight one so its store is a no-op, and
+  // drop the queued one before it ever starts.
+  if (prefetchInflight.has(key)) prefetchSuperseded.add(key);
+  if (prefetchQueued.delete(key)) {
+    for (let i = prefetchQueue.length - 1; i >= 0; i--) {
+      const q = prefetchQueue[i];
+      if (cacheKey(q.href, q.frameId) === key) prefetchQueue.splice(i, 1);
+    }
+  }
 }
 
 /** Test-only: peek the speculative cache for a href without consuming it. */
@@ -753,6 +784,7 @@ export function _resetPrefetch() {
   prefetchCache.clear();
   prefetchRefused.clear();
   prefetchInflight.clear();
+  prefetchSuperseded.clear();
   prefetchQueue.length = 0;
   prefetchQueued.clear();
   clearPrefetchHover();

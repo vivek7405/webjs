@@ -28,6 +28,7 @@ import { parseHTML } from 'linkedom';
 // import-time side effects (it only pulls a constant), so a static import here
 // does not trip the auto-enable the barrel's dynamic import exists to defer.
 import { cacheKey } from '../../src/router-client/snapshot-cache.js';
+import { prefetchEvict } from '../../src/router-client/prefetch.js';
 
 let _collect, _plan, _keyOf, _diffEl, _reconcile,
   _addNewHead, _merge, _isNonHtmlPath, navigate,
@@ -4324,6 +4325,41 @@ test('refreshPage DOES drop the refusal memos, since the source may have changed
     await new Promise((r) => setTimeout(r, 0));
     assert.equal(countFor('/streamy'), 2, 'the memo was dropped, so the link re-asked');
   }, { fetchImpl: frameFetchImpl(calls, null) });
+});
+
+test('prefetchEvict also cancels an IN-FLIGHT fetch for that key (#1407)', async () => {
+  // Deleting the stored copy is only half of it. A speculative fetch stores when
+  // its body finishes reading, so an eviction landing inside that window would
+  // be undone the moment the response arrives. Reachable without contrivance:
+  // hover a framed tab (the dwell arms a fetch), then mutate that frame's `src`
+  // to the same url inside the request's window.
+  let release;
+  const held = new Promise((r) => { release = r; });
+  const calls = [];
+  await withPrefetchEnv(async () => {
+    _prefetch('http://localhost/inflight', 'tasks');
+    await new Promise((r) => setTimeout(r, 0));
+    assert.equal(calls.length, 1, 'precondition: the fetch is in flight');
+    assert.equal(_prefetchPeek('http://localhost/inflight', 'tasks'), null, 'and nothing stored yet');
+
+    // The self-load evicts while that fetch is still open.
+    prefetchEvict('http://localhost/inflight', 'tasks');
+
+    release(new Response('<webjs-frame id="tasks"><p>late</p></webjs-frame>', {
+      status: 200,
+      headers: { 'content-type': 'text/html', 'x-webjs-frame': 'tasks' },
+    }));
+    await new Promise((r) => setTimeout(r, 0));
+    await new Promise((r) => setTimeout(r, 0));
+
+    assert.equal(_prefetchPeek('http://localhost/inflight', 'tasks'), null,
+      'the late response did not resurrect the evicted entry');
+  }, {
+    fetchImpl: async (url, init) => {
+      calls.push({ url: String(url), init });
+      return held;
+    },
+  });
 });
 
 test('revalidate(url) evicts EVERY dimension of that url, not just the page one (#1407)', async () => {

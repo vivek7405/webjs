@@ -184,7 +184,12 @@ export async function navigate(url, opts) {
  * `src` mutation is the app asking for THIS frame's content now, a freshness
  * request rather than a hover being followed. Refusing without evicting would
  * leave a copy this load is about to supersede, so a later click on that
- * frame's link would repaint it with staler bytes than are already on screen. It runs under a fresh nav token + AbortController so it interleaves
+ * frame's link would repaint it with staler bytes than are already on screen.
+ * The evict half runs only once the swap has COMMITTED, so a load that aborts,
+ * fails, or hits `webjs:frame-missing` leaves the warm entry alone: the frame
+ * still shows its old content, which that entry still matches.
+ *
+ * It runs under a fresh nav token + AbortController so it interleaves
  * safely with real navigations and with a superseding `src` change on the same
  * frame (the later load's token wins; the earlier one's teardown never clears
  * the newer load's busy state, see `frameBusyTokens`).
@@ -217,14 +222,7 @@ export async function loadFrame(frameEl, url) {
   const signal = activeAbortController.signal;
   const myToken = bumpNavToken();
 
-  // A self-load is a freshness request, so it does BOTH halves (#1407): it drops
-  // the warm copy for this url in this frame's dimension, and it declines to
-  // consume one below. Refusing without evicting would leave an entry the load
-  // is about to supersede, and the next click on that frame's link would repaint
-  // the panel with bytes staler than what this load just put on screen.
-  prefetchEvict(target.href, id);
-
-  return fetchAndApply(
+  const outcome = await fetchAndApply(
     target.href,
     id,
     /* recordHistory */ false,
@@ -243,6 +241,17 @@ export async function loadFrame(frameEl, url) {
     // exists to serve. Deliberately out of scope for that change.
     /* noPrefetch */ true,
   );
+
+  // A self-load is a freshness request, so it does BOTH halves (#1407): it
+  // declines to consume a warm entry (above), and it drops the copy it has
+  // superseded. Only once the swap actually COMMITTED, though: an aborted load,
+  // a transport failure, a non-HTML body and a `webjs:frame-missing` all leave
+  // the frame showing its old content, so the warm entry still matches what is
+  // on screen and evicting it would cost the next click a round trip for
+  // nothing. `applied` is exactly that question (`ok` is not, since a 422 or a
+  // notFound() page still commits).
+  if (outcome && outcome.applied) prefetchEvict(target.href, id);
+  return outcome;
 }
 
 /**

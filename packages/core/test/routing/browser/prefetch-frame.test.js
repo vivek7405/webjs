@@ -276,6 +276,30 @@ suite('Client router: frame-dimensioned link prefetch (#1407)', () => {
     } finally { teardown(); }
   });
 
+  test('a self-load that does NOT commit leaves the warm entry alone (#1407)', async () => {
+    // The evict half is conditional on the swap committing. An aborted load, a
+    // transport failure, a non-HTML body and a `webjs:frame-missing` all leave
+    // the frame showing its old content, which the warm entry still matches, so
+    // dropping it would cost the next click a round trip for nothing.
+    setup('/tasks?status=failload');
+    try {
+      const target = location.origin + '/tasks?status=failload';
+      _prefetch(target, 'tasks');
+      await afterPrefetchAttempt();
+      assert.ok(_prefetchPeek(target, 'tasks'), 'precondition: the framed entry is warm');
+
+      // The self-load's own fetch fails, so nothing is applied.
+      window.fetch = async () => { throw new Error('offline'); };
+      const frame = document.getElementById('tasks');
+      const outcome = await _loadFrame(frame, '/tasks?status=failload');
+      await settle();
+
+      assert.equal(outcome.applied, false, 'precondition: the self-load committed nothing');
+      assert.ok(_prefetchPeek(target, 'tasks'),
+        'the warm entry survived, since the frame still shows what it matches');
+    } finally { teardown(); }
+  });
+
   test('a full-document answer to a framed prefetch is not stored, but the refusal is memoed', async () => {
     // The server's frame branch has two fall-throughs (a streamed render, an
     // absent frame id) that answer with a whole document and no marker. Storing
