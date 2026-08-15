@@ -476,6 +476,41 @@ export async function scaffoldApp(name, cwd, opts = {}) {
       // @webjsdev/core, not the kit), and the
       // CLI resolves @webjsdev/ui from its own install.
     },
+    // Transitive-version floor for the browser test runner (#1418). Without
+    // this, `npm audit` in a freshly created app reports 5 high-severity
+    // advisories the moment scaffolding finishes, all of them one advisory
+    // (GHSA-jmr9-qjv8-65gv, an unvalidated symlink path traversal in
+    // extract-zip) reached through one chain:
+    //
+    //   @web/test-runner -> @web/test-runner-chrome -> puppeteer-core@24
+    //     -> @puppeteer/browsers@2.13.2 -> extract-zip@2.0.1
+    //
+    // extract-zip has NO patched version (the advisory covers `*`, and 2.0.1
+    // is the newest release), so an override on extract-zip itself cannot fix
+    // anything. The fix sits one level up: @puppeteer/browsers@3 dropped
+    // extract-zip entirely (it unpacks with modern-tar), and puppeteer-core@25
+    // depends on that 3 line. puppeteer-core@24.43.1 pins @puppeteer/browsers
+    // EXACTLY ("2.13.2", no caret), so npm cannot dedupe its way out and an
+    // explicit override is the only lever.
+    //
+    // Nothing in a scaffolded app executes this code. The runner is a
+    // devDependency, and web-test-runner.config.js launches browsers through
+    // playwrightLauncher, so the puppeteer chrome launcher is dead weight that
+    // @web/test-runner pulls in unconditionally via its own hard dependency on
+    // @web/test-runner-chrome (there is no supported install without it).
+    //
+    // Caret, not an exact pin: this is a security FLOOR, so a generated app
+    // should pick up later 25.x patches. That is the opposite of the
+    // drizzle-orm reasoning above, where the exact pin is deliberate because
+    // the scaffold source is written against one rc API.
+    //
+    // Do NOT "fix" this by taking @web/test-runner@1, which is what
+    // `npm audit fix --force` proposes: its @web/test-runner-chrome@1 still
+    // declares puppeteer-core ^24, so the same vulnerable chain resolves and
+    // the audit stays red after a breaking major.
+    overrides: {
+      'puppeteer-core': '^25.7.0',
+    },
     // Dev + start task orchestration (#550). `webjs dev` / `webjs start` read
     // `before` and run it in-process, so `npm run dev` / `start` (thin aliases
     // above) behave identically. Both apply pending migrations via `webjs db
