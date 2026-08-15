@@ -115,11 +115,48 @@ export default function RootLayout({ children }: { children: unknown }) {
              undefined var() left every error message painting in the ordinary
              foreground colour and the button's hover fill absent. Value follows
              the @webjsdev/ui registry theme, warmed a few degrees of hue to sit
-             in this palette rather than beside it. Only this one token: the
-             matching -foreground is mapped but read by nothing here, since the
-             destructive variant is deliberately transparent at rest and colours
-             its TEXT, so defining it would be dead weight. */
+             in this palette rather than beside it. Nothing in this app renders
+             text ON a destructive fill (every use is text-destructive or
+             hover:bg-destructive/10), so the -foreground and subtle pair below
+             are defined for COMPLETENESS against the registry vocabulary rather
+             than because a demo reads them. They cost nothing and they stop the
+             next person wondering why three of the four roles are whole and
+             this one is not. */
           --destructive:            light-dark(oklch(0.58 0.22 27), oklch(0.70 0.19 22));
+          --destructive-foreground: light-dark(oklch(1 0 0), oklch(0.258 0.092 26));
+          --destructive-subtle:     light-dark(oklch(0.971 0.013 17), oklch(0.258 0.092 26));
+          --destructive-subtle-foreground: light-dark(oklch(0.444 0.177 27), oklch(0.808 0.114 20));
+
+          /* The semantic roles the @webjsdev/ui registry theme ships, warmed a
+             few degrees of hue to sit in this palette rather than beside it,
+             the same treatment --destructive above already gets. The examples
+             under app/examples/ read these; without them a delta or a marker
+             would paint in the ordinary foreground colour. */
+          --success:                light-dark(oklch(0.527 0.154 150), oklch(0.792 0.209 152));
+          --success-foreground:     light-dark(oklch(0.982 0.018 156), oklch(0.266 0.065 153));
+          --success-subtle:         light-dark(oklch(0.982 0.018 156), oklch(0.266 0.065 153));
+          --success-subtle-foreground: light-dark(oklch(0.448 0.119 151), oklch(0.871 0.15 154));
+          --warning:                light-dark(oklch(0.555 0.163 49), oklch(0.828 0.189 84));
+          --warning-foreground:     light-dark(oklch(0.987 0.022 95), oklch(0.279 0.077 46));
+          --warning-subtle:         light-dark(oklch(0.987 0.022 95), oklch(0.279 0.077 46));
+          --warning-subtle-foreground: light-dark(oklch(0.473 0.137 46), oklch(0.879 0.169 92));
+          --info:                   light-dark(oklch(0.5 0.134 243), oklch(0.746 0.16 233));
+          --info-foreground:        light-dark(oklch(0.977 0.013 237), oklch(0.293 0.066 243));
+          --info-subtle:            light-dark(oklch(0.977 0.013 237), oklch(0.293 0.066 243));
+          --info-subtle-foreground: light-dark(oklch(0.443 0.11 241), oklch(0.828 0.111 230));
+
+          /* Elevation. The shadow COLOUR is a var because Tailwind inlines a
+             --shadow-* value into the utility, so a per-theme shadow has to
+             carry its colour through a var inside the value. In dark the lift
+             comes from the SURFACE being lighter than the page, which --card
+             and --popover above already express; the shadow is stronger than
+             in light only so the edge still separates against a dark ground.
+             Kept identical to the registry theme, which is what the webjs ui
+             init command writes into an app. (No backticks in here: invariant
+             9, a backtick inside an html template body closes the literal at
+             parse time, even inside a CSS comment.) */
+          --elevation-ambient: light-dark(oklch(0 0 0 / 0.10), oklch(0 0 0 / 0.3));
+          --elevation-contact: light-dark(oklch(0 0 0 / 0.10), oklch(0 0 0 / 0.4));
 
           --primary-tint:   color-mix(in oklch, var(--ring) 22%, transparent);
           --accent-tint:    color-mix(in oklch, var(--ring) 14%, transparent);

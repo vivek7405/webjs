@@ -11,6 +11,12 @@
  *   BreadcrumbSeparator  → breadcrumbSeparatorClass() (aria-hidden + role="presentation")
  *   BreadcrumbEllipsis   → breadcrumbEllipsisClass()
  *
+ * Design: Breadcrumbs answer where am I, not how do I get back, so they earn their place
+ * only in a real hierarchy several levels deep. A two-level site does not need
+ * them. Keep them quiet: they are orientation rather than content, so they sit
+ * above the page title at small size and never compete with it. The current page
+ * is the last crumb and is not a link.
+ *
  * A11y (required for accessible output): wrap the list in <nav
  * aria-label="breadcrumb">, set aria-current="page" on the current-page
  * element, and mark each separator role="presentation" aria-hidden="true".

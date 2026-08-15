@@ -48,6 +48,28 @@
   --color-accent-foreground:      var(--accent-foreground);
   --color-destructive:            var(--destructive);
   --color-destructive-foreground: var(--destructive-foreground);
+  --color-destructive-subtle:     var(--destructive-subtle);
+  --color-destructive-subtle-foreground: var(--destructive-subtle-foreground);
+  /* The semantic roles (#1116). A token with no @theme entry emits no utility
+     at all, so the value block in layout.ts is not enough on its own. */
+  --color-success:                var(--success);
+  --color-success-foreground:     var(--success-foreground);
+  --color-success-subtle:         var(--success-subtle);
+  --color-success-subtle-foreground: var(--success-subtle-foreground);
+  --color-warning:                var(--warning);
+  --color-warning-foreground:     var(--warning-foreground);
+  --color-warning-subtle:         var(--warning-subtle);
+  --color-warning-subtle-foreground: var(--warning-subtle-foreground);
+  --color-info:                   var(--info);
+  --color-info-foreground:        var(--info-foreground);
+  --color-info-subtle:            var(--info-subtle);
+  --color-info-subtle-foreground: var(--info-subtle-foreground);
+  /* Elevation named by role. Geometry is Tailwind's own; the colour rides a
+     var so the dark theme can invert it. */
+  --shadow-e1: 0 1px 3px 0 var(--elevation-ambient), 0 1px 2px -1px var(--elevation-contact);
+  --shadow-e2: 0 4px 6px -1px var(--elevation-ambient), 0 2px 4px -2px var(--elevation-contact);
+  --shadow-e3: 0 10px 15px -3px var(--elevation-ambient), 0 4px 6px -4px var(--elevation-contact);
+  --shadow-e4: 0 20px 25px -5px var(--elevation-ambient), 0 8px 10px -6px var(--elevation-contact);
   --color-border:                 var(--border);
   /* The stronger border used by every hover affordance (cards, secondary
      buttons, todo rows). Tailwind v4 resolves border-<name> from --color-<name>,
@@ -60,11 +82,6 @@
   /* A translucent brand tint for focus rings, derived from --ring in
      app/layout.ts so the ring and its halo are the same hue. */
   --color-primary-tint:           var(--primary-tint);
-
-  /* One extra semantic shadcn does not ship: success (a couple of status
-     affordances use it). Added the canonical @theme way, not a parallel
-     vocabulary. */
-  --color-success:                var(--success);
 
   --font-display: var(--font-display);
   --font-sans:  var(--font-sans);

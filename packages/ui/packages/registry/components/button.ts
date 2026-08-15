@@ -11,6 +11,15 @@
  * shadcn React's `asChild` (Slot) prop has no equivalent here: just call
  * `buttonClass(...)` and spread the classes onto whatever element you want.
  *
+ * Design: One primary button per view. That is the action pyramid, and it is the rule
+ * most often broken, because every action feels important to whoever built the
+ * screen. Everything else is `outline` or `secondary`, and anything genuinely
+ * minor is `ghost` or a `link`. Two default-variant buttons side by side tell
+ * the reader nothing about which one to press, so they decide by position
+ * instead, which is not the decision you wanted them to make. `destructive` is
+ * for the irreversible one, not merely the negative one: cancel is not
+ * destructive.
+ *
  * A11y (required for accessible output): an icon-only button (the `icon`,
  * `icon-xs`, `icon-sm`, `icon-lg` sizes) has no visible text, so it MUST
  * carry an accessible name via aria-label (or aria-labelledby). A button
@@ -45,9 +54,17 @@ const BASE =
 const VARIANTS = {
   default: 'bg-primary text-primary-foreground hover:bg-primary/90',
   destructive:
+    // `text-white`, NOT `text-destructive-foreground`, and this is deliberate.
+    // The token pair is built for a SOLID `--destructive` fill, where the dark
+    // foreground (red-950) measures 5.58:1. This button does not paint a solid
+    // fill in dark: `dark:bg-destructive/60` composites red-400 at 60% over the
+    // page, and against THAT the token measures 2.49:1 while white measures
+    // 6.48:1. So the token would fail the one component it looks most correct
+    // on. `badge.ts` carries `text-white` on the identical shape for the same
+    // reason, and the two must not disagree.
     'bg-destructive text-white hover:bg-destructive/90 focus-visible:ring-destructive/20 dark:bg-destructive/60 dark:focus-visible:ring-destructive/40',
   outline:
-    'border bg-background shadow-xs hover:bg-accent hover:text-accent-foreground dark:border-input dark:bg-input/30 dark:hover:bg-input/50',
+    'border bg-background shadow-e1 hover:bg-accent hover:text-accent-foreground dark:border-input dark:bg-input/30 dark:hover:bg-input/50',
   secondary: 'bg-secondary text-secondary-foreground hover:bg-secondary/80',
   ghost: 'hover:bg-accent hover:text-accent-foreground dark:hover:bg-accent/50',
   link: 'text-primary underline-offset-4 hover:underline',

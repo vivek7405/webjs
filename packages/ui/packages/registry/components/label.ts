@@ -12,6 +12,13 @@
  *
  * Design tokens used: none (typography only).
  *
+ * Design: Every control gets one, and it is bound with `for` rather than merely placed
+ * nearby, which makes it a click target as well as a name. Keep labels short and
+ * in the reader's words rather than the schema's: `Business name` beats
+ * `company_name`. Do not mark every field required; mark the optional ones
+ * instead when most are required, which is the shorter list and the more useful
+ * one.
+ *
  * A11y (required for accessible output):
  *   Put this on a REAL `<label>`, and link it to its control, either with `for`
  *   pointing at the control's `id` (below) or by nesting the control inside the

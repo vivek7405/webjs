@@ -171,6 +171,27 @@ Card.register('my-card');</code-block>
     <h2>Design tokens via CSS custom properties</h2>
     <p>CSS custom properties <strong>inherit through shadow DOM boundaries</strong>. Define them once on <code>:root</code> (as the blog example does in its layout) and both light-DOM and shadow-DOM components can consume them via Tailwind classes (<code>text-foreground</code>, <code>bg-card</code>) or bare CSS (<code>var(--foreground)</code>).</p>
 
+    <h3>Semantic roles, not palette ramps</h3>
+    <p>State goes through a <strong>role</strong> token, never a palette family. <code>@webjsdev/ui</code> ships four tokens per role, a solid fill plus the text on it and a tinted surface plus the text on it, for <code>success</code>, <code>warning</code>, <code>info</code> and <code>destructive</code>:</p>
+
+    <code-block>&lt;!-- a state chip --&gt;
+&lt;span class="bg-success-subtle text-success-subtle-foreground rounded-md px-2 py-1 text-sm"&gt;Paid&lt;/span&gt;
+
+&lt;!-- a border, from the solid, with no extra token --&gt;
+&lt;div class="border-warning/30 border"&gt;…&lt;/div&gt;</code-block>
+
+    <p>Writing <code>text-emerald-500</code> instead is what makes an app un-rethemable: the app that sets its own tokens still gets that one hardcoded green. Every token is declared in both the light and dark value blocks <strong>and</strong> mapped in <code>@theme inline</code>, because a token with no mapping entry emits no utility at all.</p>
+
+    <p><strong>A <code>-foreground</code> token assumes a solid fill.</strong> A component that dilutes its fill with an opacity modifier is painting a different colour, and the pair no longer holds. The kit's destructive button paints <code>dark:bg-destructive/60</code>, against which <code>--destructive-foreground</code> measures 2.49:1 while plain <code>text-white</code> measures 6.48:1, so that one variant keeps <code>text-white</code>. If you dilute a fill, re-measure the foreground against the composite rather than assuming the token still applies.</p>
+
+    <h3>Elevation is named by role</h3>
+    <p><code>shadow-e1</code> is a card at rest, <code>shadow-e2</code> a menu, <code>shadow-e3</code> a dialog, <code>shadow-e4</code> a toast. The geometry is Tailwind's own, so this is naming rather than new numbers, and it means the z-axis says something: <code>shadow-md</code> on a card and <code>shadow-md</code> on a dropdown puts two different things on the same plane.</p>
+
+    <p>The shadow colour rides a <code>var()</code> <em>inside</em> the value, which is not stylistic. Tailwind <strong>inlines</strong> a <code>--shadow-*</code> theme value into the utility rather than emitting a <code>var()</code> reference to the token, so redeclaring <code>--shadow-e1</code> under a dark selector would do nothing at all. In dark mode the lift comes from the <strong>surface</strong> rather than the shadow: a raised element is lighter than the page behind it, which <code>--card</code> and <code>--popover</code> already express, and the shadow only separates its edge. A shadow doing all the work on a dark ground reads as a hole rather than as lift.</p>
+
+    <h3>What the screen should look like</h3>
+    <p>This page is the mechanics. For the design decisions themselves, hierarchy, the action pyramid, spacing rhythm, type scale, palette, and why every list needs an empty branch written beside it, an agent working in your app reads <code>.agents/skills/webjs/references/design.md</code>, which every scaffolded app ships.</p>
+
     <h2>Gotcha: an animated <code>@property</code> paints its <code>var()</code> fallback inside a link (Chromium)</h2>
     <p>An element that paints a registered <code>@property</code> custom property directly, for example <code>background: var(--brand-cycle, &lt;fallback&gt;)</code>, paints the <strong>fallback</strong> instead of the live animated value whenever it has an <code>&lt;a href&gt;</code> ancestor, when <code>--brand-cycle</code> is a registered <code>@property</code> animated by <code>@keyframes</code> on <code>:root</code>. A registered <code>@property</code> always has a valid computed value, so it must never paint its <code>var()</code> fallback; that it does here is a Chromium paint bug (confirmed headless and headed; other engines are unaffected).</p>
     <p>The tell that it is a PAINT bug, not a style bug: <code>getComputedStyle</code> returns the correct live animated value, only the painted pixels are stale. So verify with a screenshot or pixel sample, never with <code>getComputedStyle</code> (it lies here). The trigger is specifically an <code>&lt;a&gt;</code> with an <code>href</code> (a real link). The same subtree under a <code>&lt;div&gt;</code>, a <code>&lt;button&gt;</code>, or an <code>&lt;a&gt;</code> with no <code>href</code> animates correctly, which points at Chromium's visited-link paint isolation (links paint through a separate path, for <code>:visited</code> history-sniffing defense, that does not invalidate on a registered-custom-property animation). Neither <code>isolation: isolate</code>, <code>will-change</code>, <code>content-visibility</code>, a self-<code>animation</code>, nor re-declaring the property fixes it.</p>

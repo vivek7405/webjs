@@ -23,6 +23,13 @@
  * Design tokens used: --input, --background, --primary, --primary-foreground,
  * --muted-foreground, --ring, --destructive.
  *
+ * Design: A select trades scanning for space, so it is right past about seven options and
+ * wrong under about four, where radios show every choice at once. It is the
+ * wrong control for something with a natural order the reader is adjusting (use a
+ * slider or a stepper) and for anything they will want to search. Always carry a
+ * sensible default: an empty select asks the reader to make a decision before
+ * they know what the options are.
+ *
  * A11y (required for accessible output):
  *   LABEL IT. A `<label class=${labelClass()} for="<the select's id">` linked by
  *   the `for` / `id` pair is the whole requirement. A `<select>` with no label
@@ -77,7 +84,7 @@ export const nativeSelectWrapperClass = (): string =>
 
 export function nativeSelectClass(): string {
   return cn(
-    'h-9 w-full min-w-0 appearance-none rounded-md border border-input bg-transparent px-3 py-2 pr-9 text-sm shadow-xs transition-[color,box-shadow] outline-none selection:bg-primary selection:text-primary-foreground placeholder:text-muted-foreground disabled:pointer-events-none disabled:cursor-not-allowed data-[size=sm]:h-8 data-[size=sm]:py-1 dark:bg-input/30 dark:hover:bg-input/50',
+    'h-9 w-full min-w-0 appearance-none rounded-md border border-input bg-transparent px-3 py-2 pr-9 text-sm shadow-e1 transition-[color,box-shadow] outline-none selection:bg-primary selection:text-primary-foreground placeholder:text-muted-foreground disabled:pointer-events-none disabled:cursor-not-allowed data-[size=sm]:h-8 data-[size=sm]:py-1 dark:bg-input/30 dark:hover:bg-input/50',
     'focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50',
     'aria-invalid:border-destructive aria-invalid:ring-destructive/20 dark:aria-invalid:ring-destructive/40',
   );

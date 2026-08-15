@@ -25,6 +25,13 @@
  *
  * Design tokens used: --popover, --popover-foreground, --border.
  *
+ * Design: A popover is for secondary content attached to a specific thing, and it does
+ * not take over the screen the way a dialog does, so the reader keeps their
+ * context. Use it for a filter, a small form, or a detail panel. Anything with
+ * an outcome the rest of the page depends on wants a dialog instead, because a
+ * popover dismisses on an outside click and losing typed input that way is
+ * worse than the interruption.
+ *
  * A11y (required for accessible output):
  *   This is the Tier-1 component with the most for you to supply, because
  *   `popoverContentClass()` returns only classes: the panel it styles is a bare
@@ -213,7 +220,7 @@ export function popoverContentClass(opts: PopoverContentOptions = {}): string {
     alignClass = ALIGN_OFFSET_CLASS[`${axis}-${align}`][alignOffset];
   }
   return [
-    'w-72 m-0 rounded-md border bg-popover p-4 text-popover-foreground shadow-md outline-hidden',
+    'w-72 m-0 rounded-md border bg-popover p-4 text-popover-foreground shadow-e2 outline-hidden',
     POSITION_AREA_CLASS[`${side}-${align}`],
     MARGIN_OFFSET_CLASS[side][sideOffset],
     alignClass,

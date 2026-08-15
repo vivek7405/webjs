@@ -60,6 +60,13 @@
  *                         refocusing its sub-trigger) and refocus the trigger
  *   Tab                   close menu and proceed with normal tab order
  *
+ * Design: A menu holds actions, not navigation and not settings, and it holds the ones
+ * too numerous or too rare to sit on the surface. If there are two actions, put
+ * them on the surface as buttons instead, because a menu costs a click and hides
+ * what is available. Group with separators when there are more than about five,
+ * and put anything destructive at the bottom behind a separator so it is not
+ * adjacent to something routine.
+ *
  * A11y (owned by the element, nothing to supply):
  *   The trigger gets `aria-haspopup` / `aria-expanded` / `aria-controls`, the
  *   panel is a `role="menu"` labelled back by the trigger, and a disabled item
@@ -144,7 +151,7 @@ import { positionFloating, type PopoverSide, type PopoverAlign } from './popover
 // --------------------------------------------------------------------------
 
 export const dropdownMenuContentClass = (): string =>
-  'fixed z-50 max-h-[--available-height] min-w-[8rem] m-0 overflow-x-hidden overflow-y-auto rounded-md border bg-popover p-1 text-popover-foreground shadow-md';
+  'fixed z-50 max-h-[--available-height] min-w-[8rem] m-0 overflow-x-hidden overflow-y-auto rounded-md border bg-popover p-1 text-popover-foreground shadow-e2';
 
 export const dropdownMenuItemClass = (): string =>
   "relative flex cursor-default items-center gap-2 rounded-sm px-2 py-1.5 text-sm outline-hidden select-none focus:bg-accent focus:text-accent-foreground hover:bg-accent hover:text-accent-foreground data-[disabled]:pointer-events-none data-[disabled]:opacity-50 data-[inset]:pl-8 data-[variant=destructive]:text-destructive data-[variant=destructive]:focus:bg-destructive/10 data-[variant=destructive]:focus:text-destructive data-[variant=destructive]:hover:bg-destructive/10 data-[variant=destructive]:hover:text-destructive dark:data-[variant=destructive]:focus:bg-destructive/20 dark:data-[variant=destructive]:hover:bg-destructive/20 [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-4";
@@ -167,7 +174,7 @@ export const dropdownMenuSubTriggerClass = (): string =>
   "flex cursor-default items-center rounded-sm px-2 py-1.5 text-sm select-none outline-hidden focus:bg-accent focus:text-accent-foreground hover:bg-accent hover:text-accent-foreground data-[state=open]:bg-accent data-[state=open]:text-accent-foreground data-[disabled]:pointer-events-none data-[disabled]:opacity-50 data-[inset]:pl-8 [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-4 [&>svg:last-child]:ml-auto";
 
 export const dropdownMenuSubContentClass = (): string =>
-  'fixed z-50 min-w-[8rem] m-0 overflow-hidden rounded-md border bg-popover p-1 text-popover-foreground shadow-lg';
+  'fixed z-50 min-w-[8rem] m-0 overflow-hidden rounded-md border bg-popover p-1 text-popover-foreground shadow-e2';
 
 const CHEVRON_RIGHT_SVG =
   '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="ml-auto size-4" aria-hidden="true"><polyline points="9 18 15 12 9 6"></polyline></svg>';

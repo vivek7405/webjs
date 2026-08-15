@@ -12,6 +12,12 @@
  * Design tokens used: --input, --background, --muted-foreground, --ring,
  * --destructive.
  *
+ * Design: Size it to the answer you expect, since the field is the clearest signal
+ * anyone gets about how much to write. Three rows asks for a sentence and ten
+ * asks for a paragraph, and a one-line input asks for neither. Let it grow
+ * rather than trapping a long answer in a small scrolling box, and if there is a
+ * hard limit say so before they hit it rather than truncating afterwards.
+ *
  * A11y (required for accessible output):
  *   LABEL IT. A `<label class=${labelClass()} for="<the textarea's id">` linked
  *   by the `for` / `id` pair is the whole requirement. The `placeholder` in the
@@ -40,7 +46,7 @@
 import { cn } from '../lib/utils.ts';
 
 const TEXTAREA_BASE =
-  'flex field-sizing-content min-h-16 w-full rounded-md border border-input bg-transparent px-3 py-2 text-base shadow-xs transition-[color,box-shadow] outline-none placeholder:text-muted-foreground focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50 disabled:cursor-not-allowed disabled:opacity-50 aria-invalid:border-destructive aria-invalid:ring-destructive/20 md:text-sm dark:bg-input/30 dark:aria-invalid:ring-destructive/40';
+  'flex field-sizing-content min-h-16 w-full rounded-md border border-input bg-transparent px-3 py-2 text-base shadow-e1 transition-[color,box-shadow] outline-none placeholder:text-muted-foreground focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50 disabled:cursor-not-allowed disabled:opacity-50 aria-invalid:border-destructive aria-invalid:ring-destructive/20 md:text-sm dark:bg-input/30 dark:aria-invalid:ring-destructive/40';
 
 /** Compose Tailwind classes for a native `<textarea>`. */
 export function textareaClass(): string {

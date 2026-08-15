@@ -9,7 +9,7 @@ import { buttonClass } from '#components/ui/button.ts';
 
 export default function GlobalNotFound() {
   return html`
-    <main class="mx-auto max-w-[40rem] px-6 py-24 text-center">
+    <main class="mx-auto max-w-2xl px-6 py-24 text-center">
       <p class="text-sm font-semibold uppercase tracking-wide text-primary">404</p>
       <h1 class="mt-2 text-3xl font-bold">Page not found</h1>
       <p class="mt-4 text-muted-foreground">We could not find the page you were looking for.</p>

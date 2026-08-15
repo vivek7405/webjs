@@ -11,6 +11,13 @@
  *
  * Design tokens used: --input, --primary, --ring, --destructive.
  *
+ * Design: Radios are for a choice between mutually exclusive options where seeing all of
+ * them matters, which is why they beat a select under about seven. The group
+ * needs a legend, since without it a screen reader announces the options with no
+ * idea what question they answer, and a sighted reader has the same problem in a
+ * dense form. Preselect the safe or common default rather than leaving the group
+ * empty, and keep the option order stable across visits.
+ *
  * A11y (required for accessible output):
  *   `data-slot="radio"` is REQUIRED, not decoration. The injected stylesheet
  *   keys the indicator dot on it, and `radioClass()` carries no checked
@@ -70,7 +77,7 @@ const DOT_DARK =
   "url(\"data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 20 20'><circle cx='10' cy='10' r='5' fill='oklch(0.985 0 0)'/></svg>\")";
 
 const RADIO_CLASS =
-  'aspect-square size-4 shrink-0 appearance-none rounded-full border border-input bg-transparent shadow-xs transition-[color,box-shadow] outline-none focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50 disabled:cursor-not-allowed disabled:opacity-50 aria-invalid:border-destructive aria-invalid:ring-destructive/20 checked:border-primary checked:bg-no-repeat checked:bg-center dark:bg-input/30 dark:aria-invalid:ring-destructive/40';
+  'aspect-square size-4 shrink-0 appearance-none rounded-full border border-input bg-transparent shadow-e1 transition-[color,box-shadow] outline-none focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50 disabled:cursor-not-allowed disabled:opacity-50 aria-invalid:border-destructive aria-invalid:ring-destructive/20 checked:border-primary checked:bg-no-repeat checked:bg-center dark:bg-input/30 dark:aria-invalid:ring-destructive/40';
 
 // Three sibling rule blocks for theme selection: mirrors the
 // checkbox.ts pattern in this same registry:

@@ -38,6 +38,8 @@ const V1_COMPONENTS = [
   'dialog', 'alert-dialog', 'popover', 'tooltip', 'hover-card',
   'tabs', 'accordion', 'collapsible',
   'dropdown-menu', 'sonner',
+  // #1116
+  'empty-state', 'stat', 'page-header', 'field-group', 'description-list', 'timeline',
 ];
 
 // Components that are Tier 2, must register a custom element.

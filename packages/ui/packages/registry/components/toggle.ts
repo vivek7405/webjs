@@ -21,6 +21,12 @@
  *
  * Keyboard: native button. Enter / Space activates (via the inner <button>).
  *
+ * Design: A single toggle is a button that stays pressed, so its label describes the
+ * thing it controls and its pressed state carries the on or off. That state must
+ * be visible without colour alone. If the change takes effect immediately and
+ * reads as a setting rather than a formatting control, a switch says so more
+ * clearly.
+ *
  * A11y (required for accessible output):
  *   `<ui-toggle>` renders a native `<button>` inside itself, and that button is
  *   the focusable control whose accessible name a screen reader announces. An
@@ -82,7 +88,7 @@ const BASE =
 const VARIANTS = {
   default: 'bg-transparent',
   outline:
-    'border border-input bg-transparent shadow-xs hover:bg-accent hover:text-accent-foreground',
+    'border border-input bg-transparent shadow-e1 hover:bg-accent hover:text-accent-foreground',
 } as const;
 
 const SIZES = {

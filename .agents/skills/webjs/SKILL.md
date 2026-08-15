@@ -67,6 +67,8 @@ Rows point rather than explain. The reference is the authority on the rule, and 
 | accept an upload and serve it back | `FileStore` plus a streaming route | buffering the file in memory or writing to `public/` | `references/built-ins.md` | `app/features/file-storage` |
 | keep the app usable offline | the opt-in service worker | caching responses in `localStorage` | `references/service-worker.md` | `app/features/service-worker` |
 | see these composed in one real feature | the todo example app | stitching the single-feature demos together | `references/optimistic-ui.md` | `app/examples/todo` |
+| work out what a screen should look like before writing the class list | the design reference, then the dashboard exemplar | making everything the same weight and hoping it reads | `references/design.md` | `app/examples/dashboard` |
+| make a long form fillable rather than a column of inputs | grouping by fieldset, with reserved error space | one flat list of every field the model has | `references/design.md` | `app/examples/settings` |
 
 ## Load Only The References You Need
 
@@ -80,6 +82,8 @@ The table above routes by the job; this one routes by the topic, for when you al
 | Server actions, mutations, queries, validation, the `ActionResult` envelope | `references/data-and-actions.md`              |
 | Sessions, login flows, route protection, `forbidden()` / `unauthorized()`   | `references/auth-and-sessions.md`             |
 | Tailwind, light-DOM tag-prefix rule, tokens, fixed headers, no-reflow layout | `references/styling.md`                        |
+| **Designing a screen** (READ FIRST when building any user-facing screen): hierarchy, the action pyramid, spacing rhythm, type scale, palette, elevation, empty states | `references/design.md`                         |
+| Palette construction from an accent, the component-variant checklist, finishing touches | `references/design-depth.md`                   |
 | Client router, prefetch, frames, view transitions, Suspense streaming        | `references/client-router-and-streaming.md`   |
 | Optimistic UI for a user-facing mutation                                     | `references/optimistic-ui.md`                 |
 | The `@webjsdev/ui` component kit (a `components.json` is present): class helpers, tokens, `add` / `view`, the MCP `ui` tool | `references/ui-kit.md`                         |

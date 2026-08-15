@@ -11,6 +11,13 @@
  * Design tokens used: --primary, --input, --background, --foreground, --ring,
  * --primary-foreground.
  *
+ * Design: A switch takes effect immediately, which is what separates it from a checkbox.
+ * If the change needs a save button, it is a checkbox and using a switch there
+ * is a promise the form does not keep. Label the thing being switched, not the
+ * action (`Email notifications`, not `Enable email notifications`), because the
+ * control already says on or off and the label should read the same in both
+ * states.
+ *
  * A11y (required for accessible output):
  *   Keep `role="switch"` on the native checkbox. That is what makes a screen
  *   reader announce "on / off" rather than "checked / unchecked", and the
@@ -52,7 +59,7 @@ import { cn } from '../lib/utils.ts';
 export const switchInputClass = (): string => 'peer sr-only';
 
 const TRACK_BASE =
-  'inline-flex shrink-0 cursor-pointer items-center rounded-full border border-transparent shadow-xs transition-all outline-none peer-focus-visible:border-ring peer-focus-visible:ring-[3px] peer-focus-visible:ring-ring/50 peer-disabled:cursor-not-allowed peer-disabled:opacity-50 bg-input dark:bg-input/80 peer-checked:bg-primary relative';
+  'inline-flex shrink-0 cursor-pointer items-center rounded-full border border-transparent shadow-e1 transition-all outline-none peer-focus-visible:border-ring peer-focus-visible:ring-[3px] peer-focus-visible:ring-ring/50 peer-disabled:cursor-not-allowed peer-disabled:opacity-50 bg-input dark:bg-input/80 peer-checked:bg-primary relative';
 
 const TRACK_SIZES = {
   default: 'h-[1.15rem] w-8',

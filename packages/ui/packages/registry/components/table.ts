@@ -13,6 +13,13 @@
  *   TableHead / TableCell / TableCaption
  *                                     → tableHeadClass() / tableCellClass() / tableCaptionClass()
  *
+ * Design: A table is for comparing rows on shared columns, and that is the only thing it
+ * is good at. Data the reader consumes one item at a time belongs in a list or
+ * cards. Right-align numbers so the digits line up, keep the alignment
+ * consistent down a column, and let the row's identifying column stay left. Show
+ * fewer columns than you have: a table wide enough to scroll sideways is one
+ * nobody compares anything in.
+ *
  * A11y (required for accessible output): every header cell needs a scope
  * (scope="col" on a column header, scope="row" on a row header) so screen
  * readers map cells to their headers. Add a <caption> naming the table's

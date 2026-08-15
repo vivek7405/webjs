@@ -33,6 +33,12 @@
  * Keyboard:
  *   Escape   dismiss a showing tip, leaving focus on the trigger
  *
+ * Design: A tooltip supplements, never explains something essential, because it cannot
+ * be reached by touch and appears only on hover or focus. An icon-only button
+ * still needs its accessible name whether or not it has a tooltip. Keep it to a
+ * few words: anything longer is help text belonging under the field, and
+ * anything the reader must act on does not belong in a tooltip at all.
+ *
  * A11y (owned by the element, nothing to supply):
  *   The focusable trigger references the tip via `aria-describedby`, so a
  *   screen reader appends the tip to the trigger's own name, and the tip opens

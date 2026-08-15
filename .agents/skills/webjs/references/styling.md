@@ -1,5 +1,10 @@
 # Styling
 
+> This file is the MECHANICS: how to make a class list work in WebJs. For what
+> the screen should look like before you write one (hierarchy, the action
+> pyramid, spacing rhythm, type scale, palette, elevation, empty states), read
+> `references/design.md` alongside it.
+
 ## What This Covers
 
 - Tailwind-first: the strong default for pages AND light-DOM components, and the Lit reflex it counters

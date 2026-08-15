@@ -56,7 +56,7 @@ test('uiComponent: null for a non-ui / unknown name', () => {
 
 test('uiInventory: one entry per registry:ui component, tier-labelled, sorted', () => {
   const inv = uiInventory();
-  assert.equal(inv.length, 32);
+  assert.equal(inv.length, 38);
   assert.ok(inv.every((c) => c.tier === 1 || c.tier === 2));
   const names = inv.map((c) => c.name);
   assert.deepEqual(names, [...names].sort(), 'inventory is sorted by name');

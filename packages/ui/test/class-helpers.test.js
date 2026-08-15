@@ -248,3 +248,157 @@ test('native-select: wrapper + select + option helpers', { skip }, async () => {
     assertHelper(mod, name);
   }
 });
+
+// ---------- empty-state (#1116) ----------
+
+test('empty-state: container, media, title, description, actions', { skip }, async () => {
+  const mod = await import(join(COMPONENTS_DIR, 'empty-state.ts'));
+  for (const name of [
+    'emptyStateClass',
+    'emptyStateMediaClass',
+    'emptyStateTitleClass',
+    'emptyStateDescriptionClass',
+    'emptyStateActionsClass',
+  ]) {
+    assertHelper(mod, name);
+  }
+  // The bordered variant is what marks a fillable region, so it must actually
+  // differ from the plain one rather than silently ignoring the option.
+  assert.notEqual(mod.emptyStateClass(), mod.emptyStateClass({ variant: 'bordered' }));
+  assert.match(mod.emptyStateClass({ variant: 'bordered' }), /border-dashed/);
+});
+
+// ---------- stat (#1116) ----------
+
+test('stat: group, stat, label, value, delta', { skip }, async () => {
+  const mod = await import(join(COMPONENTS_DIR, 'stat.ts'));
+  for (const name of ['statGroupClass', 'statClass', 'statLabelClass', 'statValueClass', 'statDeltaClass']) {
+    assertHelper(mod, name);
+  }
+  // The value outweighs its label. That inversion IS the primitive, so it is
+  // asserted rather than left to the class string.
+  assert.match(mod.statValueClass(), /text-3xl/);
+  assert.match(mod.statLabelClass(), /text-sm/);
+  assert.match(mod.statLabelClass(), /text-muted-foreground/);
+});
+
+test('stat: delta direction goes through the semantic roles, never a raw palette', { skip }, async () => {
+  const mod = await import(join(COMPONENTS_DIR, 'stat.ts'));
+  assert.match(mod.statDeltaClass({ direction: 'up' }), /text-success/);
+  assert.match(mod.statDeltaClass({ direction: 'down' }), /text-destructive/);
+  assert.match(mod.statDeltaClass({ direction: 'flat' }), /text-muted-foreground/);
+  assert.equal(mod.statDeltaClass(), mod.statDeltaClass({ direction: 'flat' }));
+  for (const direction of ['up', 'down', 'flat']) {
+    assert.doesNotMatch(mod.statDeltaClass({ direction }), /-(red|green|emerald|amber)-\d/);
+  }
+});
+
+test('stat: the group column option changes the grid', { skip }, async () => {
+  const mod = await import(join(COMPONENTS_DIR, 'stat.ts'));
+  assert.notEqual(mod.statGroupClass({ columns: 2 }), mod.statGroupClass({ columns: 4 }));
+  assert.equal(mod.statGroupClass(), mod.statGroupClass({ columns: 3 }));
+});
+
+// ---------- page-header (#1116) ----------
+
+test('page-header: header, title, description, actions', { skip }, async () => {
+  const mod = await import(join(COMPONENTS_DIR, 'page-header.ts'));
+  for (const name of [
+    'pageHeaderClass',
+    'pageHeaderTitleClass',
+    'pageHeaderDescriptionClass',
+    'pageHeaderActionsClass',
+  ]) {
+    assertHelper(mod, name);
+  }
+  assert.match(mod.pageHeaderClass({ variant: 'bordered' }), /border-b/);
+});
+
+// ---------- field-group (#1116) ----------
+
+test('field-group: fieldset, legend, group, input group, addon, error space', { skip }, async () => {
+  const mod = await import(join(COMPONENTS_DIR, 'field-group.ts'));
+  for (const name of [
+    'fieldSetClass',
+    'fieldLegendClass',
+    'fieldGroupClass',
+    'inputGroupClass',
+    'inputGroupAddonClass',
+    'inputGroupTextClass',
+    'fieldErrorClass',
+  ]) {
+    assertHelper(mod, name);
+  }
+  assert.match(mod.inputGroupAddonClass({ side: 'start' }), /border-r/);
+  assert.match(mod.inputGroupAddonClass({ side: 'end' }), /border-l/);
+});
+
+test('field-group: the error space is reserved, so a message cannot shift the form', { skip }, async () => {
+  const mod = await import(join(COMPONENTS_DIR, 'field-group.ts'));
+  // Without a min height the space appears only once there is an error, and
+  // the form jumps a line the moment someone gets something wrong.
+  assert.match(mod.fieldErrorClass(), /min-h-/);
+});
+
+test('field-group: does not shadow the field helpers lib/utils already exports', { skip }, async () => {
+  const mod = await import(join(COMPONENTS_DIR, 'field-group.ts'));
+  const utils = await import(join(COMPONENTS_DIR, '..', 'lib', 'utils.ts'));
+  // `fieldErrorClass` (the space) and `errorClass` (the text) read alike and
+  // are different things, so the one thing that must not happen is this file
+  // re-exporting a name lib/utils.ts already owns.
+  for (const owned of ['fieldClass', 'fieldRowClass', 'fieldLabelClass', 'hintClass', 'errorClass']) {
+    assert.ok(owned in utils, `lib/utils.ts should still export ${owned}`);
+    assert.ok(!(owned in mod), `field-group.ts must not shadow ${owned}`);
+  }
+});
+
+// ---------- description-list (#1116) ----------
+
+test('description-list: list, row, term, details', { skip }, async () => {
+  const mod = await import(join(COMPONENTS_DIR, 'description-list.ts'));
+  for (const name of [
+    'descriptionListClass',
+    'descriptionRowClass',
+    'descriptionTermClass',
+    'descriptionDetailsClass',
+  ]) {
+    assertHelper(mod, name);
+  }
+  // The term goes quiet and the value stays at reading weight. That is the
+  // whole point of the primitive over `Label: ${value}`.
+  assert.match(mod.descriptionTermClass(), /text-muted-foreground/);
+  assert.doesNotMatch(mod.descriptionDetailsClass(), /text-muted-foreground/);
+  assert.notEqual(mod.descriptionRowClass(), mod.descriptionRowClass({ layout: 'inline' }));
+});
+
+// ---------- timeline (#1116) ----------
+
+test('timeline: feed, item, marker, connector, content, title, time', { skip }, async () => {
+  const mod = await import(join(COMPONENTS_DIR, 'timeline.ts'));
+  for (const name of [
+    'timelineClass',
+    'timelineItemClass',
+    'timelineMarkerClass',
+    'timelineConnectorClass',
+    'timelineContentClass',
+    'timelineTitleClass',
+    'timelineTimeClass',
+  ]) {
+    assertHelper(mod, name);
+  }
+});
+
+test('timeline: marker variants reuse the semantic roles', { skip }, async () => {
+  const mod = await import(join(COMPONENTS_DIR, 'timeline.ts'));
+  assert.match(mod.timelineMarkerClass({ variant: 'success' }), /bg-success/);
+  assert.match(mod.timelineMarkerClass({ variant: 'warning' }), /bg-warning/);
+  assert.match(mod.timelineMarkerClass({ variant: 'info' }), /bg-info/);
+  assert.match(mod.timelineMarkerClass({ variant: 'destructive' }), /bg-destructive/);
+  assert.equal(mod.timelineMarkerClass(), mod.timelineMarkerClass({ variant: 'default' }));
+});
+
+test('timeline: the connector stops at the last marker', { skip }, async () => {
+  const mod = await import(join(COMPONENTS_DIR, 'timeline.ts'));
+  // Without this the line trails off past the final event.
+  assert.match(mod.timelineConnectorClass(), /last-child/);
+});

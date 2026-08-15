@@ -125,7 +125,7 @@ function GROUPS(): Array<[RegExp, string]> {
     // far more often a colour while a bare `shadow-[var(--x)]` is far more often
     // a shadow. The size entries must precede the colour catch-all, or every
     // size lands in the colour group and the bug inverts rather than being fixed.
-    [/^shadow(-(2xs|xs|sm|md|lg|xl|2xl|inner|none))?(\/([\d.]+|\[[^\]]*\]))?$/, 'shadow'],
+    [/^shadow(-(2xs|xs|sm|md|lg|xl|2xl|inner|none|e1|e2|e3|e4))?(\/([\d.]+|\[[^\]]*\]))?$/, 'shadow'],
     [/^shadow-(\[(inset|-|\.|\d|var\()|\(--)/, 'shadow'],
     // A bare name the size scale does not list reads as a colour, because
     // `shadow-primary` is overwhelmingly more common than a `@theme`-extended
@@ -194,7 +194,7 @@ function borderGroups(): Array<[RegExp, string]> {
 
 /**
  * An arbitrary value may carry a Tailwind TYPE HINT: `bg-[image:var(--g)]`,
- * `text-[length:14px]`, `shadow-[color:red]`, and in the v4 paren shorthand
+ * `text-sm`, `shadow-[color:red]`, and in the v4 paren shorthand
  * `bg-(image:--g)`, `shadow-(color:--x)`. The hint exists precisely because
  * the utility prefix is ambiguous, so the PREFIX cannot decide the group and
  * the hint must. Letting a hinted value fall into the prefix's default group
