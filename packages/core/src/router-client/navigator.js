@@ -13,7 +13,7 @@ import { parseHTML } from './dom-parse.js';
 import { onClick, onPopState, onSubmit } from './events.js';
 import { fetchAndApply } from './fetch-apply.js';
 import { clearFormBusy, markFormBusy } from './frames.js';
-import { clearPrefetchHover, clearPrefetchViewTimers, onPrefetchIntent, onPrefetchOut, prefetchCache, refreshPrefetchObservers, teardownPrefetchViewObserver } from './prefetch.js';
+import { clearPrefetchHover, clearPrefetchRefused, clearPrefetchViewTimers, onPrefetchIntent, onPrefetchOut, prefetchCache, prefetchClearAll, prefetchEvict, refreshPrefetchObservers, teardownPrefetchViewObserver } from './prefetch.js';
 // `restoreGeneration` is imported READ-ONLY: the deferred restore captures it
 // and re-compares after the frame, so it must be the live binding. Writes go
 // through bumpRestoreGeneration(), since ESM forbids assigning an import.
@@ -178,7 +178,18 @@ export async function navigate(url, opts) {
  *
  * This is NOT a page navigation: it records no history entry, takes no page
  * snapshot, and shows no optimistic loading skeleton (it swaps one region, not
- * the page). It runs under a fresh nav token + AbortController so it interleaves
+ * the page). It also stands entirely outside the speculative prefetch cache
+ * (#1407): it EVICTS the warm entry for this url in this frame's dimension and
+ * passes `noPrefetch` so it cannot consume one, because a `src` self-load or
+ * `src` mutation is the app asking for THIS frame's content now, a freshness
+ * request rather than a hover being followed. Refusing without evicting would
+ * leave a copy this load is about to supersede, so a later click on that
+ * frame's link would repaint it with staler bytes than are already on screen.
+ * The evict half runs only once the swap has COMMITTED, so a load that aborts,
+ * fails, or hits `webjs:frame-missing` leaves the warm entry alone: the frame
+ * still shows its old content, which that entry still matches.
+ *
+ * It runs under a fresh nav token + AbortController so it interleaves
  * safely with real navigations and with a superseding `src` change on the same
  * frame (the later load's token wins; the earlier one's teardown never clears
  * the newer load's busy state, see `frameBusyTokens`).
@@ -211,7 +222,7 @@ export async function loadFrame(frameEl, url) {
   const signal = activeAbortController.signal;
   const myToken = bumpNavToken();
 
-  return fetchAndApply(
+  const outcome = await fetchAndApply(
     target.href,
     id,
     /* recordHistory */ false,
@@ -220,7 +231,30 @@ export async function loadFrame(frameEl, url) {
     /* body */ null,
     signal,
     myToken,
+    /* revalidating */ false,
+    /* refresh */ undefined,
+    // A self-load never consumes a speculative entry (#1407). Dropping the
+    // blanket `!frameId` guard from the consume check made this path eligible
+    // for the first time, and it should not be: a `src` self-load or a `src`
+    // mutation is the app asking for THIS frame's content now, which is a
+    // freshness request, not the click-follows-hover shape the warm cache
+    // exists to serve. Deliberately out of scope for that change.
+    /* noPrefetch */ true,
   );
+
+  // A self-load is a freshness request, so it does BOTH halves (#1407): it
+  // declines to consume a warm entry (above), and it drops the copy it has
+  // superseded. Only once the swap actually COMMITTED, though, which `applied`
+  // is exactly the question for (`ok` is not, since a 422 or a notFound() page
+  // still commits). The clearest case is a `webjs:frame-missing` or an abort by
+  // a newer nav: the frame keeps showing its old content, which the warm entry
+  // still matches, so evicting would cost the next click a round trip for
+  // nothing. A transport failure or a non-HTML body do NOT leave the page
+  // untouched (`handleNavigationError` either swaps an error alert into the
+  // deepest layout range or hard-navigates), but they commit nothing for this
+  // FRAME either, so the same gate is right for them by the same rule.
+  if (outcome && outcome.applied) prefetchEvict(target.href, id);
+  return outcome;
 }
 
 /**
@@ -239,11 +273,29 @@ export function revalidate(url) {
   // Loose `== null` would have left `revalidate('')` to silently no-op,
   // because `new URL('', location.href)` is a valid relative URL and the
   // resulting cache key rarely matches anything.
-  if (!url) { snapshotCache.clear(); prefetchCache.clear(); return; }
+  // Neither form touches the refusal memos (#1407). This is the post-MUTATION
+  // api an app calls after an RPC write, so clearing here would drop every memo
+  // on every mutation and reopen the request-per-hover loop the memo exists to
+  // close. A mutation CAN change a render's streamed shape, since a page may
+  // render `Suspense` conditionally on fetched data, but a memo that outlives
+  // that costs one skipped warm-up for that key until the TTL, which is the
+  // cheaper side of the trade. `refreshPage`, where the SOURCE may have changed,
+  // clears them itself.
+  if (!url) { snapshotCache.clear(); prefetchClearAll(); return; }
   const u = new URL(url, location.href);
   const key = u.pathname + u.search;
   snapshotCache.delete(key);
+  // EVERY dimension of that url, not just the page one (#1407). A frame link's
+  // entry is keyed `<frameId> <path>`, so deleting the bare path would leave a
+  // pre-mutation frame subtree consumable by the next frame click for the rest
+  // of its TTL, which is the exact staleness this function exists to prevent.
+  // The path half can never contain a space (the URL parser percent-encodes
+  // one), so a trailing-space match identifies the framed keys unambiguously.
   prefetchCache.delete(key);
+  const framedSuffix = ` ${key}`;
+  for (const k of [...prefetchCache.keys()]) {
+    if (k.endsWith(framedSuffix)) prefetchCache.delete(k);
+  }
 }
 
 /**
@@ -276,6 +328,17 @@ export async function refreshPage(mode) {
   if (!enabled || typeof location === 'undefined') return false;
   // Every cached copy predates the change, so drop both caches before fetching.
   revalidate();
+  // And the refusal memos (#1407), which `revalidate` deliberately leaves alone
+  // because it is also the post-mutation api. Here the SOURCE changed, and an
+  // edit can start or stop a route streaming, which is what produced the
+  // unmarked answer a memo recorded. What reaches here is an edit to a file the
+  // browser does NOT download: a page gaining or losing a `Suspense(...)`
+  // boundary is the plain case, since rendering one does not by itself make the
+  // page client-effecting, so it classifies `page` rather than a reload. An edit
+  // to anything that SHIPS reloads instead and never arrives, which covers a
+  // `loading.{js,ts}` either direction (it can never be elided, so it is always
+  // shipped, and a brand-new one is in no graph at all).
+  clearPrefetchRefused();
   try {
     const res = await performNavigation(location.href, false, null, { refresh: mode === 'shell' ? 'shell' : 'page' });
     // The outcome has to be READ, not inferred from the absence of a throw.
@@ -657,7 +720,7 @@ export async function performSubmission(href, method, body, frameId, form) {
     // mutation would otherwise be served stale on a later forward click.
     if (!isSafe && myToken === currentNavigationToken) {
       snapshotCache.clear();
-      prefetchCache.clear();
+      prefetchClearAll();
     }
   } finally {
     if (busyForm) clearFormBusy(busyForm, myToken, url.href, outcomeOk);

@@ -533,6 +533,17 @@ export async function ssrPage(route, params, url, opts) {
       const subtree = extractFrameSubtree(body, frameId);
       if (subtree !== null) {
         const frameRes = htmlResponse(subtree, opts.status || 200, opts.req, url);
+        // Positively mark the response as the SLICED subtree (#1407). This
+        // branch is not the only answer to an `x-webjs-frame` request: a
+        // streamed render skips it (the guard above) and a frame id absent from
+        // the output falls through, and both send a whole document instead. The
+        // client's speculative cache has to tell those apart before it stores a
+        // body under a frame key, and it cannot infer it from the bytes (a page
+        // whose first element is a frame looks exactly like a subtree). A
+        // reduced `X-Webjs-Have` fragment is self-describing via its leading
+        // boundary comment; a frame subtree carries no such marker, so the
+        // server states it.
+        frameRes.headers.set('x-webjs-frame', frameId);
         // The subtree is sliced by the x-webjs-frame REQUEST header, so a
         // shared cache must never serve it to a request that did not send
         // one (the same #1009 poisoning shape as the reduced-have case).

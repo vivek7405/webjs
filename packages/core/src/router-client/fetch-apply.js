@@ -38,6 +38,10 @@ import { _swapCommit, applySwap } from './swap.js';
  * @param {'page' | 'shell'} [refresh]  Same-URL in-place refresh (#1398). It
  *   suppresses the `X-Webjs-Have` header and picks the swap tier; see
  *   `refreshPage`.
+ * @param {boolean} [noPrefetch]  Never consume a speculative entry, whatever the
+ *   cache holds (#1407). Set by `loadFrame`: a `<webjs-frame src>` self-load or
+ *   `src` mutation asks for THIS frame's content now, which is a freshness
+ *   request rather than the click-follows-hover shape the warm cache serves.
  * @returns {Promise<{ ok: boolean, status: number | null, aborted: boolean, applied: boolean }>}
  *   The fetch outcome, so a caller (the form-submission busy/event lifecycle)
  *   can report whether the submission settled as a success, an error, or an
@@ -58,7 +62,7 @@ import { _swapCommit, applySwap } from './swap.js';
  *   boundary scan). A caller deciding whether to fall back to a full page load
  *   wants `applied`; one reporting the submission's success wants `ok`.
  */
-export async function fetchAndApply(href, frameId, recordHistory, optimisticState, method, body, signal, token, revalidating, refresh) {
+export async function fetchAndApply(href, frameId, recordHistory, optimisticState, method, body, signal, token, revalidating, refresh, noPrefetch) {
   method = method || 'GET';
   const myToken = typeof token === 'number' ? token : currentNavigationToken;
   let html;
@@ -85,20 +89,30 @@ export async function fetchAndApply(href, frameId, recordHistory, optimisticStat
   try {
     // Warm-cache fast path: a hover/focus/viewport prefetch may already hold
     // this page. Consume it instead of going to the network, so the click
-    // resolves with no round-trip. Only for plain GET navs without a frame
-    // target; form submissions and frame swaps always hit the server. The entry
-    // is single-use (prefetchTake removes it), TTL-guarded, and validated by its
-    // ANCHOR rather than by an identical X-Webjs-Have (#1114): a fragment
-    // applies wherever the boundary it starts at is still live, so an unrelated
-    // navigation between the prefetch and this click does not disqualify it.
+    // resolves with no round-trip. Only for GET navs carrying no body. A
+    // MUTATING form submission is a write and always hits the server; a SAFE
+    // (GET) submission is a read like a link click, so it consumes like one,
+    // including in a frame dimension. A FRAME nav consumes only an entry
+    // fetched under the SAME frame id (#1407): the key carries that dimension,
+    // so a page fragment can never be applied into a frame region, nor a frame
+    // subtree into a page swap, and a `<webjs-frame src>` SELF-load opts out
+    // entirely via `noPrefetch`, since it is asking for fresh content rather
+    // than following a hover. The entry
+    // is single-use (prefetchTake removes it) and TTL-guarded. A PAGE entry is
+    // then validated by its ANCHOR rather than by an identical X-Webjs-Have
+    // (#1114): a fragment applies wherever the boundary it starts at is still
+    // live, so an unrelated navigation between the prefetch and this click does
+    // not disqualify it. A FRAME entry is validated differently, by its
+    // `<webjs-frame id>` still being in the document, since a subtree carries no
+    // boundary comment to anchor on (#1407).
     // The optimistic skeleton has already deleted nested boundaries by now, so
     // pass the view captured before it ran.
     // A refresh must never consume a prefetch (#1398): every cached copy
     // predates the change that triggered it. `refreshPage` clears both caches
     // before it fetches, so this only closes the window where a prefetch lands
     // between that clear and this read.
-    const prefetched = (method === 'GET' && !body && !frameId && !refresh)
-      ? prefetchTake(href, optimisticState ? optimisticState.haveKeys : undefined)
+    const prefetched = (method === 'GET' && !body && !refresh && !noPrefetch)
+      ? prefetchTake(href, optimisticState ? optimisticState.haveKeys : undefined, frameId)
       : null;
     if (prefetched) {
       html = prefetched.html;

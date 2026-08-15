@@ -9,6 +9,7 @@
 import { closestAnchor } from './anchors.js';
 import { buildHaveHeader } from './boundaries.js';
 import { NON_HTML_EXTENSIONS } from './constants.js';
+import { liveFrameElement, resolveTargetFrameId } from './frames.js';
 import { enabled } from './state.js';
 
 import { cacheKey, snapshotCache } from './snapshot-cache.js';
@@ -36,12 +37,104 @@ const PREFETCH_HOVER_DELAY = 100;
  */
 const PREFETCH_VIEWPORT_DELAY = 250;
 
-/** @typedef {{ html: string, build: string | null, finalUrl: string, at: number }} PrefetchEntry */
+/** @typedef {{ html: string, build: string | null, src: string | null, finalUrl: string, frameId: string | null, at: number }} PrefetchEntry */
 /** @type {Map<string, PrefetchEntry>} */
 export const prefetchCache = new Map();
 
+/**
+ * Keys whose last speculative answer was REFUSED, with the time it was refused
+ * (#1407). Only a framed request can be refused: the server marks its sliced
+ * subtree, so an unmarked answer is one of the two full-document fall-throughs
+ * (a streamed render, or an id absent from the output) and is not the shape the
+ * entry claims.
+ *
+ * This exists so a refusal is not the same as forgetting. With no record, the
+ * TTL dedupe would have nothing to match and `prefetchInflight` is released the
+ * moment the fetch settles, so every later hover or dwell on that link would
+ * re-issue the same useless request for as long as the page lives. A route with
+ * a `loading.{js,ts}` or a Suspense boundary streams, so it answers EVERY framed
+ * request unmarked, which would make that the normal case there and strictly
+ * worse than before this feature (an unframed prefetch was at least cached and
+ * deduped for the TTL).
+ *
+ * It is deliberately NOT an entry in `prefetchCache`. That cache holds fragments
+ * a click can consume, it is capped at `PREFETCH_CAP`, and an entry leaves it as
+ * soon as a click takes it. A memo holds no fragment and can never serve a
+ * click, so filing one there would let a streaming route's framed links occupy
+ * slots that genuinely warm fragments are competing for, and hold them longer
+ * than any real entry, since nothing consumes a memo. Its own cap bounds it
+ * instead.
+ *
+ * @type {Map<string, number>}
+ */
+const prefetchRefused = new Map();
+
+/** Max refusal memos held at once (LRU), independent of the fragment cache. */
+const PREFETCH_REFUSED_CAP = 16;
+
+/**
+ * Whether this key's last answer was refused recently enough that re-asking
+ * would just be refused again. Prunes on read, so an expired memo never
+ * suppresses a legitimate retry.
+ *
+ * @param {string} key
+ */
+function prefetchRefusedRecently(key) {
+  const at = prefetchRefused.get(key);
+  if (at == null) return false;
+  if ((nowMs() - at) >= PREFETCH_TTL) { prefetchRefused.delete(key); return false; }
+  return true;
+}
+
+/**
+ * Forget every refusal (#1407). Called from the two places where the SOURCE may
+ * have changed under us: wherever a DEPLOY is detected, and `refreshPage`, the
+ * dev live-reload path, where an edit can add or remove a `Suspense` boundary
+ * and so start or stop the route streaming. Only an edit to a file the browser
+ * does NOT download arrives there; anything that SHIPS takes a full reload
+ * instead. A `loading.{js,ts}` reloads either way, though for two different
+ * reasons: editing or deleting one reloads because it can never be elided and
+ * so always ships, while ADDING one reloads because a brand-new file is in no
+ * set the previous build produced.
+ *
+ * NEITHER form of `revalidate` clears them, which is a cost/benefit call rather
+ * than an impossibility. It is the post-MUTATION api an app calls after an RPC
+ * write, so clearing there would drop every memo on every mutation and reopen
+ * the request-per-hover loop this exists to close. A mutation CAN change a given
+ * render's streamed shape, since a page may render `Suspense` conditionally on
+ * fetched data, but the cost of a memo that outlives that is bounded to one
+ * skipped warm-up for that key until the 30s TTL runs out, which is the cheaper
+ * side of the trade.
+ */
+export function clearPrefetchRefused() {
+  prefetchRefused.clear();
+}
+
+/** @param {string} key */
+function notePrefetchRefused(key) {
+  if (prefetchRefused.has(key)) prefetchRefused.delete(key);
+  prefetchRefused.set(key, nowMs());
+  while (prefetchRefused.size > PREFETCH_REFUSED_CAP) {
+    prefetchRefused.delete(prefetchRefused.keys().next().value);
+  }
+}
+
 /** Keys with a fetch currently in flight (dedupe + concurrency gate). */
 const prefetchInflight = new Set();
+
+/**
+ * Keys whose IN-FLIGHT fetch has been superseded by an eviction (#1407).
+ * `prefetchEvict` can only delete what is already stored, and a speculative
+ * fetch stores when its body finishes reading, so an eviction landing inside
+ * that window would be undone the moment the response arrives. Reachable
+ * without contrivance: hover a framed tab (the dwell arms a fetch), then mutate
+ * that frame's `src` to the same url inside the request's window. A key parked
+ * here makes the pending store a no-op instead. Bounded by the in-flight set,
+ * since every entry is removed when its fetch settles.
+ *
+ * @type {Set<string>}
+ */
+const prefetchSuperseded = new Set();
 
 /** hrefs waiting for a free concurrency slot (FIFO), and their keys. */
 const prefetchQueue = [];
@@ -219,14 +312,18 @@ export function prefetchMode(anchor) {
  * than silently losing everything past the cap.
  *
  * @param {string} href
+ * @param {string | null} [frameId]  The `<webjs-frame>` this href drives, from
+ *   `resolveTargetFrameId` at the trigger. Sends `x-webjs-frame` so the server
+ *   answers with the SAME subtree the click will ask for, and keys the entry in
+ *   that dimension so it can only ever be consumed by a matching frame nav.
  */
-export function prefetch(href) {
+export function prefetch(href, frameId) {
   // Never speculate once the router is torn down: a leftover hover / queue /
   // dwell timer that fires after disableClientRouter must not issue a fetch.
   if (!enabled) return;
   if (typeof fetch !== 'function') return;
   if (prefetchSaysSaveData()) return;
-  const key = cacheKey(href);
+  const key = cacheKey(href, frameId);
   // Never prefetch the page we are already ON (#1106). The request cannot help
   // any future navigation, because a same-URL click short-circuits, and it
   // occupies one of the capped cache slots until its TTL expires. Fires
@@ -242,19 +339,41 @@ export function prefetch(href) {
   // perfectly applicable from a sibling page and fails only from outside that
   // layout, which is exactly what the anchor check catches, and which a
   // never-clicked hover on a sibling link produces without this guard.
-  if (typeof location !== 'undefined' && key === cacheKey(location.href)) return;
+  //
+  // Compared in the SAME dimension (#1407): a framed link to the current url is
+  // a frame REFRESH, and a refresh must show fresh bytes, so it stays excluded
+  // for the reason `fetchAndApply` refuses to let `refresh` consume a prefetch
+  // (#1398). Comparing against the bare page key instead would let it through.
+  if (typeof location !== 'undefined' && key === cacheKey(location.href, frameId)) return;
+  // Every dedupe below keys on the DIMENSIONED key, which is deliberate and has
+  // a cost worth stating (#1407). A page holding two links to one href, one
+  // driving a frame and one not, warms both dimensions and so issues two
+  // requests where it used to issue one, and both occupy a `PREFETCH_CAP` slot.
+  // Suppressing the second is the obvious saving and is wrong: the two are
+  // DIFFERENT responses, so whichever link lost would never be warmed AHEAD of
+  // the click. On touch that is the worse half, because `viewport` is the
+  // default there and the only thing left is the `touchstart` warm below, which
+  // fires at tap time and so gives a far smaller head start than a dwell would.
+  // The duplicate is bounded by the same cap, concurrency gate, TTL, and
+  // Save-Data gate as everything else, which is what those are for, and it adds
+  // no new TRIGGER and no per-link fan-out.
   if (prefetchInflight.has(key)) return;
   if (prefetchQueued.has(key)) return;
   const existing = prefetchCache.get(key);
   if (existing && (nowMs() - existing.at) < PREFETCH_TTL) return;
+  // Refused recently, so re-asking would be refused again (#1407). Bounds the
+  // retry to about one request per TTL. Not exactly one: the memo map is itself
+  // LRU-capped and nothing ever consumes a memo, so a page with more distinct
+  // refused keys than the cap evicts the oldest inside the window.
+  if (prefetchRefusedRecently(key)) return;
   if (prefetchInflight.size >= PREFETCH_CONCURRENCY) {
     // Gate full: queue rather than drop, bounded so a huge link list
     // cannot grow the queue without limit (oldest queued entry is shed).
     prefetchQueued.add(key);
-    prefetchQueue.push(href);
+    prefetchQueue.push({ href, frameId: frameId || null });
     while (prefetchQueue.length > PREFETCH_QUEUE_CAP) {
       const dropped = prefetchQueue.shift();
-      prefetchQueued.delete(cacheKey(dropped));
+      prefetchQueued.delete(cacheKey(dropped.href, dropped.frameId));
     }
     return;
   }
@@ -273,6 +392,10 @@ export function prefetch(href) {
   prefetchInflight.add(key);
   const headers = { 'x-webjs-router': '1', 'x-webjs-prefetch': '1' };
   if (have) headers['x-webjs-have'] = have;
+  // Ask for exactly what the click will ask for (`fetch-apply.js` adds the same
+  // header on a frame nav), so the cached body is the frame subtree, not the
+  // page fragment the swap would refuse to apply.
+  if (frameId) headers['x-webjs-frame'] = frameId;
 
   // `no-cache` (revalidate, NOT bypass) is load-bearing (#1131): the deploy
   // check below reads x-webjs-build / x-webjs-src off this response, and a
@@ -306,7 +429,10 @@ export function prefetch(href) {
       const pageSrc = pageTag ? pageTag.getAttribute('data-webjs-src') : null;
       if ((build && pageBuild && build !== pageBuild) || (src && pageSrc && src !== pageSrc)) {
         snapshotCache.clear();
-        prefetchCache.clear();
+        prefetchClearAll(key);
+        // A new build can change whether a route streams, so a refusal recorded
+        // against the old one says nothing about the new one (#1407).
+        clearPrefetchRefused();
         // Deliberately do NOT advance the page's data-webjs-src here (only the
         // foreground `applySwap` does). A prefetch is speculative; leaving the
         // reference id on the old deploy keeps applySwap the single authority
@@ -314,13 +440,49 @@ export function prefetch(href) {
         // repeated prefetches in the pre-first-nav window each re-clear the
         // (already tiny) caches, which converges the instant the user navigates.
       }
+      // The server answers a frame-headed request with the SLICED subtree only
+      // when the render did not stream AND the id was in the output
+      // (`ssr/render.js`); both fall-throughs return a whole document instead.
+      // It marks the sliced case with `x-webjs-frame`, so a mismatch here means
+      // the body is not the shape this entry claims. Discard it rather than
+      // store it. The swap would NOT splice a whole document into the region
+      // (its frame branch queries the body for `webjs-frame#<id>` and diffs
+      // only that), but it may find no source at all: an absent id means the
+      // render never had the frame, and a streamed page carries its resolved
+      // content inside a `<template data-webjs-resolve>` that `querySelector`
+      // does not descend into. Then the swap dispatches `webjs:frame-missing`
+      // and leaves the region unchanged (warning to the console) while the
+      // navigation around it still completes, advancing the url and scrolling to
+      // top, so consuming the entry gives the reader a changed address over an
+      // unchanged panel rather than a fetch. Whether the frame is found at all
+      // depends on where it sits relative to the streamed boundary (one OUTSIDE
+      // every boundary does arrive in the first flush and would be found). The
+      // router does not LOOK: the refusal is decided on the response header,
+      // before the body is ever read, so it declines the whole shape rather than
+      // parse a document it has already been told is not the slice it asked for.
+      // It cannot be filed under
+      // the page key either, since it was fetched with a header the response
+      // varies on.
+      //
+      // Discarding is not the same as FORGETTING, so the refusal is memoed (see
+      // `prefetchRefused`) to stop the request being re-issued on every hover
+      // until the TTL runs out. The body is still never stored.
+      const servedFrame = resp.headers.get('x-webjs-frame');
+      if ((servedFrame || null) !== (frameId || null)) {
+        notePrefetchRefused(key);
+        return;
+      }
       const finalUrl = resp.redirected && resp.url ? resp.url : href;
       const html = await resp.text();
-      prefetchStore(key, { html, build, src, finalUrl, at: nowMs() });
+      // An eviction landed while this was in flight, so the entry it would
+      // store is already superseded (#1407). Drop it rather than resurrect it.
+      if (prefetchSuperseded.has(key)) return;
+      prefetchStore(key, { html, build, src, finalUrl, frameId: frameId || null, at: nowMs() });
     })
     .catch(() => { /* speculative: swallow */ })
     .finally(() => {
       prefetchInflight.delete(key);
+      prefetchSuperseded.delete(key);
       drainPrefetchQueue();
     });
 }
@@ -328,9 +490,9 @@ export function prefetch(href) {
 /** Start the next queued prefetch if a concurrency slot is free. */
 function drainPrefetchQueue() {
   while (prefetchQueue.length && prefetchInflight.size < PREFETCH_CONCURRENCY) {
-    const href = prefetchQueue.shift();
-    prefetchQueued.delete(cacheKey(href));
-    prefetch(href);
+    const { href, frameId } = prefetchQueue.shift();
+    prefetchQueued.delete(cacheKey(href, frameId));
+    prefetch(href, frameId);
   }
 }
 
@@ -399,13 +561,27 @@ export function prefetchAnchor(html) {
  *   anchor against, when the caller holds a truer one than the live DOM does.
  *   Used for the optimistic loading skeleton, which deletes nested boundaries
  *   before the fetch, so reading the DOM here would under-report them.
+ * @param {string | null} [frameId]  Consume only an entry fetched in THIS frame
+ *   dimension (#1407). A page fragment and a frame subtree for one url are
+ *   different responses, so they are different entries.
  * @returns {PrefetchEntry | null}
  */
-export function prefetchTake(href, liveKeysOverride) {
-  const key = cacheKey(href);
+export function prefetchTake(href, liveKeysOverride, frameId) {
+  const key = cacheKey(href, frameId);
   const entry = prefetchCache.get(key);
   if (!entry) return null;
   if ((nowMs() - entry.at) >= PREFETCH_TTL) { prefetchCache.delete(key); return null; }
+  // A FRAME entry's validity question is a different one (#1407). Its body is a
+  // `<webjs-frame>` subtree with no `wj:children` boundary in it, so
+  // `prefetchAnchor` returns null, and null means "no constraint" below: falling
+  // through would consume it anywhere. What has to hold instead is that the
+  // region it was fetched for is still in the document, which only the live DOM
+  // can answer and only at consume time (an outer navigation between the
+  // prefetch and the click can remove the frame).
+  if (entry.frameId) {
+    prefetchCache.delete(key);
+    return liveFrameElement(entry.frameId) ? entry : null;
+  }
   // The reduced response VARIES on X-Webjs-Have, and this cache is a
   // client-side cache of that response, so it has to respect its own vary
   // dimension (#1114). The dimension is NOT the whole have string though: a
@@ -467,7 +643,7 @@ export function onPrefetchIntent(e) {
   // and viewport modes (a single request for a link about to be navigated, the
   // small mobile win the viewport default cannot give for the link just tapped).
   // No dwell, since the tap is the intent.
-  if (e.type === 'touchstart') { prefetch(href); return; }
+  if (e.type === 'touchstart') { prefetch(href, resolveTargetFrameId(anchor)); return; }
   // hover / focus only warm `intent` links; `viewport` links are the
   // observer's job (warmed on a dwell, not on a stray hover).
   if (mode !== 'intent') return;
@@ -479,7 +655,9 @@ export function onPrefetchIntent(e) {
   prefetchHoverTimer = setTimeout(() => {
     prefetchHoverTimer = null;
     prefetchHoverAnchor = null;
-    prefetch(href);
+    // Resolved at FIRE time, so it sees the document a click at this moment
+    // would (a soft nav during the dwell can change which frame encloses it).
+    prefetch(href, resolveTargetFrameId(anchor));
   }, PREFETCH_HOVER_DELAY);
 }
 
@@ -529,7 +707,7 @@ export function refreshPrefetchObservers() {
               prefetchViewTimers.delete(anchor);
               prefetchViewObserver.unobserve(anchor);
               const href = eligibleAnchorHref(anchor);
-              if (href && prefetchMode(anchor) === 'viewport') prefetch(href);
+              if (href && prefetchMode(anchor) === 'viewport') prefetch(href, resolveTargetFrameId(anchor));
             }, PREFETCH_VIEWPORT_DELAY);
             prefetchViewTimers.set(anchor, timer);
             prefetchViewPending.add(timer);
@@ -559,15 +737,64 @@ export function refreshPrefetchObservers() {
     const mode = prefetchMode(anchor);
     if (mode === 'render') {
       const href = eligibleAnchorHref(anchor);
-      if (href) prefetch(href);
+      if (href) prefetch(href, resolveTargetFrameId(anchor));
     } else if (mode === 'viewport' && hasIO) {
       prefetchViewObserver.observe(anchor);
     }
   }
 }
 
+/**
+ * Drop EVERY speculative entry, closing the same in-flight window
+ * `prefetchEvict` closes for one key (#1407). Every caller means "what is held
+ * predates the change": a mutation applying, a deploy landing, a blanket
+ * `revalidate()`. A bare `prefetchCache.clear()` is undone by any speculative
+ * fetch that is mid-body-read, which is not hypothetical on the post-mutation
+ * path: a hover 100ms earlier is still open when the write applies, and it then
+ * stores its PRE-mutation body right after the clear, which is exactly the
+ * staleness `revalidate` exists to prevent.
+ */
+export function prefetchClearAll(exceptKey) {
+  prefetchCache.clear();
+  for (const key of prefetchInflight) {
+    // Never supersede the fetch that is CALLING this. The deploy-detection
+    // branch runs inside a prefetch's own `.then`, and it got there by reading
+    // the new build id off its own response, so its bytes are the freshest
+    // thing in the process. Marking its key would make it discard its own
+    // result and, with it, never announce `webjs:prefetch`.
+    if (key === exceptKey) continue;
+    prefetchSuperseded.add(key);
+  }
+}
+
+/**
+ * Drop the speculative entry for one url in one dimension (#1407). Used by
+ * `loadFrame`: a `<webjs-frame src>` self-load refuses to CONSUME a warm entry
+ * because it is a freshness request, and the other half of that is dropping the
+ * copy it has just superseded. Without this the self-load paints fresh bytes
+ * over the network and leaves an older entry consumable, so the next click on
+ * that frame's link repaints the panel with content strictly staler than what is
+ * already on screen. `refreshPage` gets the same pairing from `revalidate()`.
+ *
+ * @param {string} href
+ * @param {string | null} [frameId]
+ */
+export function prefetchEvict(href, frameId) {
+  const key = cacheKey(href, frameId);
+  prefetchCache.delete(key);
+  // Deleting the stored copy is only half of it: a speculative fetch already IN
+  // FLIGHT stores when its body finishes reading, so it would put the entry
+  // straight back. Mark it so that store is a no-op instead.
+  //
+  // A QUEUED prefetch is deliberately left alone. It has not issued its request
+  // yet, so when it runs it fetches bytes strictly fresher than the ones this
+  // eviction is discarding. Dropping it would prevent no staleness and would
+  // leave that link cold with no refusal memo to explain why.
+  if (prefetchInflight.has(key)) prefetchSuperseded.add(key);
+}
+
 /** Test-only: peek the speculative cache for a href without consuming it. */
-export function _prefetchPeek(href) { return prefetchCache.get(cacheKey(href)) || null; }
+export function _prefetchPeek(href, frameId) { return prefetchCache.get(cacheKey(href, frameId)) || null; }
 
 /** Test-only: number of prefetch requests currently in flight. */
 export function _prefetchInflightSize() { return prefetchInflight.size; }
@@ -575,7 +802,9 @@ export function _prefetchInflightSize() { return prefetchInflight.size; }
 /** Test-only: clear all prefetch state between cases. */
 export function _resetPrefetch() {
   prefetchCache.clear();
+  prefetchRefused.clear();
   prefetchInflight.clear();
+  prefetchSuperseded.clear();
   prefetchQueue.length = 0;
   prefetchQueued.clear();
   clearPrefetchHover();

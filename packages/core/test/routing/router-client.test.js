@@ -23,6 +23,12 @@
 import { test, before } from 'node:test';
 import assert from 'node:assert/strict';
 import { parseHTML } from 'linkedom';
+// Imported directly rather than through the barrel: `cacheKey` is internal to
+// the router and is not re-exported from `router-client.js`. The module has no
+// import-time side effects (it only pulls a constant), so a static import here
+// does not trip the auto-enable the barrel's dynamic import exists to defer.
+import { cacheKey } from '../../src/router-client/snapshot-cache.js';
+import { prefetchEvict } from '../../src/router-client/prefetch.js';
 
 let _collect, _plan, _keyOf, _diffEl, _reconcile,
   _addNewHead, _merge, _isNonHtmlPath, navigate,
@@ -39,7 +45,7 @@ let _collect, _plan, _keyOf, _diffEl, _reconcile,
   _viewTransitionsEnabled, _runWithTransition, _regraftPermanentElements, _regraftPermanentInSlice,
   _applyStreamedResolve,
   _isPreBootNavigation, _FALLBACK_MARKER_KEY,
-  enableClientRouter, disableClientRouter, revalidate,
+  enableClientRouter, disableClientRouter, revalidate, refreshPage,
   WebComponent, html;
 
 before(async () => {
@@ -128,6 +134,7 @@ before(async () => {
     _applyStreamedResolve,
     navigate,
     revalidate,
+    refreshPage,
     enableClientRouter,
     disableClientRouter,
   } = await import('../../src/router-client.js'));
@@ -4022,6 +4029,193 @@ test('prefetchTake: consumes a cached entry exactly once', async () => {
   });
 });
 
+/* ====================================================================
+ * Frame-dimensioned prefetch (#1407)
+ * ==================================================================== */
+
+/** A stub whose response carries the server's sliced-subtree marker (#1407). */
+const frameFetchImpl = (calls, servedFrameId) => async (url, init) => {
+  calls.push({ url: String(url), init });
+  const headers = { 'content-type': 'text/html', 'x-webjs-build': 'b1' };
+  const served = servedFrameId === undefined
+    ? (init && init.headers && init.headers['x-webjs-frame'])
+    : servedFrameId;
+  if (served) headers['x-webjs-frame'] = served;
+  return new Response('<webjs-frame id="tasks"><p>ok</p></webjs-frame>', { status: 200, headers });
+};
+
+test('cacheKey: the frame dimension separates a subtree from a page fragment (#1407)', () => {
+  // The server slices on the `x-webjs-frame` REQUEST header and marks the
+  // response `Vary: X-Webjs-Frame`, so a client cache of that response has to
+  // carry the same dimension or the two bodies for one url alias.
+  const origLoc = globalThis.location;
+  globalThis.location = /** @type any */ ({ origin: 'http://localhost', href: 'http://localhost/', pathname: '/', search: '' });
+  try {
+    const page = cacheKey('/x?a=1');
+    const tasks = cacheKey('/x?a=1', 'tasks');
+    const other = cacheKey('/x?a=1', 'other');
+    assert.notEqual(page, tasks, 'a framed key is not the page key');
+    assert.notEqual(tasks, other, 'two frames of one url are two entries');
+    assert.equal(cacheKey('/x?a=1', null), page, 'an explicit null frame is the page dimension');
+    assert.equal(cacheKey('/x?a=1', undefined), page, 'so is an omitted one');
+    // Injectivity. The delimiter is a space, which the URL parser
+    // percent-encodes in both the path and the query, so the url half can never
+    // contain one and the split is unambiguous even for an id that does.
+    assert.notEqual(cacheKey('/a b', 'f'), cacheKey('/b', 'f /a'), 'no delimiter collision');
+    assert.ok(cacheKey('/a b').indexOf(' ') === -1, 'the url half is space-free');
+  } finally {
+    globalThis.location = origLoc;
+  }
+});
+
+test('prefetch: a framed prefetch sends x-webjs-frame and keys the entry by it (#1407)', async () => {
+  const calls = [];
+  await withPrefetchEnv(async () => {
+    _prefetch('http://localhost/tasks?status=done', 'tasks');
+    await new Promise((r) => setTimeout(r, 0));
+    assert.equal(calls.length, 1, 'one speculative request');
+    assert.equal(calls[0].init.headers['x-webjs-frame'], 'tasks', 'asks for the subtree the click will ask for');
+    assert.equal(calls[0].init.headers['x-webjs-prefetch'], '1', 'still marked speculative');
+    assert.ok(_prefetchPeek('http://localhost/tasks?status=done', 'tasks'), 'cached in the frame dimension');
+    assert.equal(_prefetchPeek('http://localhost/tasks?status=done'), null, 'and NOT under the page key');
+  }, { fetchImpl: frameFetchImpl(calls) });
+});
+
+test('prefetch: an unframed prefetch sends no frame header (#1407)', async () => {
+  await withPrefetchEnv(async (calls) => {
+    _prefetch('http://localhost/plain');
+    await new Promise((r) => setTimeout(r, 0));
+    assert.equal(calls[0].init.headers['x-webjs-frame'], undefined, 'no header on a page prefetch');
+    assert.ok(_prefetchPeek('http://localhost/plain'), 'cached under the page key');
+  });
+});
+
+test('prefetchTake: a page entry and a frame entry never substitute for each other (#1407)', async () => {
+  await withPrefetchEnv(async (calls) => {
+    document.body.innerHTML = '<webjs-frame id="tasks"><p>live</p></webjs-frame>';
+    // Only the PAGE entry is cached; a frame click on the same url must miss.
+    _prefetch('http://localhost/both');
+    await new Promise((r) => setTimeout(r, 0));
+    assert.ok(_prefetchPeek('http://localhost/both'), 'precondition: page entry cached');
+    assert.equal(_prefetchTake('http://localhost/both', undefined, 'tasks'), null, 'frame click cannot consume a page fragment');
+    assert.ok(_prefetchTake('http://localhost/both'), 'the page nav still consumes it');
+
+    // And the reverse: only the FRAME entry is cached, so a page nav must miss.
+    _resetPrefetch();
+    _prefetch('http://localhost/both', 'tasks');
+    await new Promise((r) => setTimeout(r, 0));
+    assert.ok(_prefetchPeek('http://localhost/both', 'tasks'), 'precondition: frame entry cached');
+    assert.equal(_prefetchTake('http://localhost/both'), null, 'page nav cannot consume a frame subtree');
+    assert.ok(_prefetchTake('http://localhost/both', undefined, 'tasks'), 'the frame nav still consumes it');
+    document.body.innerHTML = '';
+  }, { fetchImpl: frameFetchImpl([]) });
+});
+
+test('prefetchTake: a frame entry is validated by its FRAME being live, not by an anchor (#1407)', async () => {
+  // A frame subtree carries no `wj:children` marker, so `prefetchAnchor`
+  // returns null, which the page path reads as "no constraint" and would
+  // consume anywhere. The frame path asks the different question instead.
+  const calls = [];
+  await withPrefetchEnv(async () => {
+    document.body.innerHTML = '<webjs-frame id="tasks"><p>live</p></webjs-frame>';
+    _prefetch('http://localhost/f', 'tasks');
+    await new Promise((r) => setTimeout(r, 0));
+    const entry = _prefetchPeek('http://localhost/f', 'tasks');
+    assert.ok(entry, 'precondition: cached');
+    assert.equal(_prefetchAnchor(entry.html), null, 'precondition: a subtree has no boundary anchor');
+    assert.ok(_prefetchTake('http://localhost/f', undefined, 'tasks'), 'consumed while the frame is live');
+
+    // Same entry, frame gone: discarded rather than applied into nothing.
+    _prefetch('http://localhost/f', 'tasks');
+    await new Promise((r) => setTimeout(r, 0));
+    assert.ok(_prefetchPeek('http://localhost/f', 'tasks'), 'precondition: re-cached');
+    document.body.innerHTML = '<p>the frame is gone</p>';
+    assert.equal(_prefetchTake('http://localhost/f', undefined, 'tasks'), null, 'discarded when its frame is gone');
+    assert.equal(_prefetchPeek('http://localhost/f', 'tasks'), null, 'evicted, not left to poison');
+    document.body.innerHTML = '';
+  }, { fetchImpl: frameFetchImpl(calls) });
+});
+
+test('prefetch: a full-document answer to a framed request is not stored (#1407)', async () => {
+  // The server's frame branch has two fall-throughs (a streamed render, an
+  // absent frame id) that answer with a whole document. It marks the sliced
+  // case with `x-webjs-frame`, so an unmarked body is not the shape this entry
+  // claims and its BODY is filed under neither key. The refusal itself is
+  // memoed separately, which the sibling test below covers.
+  const calls = [];
+  await withPrefetchEnv(async () => {
+    _prefetch('http://localhost/streamed', 'tasks');
+    await new Promise((r) => setTimeout(r, 0));
+    assert.equal(calls.length, 1, 'the request went out');
+    assert.equal(_prefetchTake('http://localhost/streamed', undefined, 'tasks'), null,
+      'and nothing consumable came of it');
+    assert.equal(_prefetchPeek('http://localhost/streamed'), null, 'nothing under the page key either');
+  }, { fetchImpl: frameFetchImpl(calls, null) });
+});
+
+test('prefetch: a REFUSED framed answer is memoed, so it does not re-request every hover (#1407)', async () => {
+  // Discarding the body is not the same as forgetting the refusal. With no
+  // record, the TTL dedupe has nothing to match and `prefetchInflight` is
+  // released when the fetch settles, so every later hover would re-issue the
+  // same useless request forever. A route with a `loading.{js,ts}` or a Suspense
+  // boundary streams, so it answers EVERY framed request unmarked, which would
+  // make that the normal case there and strictly worse than before this feature
+  // (an unframed prefetch was at least cached and deduped for the TTL).
+  //
+  // The memo lives OUTSIDE `prefetchCache`, so it cannot occupy a slot that a
+  // consumable fragment is competing for.
+  const calls = [];
+  await withPrefetchEnv(async () => {
+    _prefetch('http://localhost/streamy', 'tasks');
+    await new Promise((r) => setTimeout(r, 0));
+    assert.equal(calls.length, 1, 'the first speculative request went out');
+
+    for (const attempt of [2, 3, 4]) {
+      _prefetch('http://localhost/streamy', 'tasks');
+      await new Promise((r) => setTimeout(r, 0));
+      assert.equal(calls.length, 1, `hover ${attempt} did not re-request within the TTL`);
+    }
+
+    // Nothing is consumable, and a take does not clear the memo (which would
+    // reopen the retry loop it exists to close).
+    assert.equal(_prefetchTake('http://localhost/streamy', undefined, 'tasks'), null, 'never consumable');
+    assert.equal(_prefetchPeek('http://localhost/streamy', 'tasks'), null,
+      'and the fragment cache holds nothing, so no slot is consumed');
+    _prefetch('http://localhost/streamy', 'tasks');
+    await new Promise((r) => setTimeout(r, 0));
+    assert.equal(calls.length, 1, 'and a take did not reopen the retry loop');
+  }, { fetchImpl: frameFetchImpl(calls, null) });
+});
+
+test('prefetch: a refused answer announces no webjs:prefetch event (#1407)', async () => {
+  // The event means "a fragment is now consumable", which app code instruments
+  // for hit rate and tests await before clicking. A refusal is neither.
+  const calls = [];
+  await withPrefetchEnv(async () => {
+    let fired = 0;
+    const onPrefetch = () => { fired++; };
+    document.addEventListener('webjs:prefetch', onPrefetch);
+    try {
+      _prefetch('http://localhost/quiet', 'tasks');
+      await new Promise((r) => setTimeout(r, 0));
+      assert.equal(calls.length, 1, 'precondition: the request went out');
+      assert.equal(fired, 0, 'a discarded answer announces nothing');
+    } finally {
+      document.removeEventListener('webjs:prefetch', onPrefetch);
+    }
+  }, { fetchImpl: frameFetchImpl(calls, null) });
+});
+
+test('prefetch: a framed link to the CURRENT url is not prefetched (#1106 in the frame dimension, #1407)', async () => {
+  await withPrefetchEnv(async (calls) => {
+    // location.href is http://localhost/. A framed link back to it is a frame
+    // REFRESH, and a refresh must show fresh bytes.
+    _prefetch('http://localhost/', 'tasks');
+    await new Promise((r) => setTimeout(r, 0));
+    assert.equal(calls.length, 0, 'no speculative request for a same-url frame refresh');
+  });
+});
+
 test('prefetch: requests past the concurrency cap queue and drain (not dropped)', async () => {
   // Hold every fetch open until released, so the first PREFETCH_CONCURRENCY
   // stay in flight and the rest must queue. On release, the queue should
@@ -4106,6 +4300,141 @@ test('revalidate evicts the prefetch cache, not just the snapshot cache', async 
     revalidate();
     assert.equal(_prefetchPeek('http://localhost/items'), null, 'revalidate() cleared the prefetch cache');
   });
+});
+
+test('refreshPage DOES drop the refusal memos, since the source may have changed (#1407)', async () => {
+  // The counterfactual for the clear that `revalidate` deliberately does not do.
+  // `refreshPage` is the dev live-reload path, where a `page` or `shell` edit can
+  // add or remove a `Suspense` / `<webjs-suspense>` boundary and so start or stop
+  // the route streaming, which is exactly what a memo recorded.
+  const calls = [];
+  const streamy = 'http://localhost/streamy';
+  const countFor = (u) => calls.filter((c) => String(c.url).includes(u)).length;
+  await withPrefetchEnv(async () => {
+    _prefetch(streamy, 'tasks');
+    await new Promise((r) => setTimeout(r, 0));
+    assert.equal(countFor('/streamy'), 1, 'precondition: the first attempt went out');
+    _prefetch(streamy, 'tasks');
+    await new Promise((r) => setTimeout(r, 0));
+    assert.equal(countFor('/streamy'), 1, 'precondition: memoed, so the retry was suppressed');
+
+    // The refresh itself navigates (and may fail to swap under linkedom, which
+    // is fine): the clear runs before the fetch either way.
+    await refreshPage();
+    _prefetch(streamy, 'tasks');
+    await new Promise((r) => setTimeout(r, 0));
+    assert.equal(countFor('/streamy'), 2, 'the memo was dropped, so the link re-asked');
+  }, { fetchImpl: frameFetchImpl(calls, null) });
+});
+
+test('prefetchEvict also cancels an IN-FLIGHT fetch for that key (#1407)', async () => {
+  // Deleting the stored copy is only half of it. A speculative fetch stores when
+  // its body finishes reading, so an eviction landing inside that window would
+  // be undone the moment the response arrives. Reachable without contrivance:
+  // hover a framed tab (the dwell arms a fetch), then mutate that frame's `src`
+  // to the same url inside the request's window.
+  let release;
+  const held = new Promise((r) => { release = r; });
+  const calls = [];
+  await withPrefetchEnv(async () => {
+    _prefetch('http://localhost/inflight', 'tasks');
+    await new Promise((r) => setTimeout(r, 0));
+    assert.equal(calls.length, 1, 'precondition: the fetch is in flight');
+    assert.equal(_prefetchPeek('http://localhost/inflight', 'tasks'), null, 'and nothing stored yet');
+
+    // The self-load evicts while that fetch is still open.
+    prefetchEvict('http://localhost/inflight', 'tasks');
+
+    release(new Response('<webjs-frame id="tasks"><p>late</p></webjs-frame>', {
+      status: 200,
+      headers: { 'content-type': 'text/html', 'x-webjs-frame': 'tasks' },
+    }));
+    await new Promise((r) => setTimeout(r, 0));
+    await new Promise((r) => setTimeout(r, 0));
+
+    assert.equal(_prefetchPeek('http://localhost/inflight', 'tasks'), null,
+      'the late response did not resurrect the evicted entry');
+  }, {
+    fetchImpl: async (url, init) => {
+      calls.push({ url: String(url), init });
+      return held;
+    },
+  });
+});
+
+test('revalidate(url) evicts EVERY dimension of that url, not just the page one (#1407)', async () => {
+  // A frame entry is keyed `<frameId> <path>`, so evicting the bare path would
+  // leave a pre-mutation subtree consumable by the next frame click for the rest
+  // of its TTL, which is exactly the staleness revalidate exists to prevent.
+  const calls = [];
+  await withPrefetchEnv(async () => {
+    document.body.innerHTML = '<webjs-frame id="tasks"><p>live</p></webjs-frame>';
+    _prefetch('http://localhost/items', 'tasks');
+    _prefetch('http://localhost/items', 'other');
+    await new Promise((r) => setTimeout(r, 0));
+    assert.ok(_prefetchPeek('http://localhost/items', 'tasks'), 'precondition: frame entry cached');
+    assert.ok(_prefetchPeek('http://localhost/items', 'other'), 'precondition: second frame entry cached');
+
+    revalidate('http://localhost/items');
+    assert.equal(_prefetchPeek('http://localhost/items', 'tasks'), null, 'the frame entry was evicted');
+    assert.equal(_prefetchPeek('http://localhost/items', 'other'), null, 'and so was every other frame dimension');
+    document.body.innerHTML = '';
+  }, { fetchImpl: frameFetchImpl(calls) });
+});
+
+test('NEITHER revalidate form drops the refusal memos (#1407)', async () => {
+  // `revalidate` is the post-MUTATION api an app calls after an RPC write, so
+  // clearing there would drop every memo on every mutation and reopen the
+  // request-per-hover loop the memo exists to close. A mutation CAN change a
+  // given render's streamed shape (a page may render `Suspense` conditionally on
+  // fetched data), but a memo that outlives that costs one skipped warm-up for
+  // that key until the TTL, which is the cheaper side. `refreshPage`, where the
+  // SOURCE may have changed, clears them itself.
+  const calls = [];
+  await withPrefetchEnv(async () => {
+    _prefetch('http://localhost/streamy', 'tasks');
+    await new Promise((r) => setTimeout(r, 0));
+    assert.equal(calls.length, 1, 'precondition: the first attempt went out');
+    _prefetch('http://localhost/streamy', 'tasks');
+    await new Promise((r) => setTimeout(r, 0));
+    assert.equal(calls.length, 1, 'precondition: memoed, so the retry was suppressed');
+
+    revalidate('http://localhost/streamy');
+    _prefetch('http://localhost/streamy', 'tasks');
+    await new Promise((r) => setTimeout(r, 0));
+    assert.equal(calls.length, 1, 'a targeted revalidate keeps the memo');
+
+    revalidate();
+    _prefetch('http://localhost/streamy', 'tasks');
+    await new Promise((r) => setTimeout(r, 0));
+    assert.equal(calls.length, 1, 'and so does the blanket form, which fires on every app mutation');
+  }, { fetchImpl: frameFetchImpl(calls, null) });
+});
+
+test('revalidate(url) leaves an unrelated url in its frame dimension alone (#1407)', async () => {
+  // The counterfactual for the suffix match: it must not degrade into a
+  // substring sweep that evicts a different url merely ending the same way.
+  //
+  // The fixture has to DISCRIMINATE the leading space, which is the whole
+  // guarantee. `/store/items` does: its framed key `tasks /store/items` ends
+  // with `/items` (so a spaceless match wrongly evicts it) and does NOT end
+  // with ` /items` (so the real match leaves it). A `/other-items` pairing
+  // would fail both forms and prove nothing, and `revalidate('/items')` beside
+  // a cached frame entry for `/store/items` is an ordinary situation.
+  const calls = [];
+  await withPrefetchEnv(async () => {
+    document.body.innerHTML = '<webjs-frame id="tasks"><p>live</p></webjs-frame>';
+    _prefetch('http://localhost/items', 'tasks');
+    _prefetch('http://localhost/store/items', 'tasks');
+    await new Promise((r) => setTimeout(r, 0));
+    assert.ok(_prefetchPeek('http://localhost/store/items', 'tasks'), 'precondition: the other url is cached');
+
+    revalidate('http://localhost/items');
+    assert.equal(_prefetchPeek('http://localhost/items', 'tasks'), null, 'the named url went');
+    assert.ok(_prefetchPeek('http://localhost/store/items', 'tasks'),
+      'a url whose last segment matches is untouched, so the delimiter is load-bearing');
+    document.body.innerHTML = '';
+  }, { fetchImpl: frameFetchImpl(calls) });
 });
 
 /* ====================================================================
@@ -4564,6 +4893,60 @@ test('a prefetch that reveals a NEW build id evicts stale pre-deploy caches (#89
     globalThis.document.head.innerHTML = savedHead;
     _snapshotCache.clear();
     _prefetchCache.clear();
+  }
+});
+
+test('a deploy also clears the refusal memos, so a refused link re-asks (#1407)', async () => {
+  // Before the memo moved out of `prefetchCache`, this came for free from that
+  // cache's own clear. The move hand-restored it, which is exactly the case that
+  // needs a counterfactual: a new build can change whether a route streams, so a
+  // refusal recorded against the old one says nothing about the new one.
+  const origFetch = globalThis.fetch;
+  const savedHead = globalThis.document.head.innerHTML;
+  const savedLoc = globalThis.location;
+  globalThis.location = /** @type any */ ({ href: 'http://localhost/', origin: 'http://localhost' });
+  try {
+    globalThis.document.head.innerHTML =
+      '<script type="importmap" data-webjs-build="OLD">{}</script>';
+    _resetPrefetch();
+
+    // A framed prefetch answered UNMARKED (the streaming fall-through), on the
+    // OLD build. The refusal is memoed, so a second attempt issues nothing.
+    let calls = 0;
+    globalThis.fetch = async () => {
+      calls++;
+      return new Response('<!doctype html><html><head></head><body>whole page</body></html>', {
+        status: 200, headers: { 'content-type': 'text/html', 'x-webjs-build': 'OLD' },
+      });
+    };
+    _prefetch('http://localhost/streamed', 'tasks');
+    await new Promise((r) => setTimeout(r, 0));
+    assert.equal(calls, 1, 'precondition: the first attempt went out');
+    _prefetch('http://localhost/streamed', 'tasks');
+    await new Promise((r) => setTimeout(r, 0));
+    assert.equal(calls, 1, 'precondition: the refusal is memoed, so the retry was suppressed');
+
+    // A prefetch of ANOTHER url now reveals a NEW build id: a deploy landed.
+    globalThis.fetch = async () => {
+      calls++;
+      return new Response('<!doctype html><html><head></head><body>fresh</body></html>', {
+        status: 200, headers: { 'content-type': 'text/html', 'x-webjs-build': 'NEW' },
+      });
+    };
+    const done = new Promise((r) => document.addEventListener('webjs:prefetch', r, { once: true }));
+    _prefetch('http://localhost/elsewhere');
+    await done;
+    const afterDeploy = calls;
+
+    // The memo is gone, so the refused link is willing to ask the new build.
+    _prefetch('http://localhost/streamed', 'tasks');
+    await new Promise((r) => setTimeout(r, 0));
+    assert.equal(calls, afterDeploy + 1, 'the refusal was forgotten on the deploy, so the link re-asked');
+  } finally {
+    globalThis.fetch = origFetch;
+    globalThis.location = savedLoc;
+    globalThis.document.head.innerHTML = savedHead;
+    _resetPrefetch();
   }
 });
 

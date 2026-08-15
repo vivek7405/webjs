@@ -124,6 +124,70 @@ test('a request whose frame id is ABSENT falls back to the full page', async () 
   assert.ok(/<html|importmap/i.test(body), 'the full document shell is present in the fallback');
 });
 
+/* ---------------- the sliced-subtree response marker (#1407) ---------------- */
+
+/**
+ * The frame branch is not the only answer to an `x-webjs-frame` request: a
+ * streamed render skips it and an absent frame id falls through, and both send
+ * a whole document instead. The speculative prefetch cache keys an entry by the
+ * frame it asked for, so it has to tell the sliced shape apart from a whole
+ * document BEFORE it stores the body, and it cannot infer that from the bytes
+ * (a page whose first element is a frame looks exactly like a subtree). So the
+ * server states it: only the sliced branch sets `x-webjs-frame` on the way out.
+ */
+test('the sliced frame response carries x-webjs-frame; the fall-throughs do not (#1407)', async () => {
+  const appDir = makeApp({ 'app/page.js': framePage() });
+  const app = await createRequestHandler({ appDir, dev: true });
+
+  const sliced = await app.handle(new Request('http://x/', {
+    headers: { 'x-webjs-frame': 'rail' },
+  }));
+  assert.equal(sliced.headers.get('x-webjs-frame'), 'rail',
+    'the sliced subtree is positively marked with the id it was sliced for');
+  assert.match(sliced.headers.get('vary') || '', /X-Webjs-Frame/i,
+    'and still declares the request dimension it varies on');
+
+  // Fall-through 1: the id is not in the render, so this is the whole page.
+  const absent = await app.handle(new Request('http://x/', {
+    headers: { 'x-webjs-frame': 'does-not-exist' },
+  }));
+  assert.equal(absent.headers.get('x-webjs-frame'), null,
+    'a full-page fall-through carries no marker, so a client cannot mistake it for a subtree');
+
+  // A request that never asked for a frame obviously carries none either.
+  const plain = await app.handle(new Request('http://x/'));
+  assert.equal(plain.headers.get('x-webjs-frame'), null, 'a plain GET carries no marker');
+});
+
+test('a STREAMED page answering a frame request carries no marker (#1407)', async () => {
+  // Fall-through 2. A `loading.js` sibling wraps the async page in Suspense, so
+  // the render streams and the frame branch is skipped by its own guard. The
+  // response is a whole document, and must not look like a subtree.
+  const ASYNC_FRAME_PAGE =
+    `import { html } from ${JSON.stringify(HTML_URL)};\n` +
+    `import ${JSON.stringify(FRAME_URL)};\n` +
+    `export default async function P() {\n` +
+    `  await new Promise((r) => setTimeout(r, 5));\n` +
+    `  return html\`<main><h1 id="chrome">PAGE CHROME</h1>\n` +
+    `    <webjs-frame id="rail"><span id="rail-body">RAIL CONTENT</span></webjs-frame>\n` +
+    `  </main>\`;\n` +
+    `}\n`;
+  const LOADING =
+    `import { html } from ${JSON.stringify(HTML_URL)};\n` +
+    `export default () => html\`<p>loading</p>\`;\n`;
+  const appDir = makeApp({ 'app/page.js': ASYNC_FRAME_PAGE, 'app/loading.js': LOADING });
+  const app = await createRequestHandler({ appDir, dev: true });
+
+  const res = await app.handle(new Request('http://x/', {
+    headers: { 'x-webjs-frame': 'rail' },
+  }));
+  assert.equal(res.status, 200);
+  assert.equal(res.headers.get('x-webjs-frame'), null,
+    'a streamed answer to a frame request is a whole document and carries no marker');
+  const body = await res.text();
+  assert.ok(body.includes('PAGE CHROME'), 'precondition: it really is the whole page, not a subtree');
+});
+
 /* ---------------- the no-header differential guard ---------------- */
 
 test('a request with NO x-webjs-frame header is byte-identical to before the feature', async () => {
