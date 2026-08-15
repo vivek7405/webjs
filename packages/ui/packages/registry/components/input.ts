@@ -15,13 +15,6 @@
  * Design tokens used: --input, --background, --primary, --primary-foreground,
  * --muted-foreground, --foreground, --ring, --destructive.
  *
- * Design: The label is not optional, and a placeholder is not a label: it disappears the
- * moment someone types, so a form labelled only by placeholders is unreadable
- * exactly when the reader is checking their work. Size the field to the content
- * it expects, since a postcode field the width of the page tells the reader they
- * have got something wrong. Keep help text under the field rather than beside
- * it, and reserve the error space so a message does not shift the form.
- *
  * A11y (required for accessible output):
  *   LABEL IT. A `<label class=${labelClass()} for="<the input's id">` is the
  *   whole requirement, and the `for` / `id` pair is what links them. Without it
@@ -63,7 +56,7 @@
 import { cn } from '../lib/utils.ts';
 
 const INPUT_BASE =
-  'h-9 w-full min-w-0 rounded-md border border-input bg-transparent px-3 py-1 text-base shadow-e1 transition-[color,box-shadow] outline-none selection:bg-primary selection:text-primary-foreground file:inline-flex file:h-7 file:border-0 file:bg-transparent file:text-sm file:font-medium file:text-foreground placeholder:text-muted-foreground disabled:pointer-events-none disabled:cursor-not-allowed disabled:opacity-50 md:text-sm dark:bg-input/30';
+  'h-9 w-full min-w-0 rounded-md border border-input bg-transparent px-3 py-1 text-base shadow-xs transition-[color,box-shadow] outline-none selection:bg-primary selection:text-primary-foreground file:inline-flex file:h-7 file:border-0 file:bg-transparent file:text-sm file:font-medium file:text-foreground placeholder:text-muted-foreground disabled:pointer-events-none disabled:cursor-not-allowed disabled:opacity-50 md:text-sm dark:bg-input/30';
 
 const INPUT_FOCUS =
   'focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50';

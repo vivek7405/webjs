@@ -30,13 +30,6 @@
  *   Home / End               first / last
  *   Enter / Space            activate (native button activation)
  *
- * Design: Tabs are peers, so the content behind each must be genuinely parallel and the
- * reader must not need two of them at once. A step in a sequence is not a tab.
- * Keep the labels to one or two words so the tab row does not wrap, since a
- * wrapped tab row stops reading as a row. The first tab is the default and
- * should be the one most readers want, not the one that comes first
- * alphabetically.
- *
  * A11y (owned by the element, nothing to supply beyond trigger names):
  *   The element wires the whole APG Tabs pattern: the list is a
  *   `role="tablist"` reporting `aria-orientation`, each trigger is a
@@ -103,7 +96,7 @@ export function tabsListClass(opts: { variant?: TabsListVariant } = {}): string 
 // us cursor-pointer + Enter/Space activation + focus for free. The class
 // here is essentially shadcn's tabs.tsx trigger output.
 const TABS_TRIGGER_CLASS = [
-  "relative inline-flex h-[calc(100%-1px)] flex-1 cursor-pointer select-none items-center justify-center gap-1.5 rounded-md border border-transparent px-2 py-1 text-sm font-medium whitespace-nowrap text-foreground/60 transition-all group-data-[orientation=vertical]/tabs:w-full group-data-[orientation=vertical]/tabs:justify-start hover:text-foreground focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50 focus-visible:outline-1 focus-visible:outline-ring disabled:pointer-events-none disabled:opacity-50 group-data-[variant=default]/tabs-list:data-[state=active]:shadow-e1 group-data-[variant=underline]/tabs-list:data-[state=active]:shadow-none dark:text-muted-foreground dark:hover:text-foreground [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-4",
+  "relative inline-flex h-[calc(100%-1px)] flex-1 cursor-pointer select-none items-center justify-center gap-1.5 rounded-md border border-transparent px-2 py-1 text-sm font-medium whitespace-nowrap text-foreground/60 transition-all group-data-[orientation=vertical]/tabs:w-full group-data-[orientation=vertical]/tabs:justify-start hover:text-foreground focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50 focus-visible:outline-1 focus-visible:outline-ring disabled:pointer-events-none disabled:opacity-50 group-data-[variant=default]/tabs-list:data-[state=active]:shadow-sm group-data-[variant=underline]/tabs-list:data-[state=active]:shadow-none dark:text-muted-foreground dark:hover:text-foreground [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-4",
   // These mirror shadcn's tabs.tsx (modulo variant=line → variant=underline).
   // Light-mode active state uses bg-background + shadow only; dark mode
   // additionally borders. Adding light-mode border made the underline

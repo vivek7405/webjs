@@ -20,7 +20,7 @@ export class CacheBuster extends WebComponent {
 
   render() {
     return html`
-      <div class="flex items-center gap-3 text-sm">
+      <div class="flex items-center gap-3 text-[15px]">
         <button @click=${() => this.bust()}
           class=${buttonClass({ variant: 'secondary', size: 'sm' })}>revalidate this page</button>
         <span class="text-muted-foreground">${this.status.get()}</span>

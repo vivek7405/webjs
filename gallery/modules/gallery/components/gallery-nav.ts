@@ -49,7 +49,7 @@ export class GalleryNav extends WebComponent({ current: prop(String) }) {
     return html`
       ${FEATURE_GROUPS.map((g) => html`
         <div class="mb-5">
-          <div class="px-3 mb-1.5 text-xs font-semibold uppercase tracking-wider text-muted-foreground/60">${g.label}</div>
+          <div class="px-3 mb-1.5 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground/60">${g.label}</div>
           <nav class="flex flex-col gap-0.5">${g.items.map((i) => link(i.href, i.title))}</nav>
         </div>
       `)}

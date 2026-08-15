@@ -22,7 +22,7 @@ export class Greeter extends WebComponent {
   }
   render() {
     return html`
-      <div class="grid gap-3 max-w-md">
+      <div class="grid gap-3 max-w-[420px]">
         <form @submit=${(e: SubmitEvent) => this.run(e)}
           class="${cardClass()} flex items-center gap-2 p-2 pl-4">
           <input name="name" placeholder="your name" autocomplete="off"

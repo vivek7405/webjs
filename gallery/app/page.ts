@@ -1,10 +1,5 @@
 import { html } from '@webjsdev/core';
 import { cardClass } from '#components/ui/card.ts';
-import {
-  emptyStateClass,
-  emptyStateTitleClass,
-  emptyStateDescriptionClass,
-} from '#components/ui/empty-state.ts';
 import { badgeClass } from '#components/ui/badge.ts';
 import { FEATURE_GROUPS, EXAMPLES } from '#modules/gallery/nav.ts';
 
@@ -25,9 +20,6 @@ export default function Home() {
   // Flatten the groups here rather than at module scope, so the card can label
   // itself with the group it came from (NavItem itself carries no category).
   const features = FEATURE_GROUPS.flatMap((g) => g.items.map((item) => ({ ...item, category: g.label })));
-  // `gallery:clear` strips the demos, so this genuinely reaches zero rather
-  // than being a theoretical branch: an app that has outgrown the gallery
-  // should land on something that says so, not on an empty grid.
   return html`
     <div class="py-8 flex flex-col items-center gap-16">
       <!-- Hero -->
@@ -56,22 +48,14 @@ export default function Home() {
           </span>
         </div>
 
-        ${features.length === 0
-          ? html`<div class=${emptyStateClass({ variant: 'bordered' })}>
-              <p class=${emptyStateTitleClass()}>The gallery has been cleared</p>
-              <p class=${emptyStateDescriptionClass()}>
-                This app is yours now. Build under app/ and modules/, and read
-                the skill at .agents/skills/webjs/ for how.
-              </p>
-            </div>`
-          : html`<div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+        <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
           ${features.map(f => html`
             <a href=${f.href} class="${CARD_LINK} p-5 flex flex-col gap-3 group no-underline text-inherit">
               <div class="flex items-start justify-between gap-2">
                 <span class="font-bold text-base group-hover:text-foreground transition-colors" style="font-family: var(--font-display)">
                   ${f.title}
                 </span>
-                <span class="${badgeClass({ variant: 'outline' })} font-mono text-xs">
+                <span class="${badgeClass({ variant: 'outline' })} font-mono text-[10px]">
                   ${f.category}
                 </span>
               </div>
@@ -80,7 +64,7 @@ export default function Home() {
               </p>
             </a>
           `)}
-        </div>`}
+        </div>
       </section>
 
       <!-- Example Apps Grid -->

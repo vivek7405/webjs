@@ -22,10 +22,10 @@ export class CounterCard extends WebComponent({
 
   render() {
     return html`
-      <div class="${cardClass()} grid gap-4 p-5 max-w-xs">
+      <div class="${cardClass()} grid gap-4 p-5 max-w-[320px]">
         <slot></slot>
         <div class="flex items-baseline gap-2">
-          <span class="text-4xl font-bold tabular-nums leading-none text-foreground">${this.count.get()}</span>
+          <span class="text-[2.5rem] font-bold tabular-nums leading-none text-foreground">${this.count.get()}</span>
           <span class="text-sm text-muted-foreground">${this.label}</span>
         </div>
         <button @click=${() => this.count.set(this.count.get() + 1)}

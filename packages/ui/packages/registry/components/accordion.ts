@@ -24,14 +24,6 @@
  *
  * Design tokens used: --border, --ring, --foreground.
  *
- * Design: Use this to make a long page shorter, never to hide something the reader
- * needs. Collapsed content is content most people will not read, so an
- * accordion is right for reference material a few readers want (a FAQ, advanced
- * settings) and wrong for anything on the main path. Default the first panel
- * open when one panel is clearly the common case, and leave them all closed when
- * they are equals, since an arbitrary open panel reads as more important than
- * its siblings.
- *
  * A11y (mostly handled by the native primitives):
  *   Build it on `<details>` + `<summary>`, which is where nearly all of this
  *   comes from: the browser supplies the button semantics, the expanded state,

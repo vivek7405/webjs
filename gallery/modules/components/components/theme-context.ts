@@ -28,10 +28,10 @@ export class ThemeProvider extends WebComponent {
 
   render() {
     return html`
-      <div class=${cardClass('grid gap-3 p-3 max-w-md')}>
+      <div class=${cardClass('grid gap-3 p-3 max-w-[420px]')}>
         <button @click=${() => this.toggle()}
           class="${buttonClass({ size: 'sm' })} w-fit">
-          provider theme is ${this.provider.value} (toggle)
+          provider theme: ${this.provider.value} (toggle)
         </button>
         <slot></slot>
       </div>
@@ -57,11 +57,11 @@ export class ThemeConsumer extends WebComponent {
   render() {
     const theme = this.consumer.value ?? 'light';
     return html`
-      <div class="flex items-center gap-3 text-sm text-foreground">
+      <div class="flex items-center gap-3 text-[15px] text-foreground">
         <span>child sees: <strong>${theme}</strong></span>
         <button @click=${() => this.readOnce()}
           class=${buttonClass({ variant: 'secondary', size: 'xs' })}>read once</button>
-        <span class="text-muted-foreground text-sm">last one-shot was ${this.lastRead.get()}</span>
+        <span class="text-muted-foreground text-sm">last one-shot: ${this.lastRead.get()}</span>
       </div>
     `;
   }

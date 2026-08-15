@@ -32,12 +32,6 @@
  *   Escape   dismiss the card, returning focus to the trigger when the card
  *            held it
  *
- * Design: Hover is a preview, never a requirement, so everything inside must be
- * available some other way. It cannot be reached by touch or by keyboard alone,
- * which makes it the wrong home for an action or for information the reader
- * needs. Use it to save a navigation (who is this person, what is at this link)
- * and keep it small enough to read at a glance.
- *
  * A11y (owned by the element, mostly nothing to supply):
  *   The trigger opens on focus as well as hover and carries `aria-haspopup` /
  *   `aria-expanded` / `aria-controls`. The panel is a `role="dialog"`, which
@@ -85,7 +79,7 @@ import { positionFloating, type PopoverSide, type PopoverAlign } from './popover
 // visual layer sits on top. UA `[popover]:not(:popover-open) {
 // display: none }` handles closed-state hiding.
 export const hoverCardContentClass = (): string =>
-  'fixed z-50 w-64 m-0 rounded-md border bg-popover p-4 text-popover-foreground shadow-e2 outline-hidden';
+  'fixed z-50 w-64 m-0 rounded-md border bg-popover p-4 text-popover-foreground shadow-md outline-hidden';
 
 // --------------------------------------------------------------------------
 // <ui-hover-card>

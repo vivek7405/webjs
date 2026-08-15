@@ -8,12 +8,6 @@
  *
  * Design tokens used: --muted, --muted-foreground, --background.
  *
- * Design: A keyboard hint is for a shortcut that exists, shown next to the thing it
- * does, so the reader learns it in passing. It is quiet by construction: this is
- * reference, not instruction. Match the platform's own notation and modifier
- * order, and do not invent a shortcut in the copy that the app does not
- * actually implement.
- *
  * A11y (required for accessible output):
  *   SYMBOL-ONLY KEYS NEED A SPOKEN NAME. A screen reader reads a bare glyph
  *   however its speech engine happens to handle that codepoint, so a key shown

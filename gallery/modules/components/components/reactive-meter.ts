@@ -62,7 +62,7 @@ export class ReactiveMeter extends WebComponent {
         <button @click=${() => this.bump(-1)}>-1</button>
         <span class="val">${this.count.get()}</span>
         <button @click=${() => this.bump(1)}>+1</button>
-        <span class="muted">doubled to ${this.doubled.get()}</span>
+        <span class="muted">doubled: ${this.doubled.get()}</span>
         <button @click=${() => this.reset()}>reset</button>
       </div>
       <p class="muted">${this.lastLogged.get()}</p>

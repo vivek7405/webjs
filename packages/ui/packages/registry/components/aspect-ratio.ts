@@ -8,13 +8,6 @@
  *
  * Design tokens used: none (layout only).
  *
- * Design: Reserve the space before the content arrives. An image that loads into an
- * unsized box shifts everything below it, which is the single most annoying
- * thing a page can do to someone already reading. Pick the ratio from the source
- * material (16 / 9 for video, 1 / 1 for avatars and product shots, 4 / 3 for
- * photography) and keep one ratio per grid so a row of cards has a common
- * horizon rather than a ragged one.
- *
  * A11y (required for accessible output):
  *   Layout only, so it adds no semantics and takes none away. What matters is
  *   the CONTENT you put inside it: an `<img>` still needs an `alt` (empty

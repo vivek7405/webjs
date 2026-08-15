@@ -22,7 +22,7 @@ function streamPayload(action: string, target: string, inner = '') {
   return `<webjs-stream action="${action}" target="${target}">${body}</webjs-stream>`;
 }
 
-const rowCls = 'flex items-center gap-2 px-3 py-2 rounded-xl bg-card border border-border text-sm text-foreground';
+const rowCls = 'flex items-center gap-2 px-3 py-2 rounded-xl bg-card border border-border text-[15px] text-foreground';
 const row = (id: string, label: string) => `<li id="${id}" class="${rowCls}">${label}</li>`;
 
 export class StreamDemo extends WebComponent {
@@ -60,7 +60,7 @@ export class StreamDemo extends WebComponent {
   render() {
     const btn = buttonClass({ variant: 'secondary', size: 'xs' });
     return html`
-      <div class="grid gap-4 max-w-md">
+      <div class="grid gap-4 max-w-[460px]">
         <div class="flex flex-wrap gap-2">
           <button class=${btn} @click=${() => this.appendRow()}>Append</button>
           <button class=${btn} @click=${() => this.prependRow()}>Prepend</button>
@@ -71,8 +71,8 @@ export class StreamDemo extends WebComponent {
         <!-- The target list. renderStream() mutates it by id; this markup renders
              once and is never re-rendered by the component. -->
         <ul id="stream-list" class="grid gap-2 m-0 p-0 list-none">
-          <li id="row-1" class="flex items-center gap-2 px-3 py-2 rounded-xl bg-card border border-border text-sm text-foreground">Row 1</li>
-          <li id="row-2" class="flex items-center gap-2 px-3 py-2 rounded-xl bg-card border border-border text-sm text-foreground">Row 2</li>
+          <li id="row-1" class="flex items-center gap-2 px-3 py-2 rounded-xl bg-card border border-border text-[15px] text-foreground">Row 1</li>
+          <li id="row-2" class="flex items-center gap-2 px-3 py-2 rounded-xl bg-card border border-border text-[15px] text-foreground">Row 2</li>
         </ul>
       </div>
     `;

@@ -21,7 +21,7 @@ export class RichData extends WebComponent {
 
   render() {
     return html`
-      <div class="flex items-center gap-3 text-sm">
+      <div class="flex items-center gap-3 text-[15px]">
         <button @click=${() => this.load()}
           class=${buttonClass({ size: 'sm' })}>richFetch() the route</button>
         <span class="text-muted-foreground">${this.line.get()}</span>

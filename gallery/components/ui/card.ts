@@ -29,7 +29,7 @@ const SURFACE = 'rounded-2xl border border-border bg-card';
 
 /**
  * Compose the Tailwind classes for a card/panel surface. Append the panel's own
- * padding + layout: `class="${cardClass()} p-5 grid gap-4 max-w-md"`.
+ * padding + layout: `class="${cardClass()} p-5 grid gap-4 max-w-[460px]"`.
  */
 export function cardClass(extra?: string): string {
   return cn(SURFACE, extra);

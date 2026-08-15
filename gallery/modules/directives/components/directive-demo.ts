@@ -109,7 +109,7 @@ export class DirectiveDemo extends WebComponent {
   render() {
     const variant = this.variant.get();
     return html`
-      <div class="grid gap-6 max-w-md">
+      <div class="grid gap-6 max-w-[420px]">
         <div class="grid gap-4">
           <div class="flex gap-2">
             <button @click=${() => this.reverse()}
@@ -120,8 +120,8 @@ export class DirectiveDemo extends WebComponent {
           <!-- repeat keyed by item.id: reversing reuses the existing <li> nodes. -->
           <ul class="grid gap-2 list-none m-0 p-0">
             ${repeat(this.items.get(), (it: Item) => it.id, (it: Item) => html`
-              <li class="flex items-center gap-2 px-3 py-2 rounded-xl bg-card border border-border text-sm text-foreground">
-                <span class="text-muted-foreground tabular-nums text-sm">#${it.id}</span>${it.label}
+              <li class="flex items-center gap-2 px-3 py-2 rounded-xl bg-card border border-border text-[15px] text-foreground">
+                <span class="text-muted-foreground tabular-nums text-[13px]">#${it.id}</span>${it.label}
               </li>
             `)}
           </ul>
@@ -150,7 +150,7 @@ export class DirectiveDemo extends WebComponent {
                unsafeHTML injects trusted, author-written HTML (NEVER user input). -->
           <button @click=${() => this.variant.set(variant + 1)}
             class="${buttonClass({ variant: 'link', size: 'none' })} w-fit">rekey</button>
-          ${keyed(variant, html`<div class="text-sm text-foreground">${unsafeHTML('<em>fresh subtree</em>')} #${variant}</div>`)}
+          ${keyed(variant, html`<div class="text-[15px] text-foreground">${unsafeHTML('<em>fresh subtree</em>')} #${variant}</div>`)}
         </div>
 
         <div class="grid gap-3 border-t border-border pt-4">
@@ -173,7 +173,7 @@ export class DirectiveDemo extends WebComponent {
             <button @click=${() => this.tab.set('b')}
               class=${cn(buttonClass({ variant: 'secondary', size: 'xs' }), this.tab.get() === 'b' && 'bg-primary text-primary-foreground border-primary hover:border-primary')}>Tab B</button>
           </div>
-          <div class="text-sm text-foreground">${cache(
+          <div class="text-[15px] text-foreground">${cache(
             this.tab.get() === 'a'
               ? html`<span>Panel A content</span>`
               : html`<span>Panel B content</span>`,
@@ -182,7 +182,7 @@ export class DirectiveDemo extends WebComponent {
           <!-- templateContent stamps a <template> element's content (see
                stampTpl: a real template on the client, a plain { innerHTML } at
                SSR, so first paint and hydration match). -->
-          <div class="text-sm text-foreground">${templateContent(this.stampTpl)}</div>
+          <div class="text-[15px] text-foreground">${templateContent(this.stampTpl)}</div>
 
           <!-- asyncAppend appends each value from an async iterable as it
                arrives; asyncReplace shows only the latest. Both render empty at
@@ -195,7 +195,7 @@ export class DirectiveDemo extends WebComponent {
             <span class="text-sm text-muted-foreground">run #${this.streamRun.get()}</span>
           </div>
           <div class="text-sm text-muted-foreground">log (asyncAppend, one row per value):</div>
-          <ul class="grid gap-1 list-none m-0 p-0 text-sm text-muted-foreground min-h-5">${asyncAppend(this.logIter, (line: string) => html`<li>· ${line}</li>`)}</ul>
+          <ul class="grid gap-1 list-none m-0 p-0 text-sm text-muted-foreground min-h-[1.25rem]">${asyncAppend(this.logIter, (line: string) => html`<li>· ${line}</li>`)}</ul>
           <p class="text-sm text-foreground">countdown (asyncReplace, latest value only): ${asyncReplace(this.countIter)}</p>
         </div>
       </div>

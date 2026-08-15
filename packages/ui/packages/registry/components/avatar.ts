@@ -11,12 +11,6 @@
  *   AvatarGroup                       → avatarGroupClass()
  *   AvatarGroupCount                  → avatarGroupCountClass()
  *
- * Design: An avatar identifies, it does not decorate, so it earns its space only where
- * the reader needs to tell people apart. Keep one size per context: mixed avatar
- * sizes in a list read as a hierarchy that is not there. The fallback matters
- * more than the image, because most users have no photo, so the initials must be
- * legible at the size you actually render rather than only at the large one.
- *
  * A11y (required for accessible output): the <img> MUST have an alt that
  * names the person (alt="Vivek Khandelwal"), or alt="" when a visible text
  * fallback already names them. Always provide the fallback <span> so the

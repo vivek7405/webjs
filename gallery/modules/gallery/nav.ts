@@ -82,8 +82,6 @@ export const FEATURE_GROUPS: NavGroup[] = [
 /** The whole example apps (composed features), shown after the single-feature demos. */
 export const EXAMPLES: NavItem[] = [
   { href: '/examples/todo', title: 'Optimistic todo', blurb: 'See the pieces composed in one real feature: the declarative optimistic() list API, progressive-enhancement forms, accessible labels, the modules split, and SQLite.' },
-  { href: '/examples/dashboard', title: 'Dashboard', blurb: 'Work out what a dashboard should look like before writing the class list. Hierarchy, the action pyramid, and an empty branch written beside its list.' },
-  { href: '/examples/settings', title: 'Settings form', blurb: 'Make a long form fillable instead of a column of inputs. Grouping by fieldset, the label gap that fixes most forms, and reserved error space.' },
 ];
 
 /**

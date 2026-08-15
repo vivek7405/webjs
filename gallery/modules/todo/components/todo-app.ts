@@ -78,7 +78,7 @@ export class TodoApp extends WebComponent({
     const done = list.filter((t) => t.completed).length;
     const pct = list.length ? Math.round((done / list.length) * 100) : 0;
     return html`
-      <section class="w-full max-w-lg grid gap-5">
+      <section class="w-full max-w-[540px] grid gap-5">
         <!-- Header: a title, a live done/total count, and a progress bar. -->
         <header class="grid gap-3">
           <div class="flex items-center gap-3">
@@ -86,10 +86,10 @@ export class TodoApp extends WebComponent({
               <svg viewBox="0 0 24 24" class="w-5 h-5 stroke-current fill-none" style="stroke-width:2.4;stroke-linecap:round;stroke-linejoin:round"><path d="m5 13 4 4L19 7"/></svg>
             </span>
             <div class="grid gap-0.5">
-              <h2 class="m-0 text-2xl font-bold tracking-[-0.02em] leading-none text-foreground">Tasks</h2>
-              <p class="m-0 text-sm text-muted-foreground leading-none">${done} of ${list.length} done</p>
+              <h2 class="m-0 text-[1.4rem] font-bold tracking-[-0.02em] leading-none text-foreground">Tasks</h2>
+              <p class="m-0 text-[13px] text-muted-foreground leading-none">${done} of ${list.length} done</p>
             </div>
-            <span class="ml-auto text-sm font-semibold tabular-nums text-muted-foreground">${pct}%</span>
+            <span class="ml-auto text-[13px] font-semibold tabular-nums text-muted-foreground">${pct}%</span>
           </div>
           <div class="h-1.5 rounded-full bg-muted overflow-hidden">
             <div class="h-full rounded-full bg-primary transition-[width] duration-300" style="width:${pct}%"></div>
@@ -127,7 +127,7 @@ export class TodoApp extends WebComponent({
                 </button>
                 <!-- The title is a <label for> the toggle: clicking the text toggles
                      the task (works on JS and no-JS paths, and screen readers). -->
-                <label for="t-${todo.id}" class="flex-1 min-w-0 text-sm leading-snug break-words cursor-pointer select-none ${todo.completed ? 'line-through text-muted-foreground' : 'text-foreground'}">${todo.title}</label>
+                <label for="t-${todo.id}" class="flex-1 min-w-0 text-[15px] leading-snug break-words cursor-pointer select-none ${todo.completed ? 'line-through text-muted-foreground' : 'text-foreground'}">${todo.title}</label>
                 <!-- Delete: a proper icon button, revealed on row hover / focus. -->
                 <button type="submit" name="intent" value="delete" aria-label="Delete task"
                   @click=${(e: Event) => this.removeTodo(e, todo)}

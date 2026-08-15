@@ -31,16 +31,12 @@ const FEATURES = [
   'metadata', 'caching', 'env', 'client-router', 'view-transitions', 'frames',
   'service-worker', 'websockets', 'broadcast', 'rate-limit', 'file-storage', 'sessions',
 ];
-// Whole example apps under app/examples/<name>. The dashboard and settings
-// screens are the DESIGN exemplars (#1116): they teach what a screen should
-// look like rather than one framework feature, and they are covered here for
-// the same reason as todo. Leaving them out is how the clear-list drifted, so
-// `gallery:clear` shipped leaving two modules it claims to strip.
-const EXAMPLE_APPS = ['todo', 'dashboard', 'settings'];
+// Whole example apps under app/examples/<name>.
+const EXAMPLE_APPS = ['todo'];
 // Demos whose logic lives in a modules/<name> folder, spot-checked here. The
 // app-only demos (routing / metadata / env / boundaries / view-transitions,
 // which have no modules/ dir) are excluded.
-const MODULE_ROUTES = ['auth', 'components', 'server-actions', 'optimistic-ui', 'async-render', 'streaming', 'stream', 'suspense', 'directives', 'frames', 'todo', 'websockets', 'broadcast', 'rate-limit', 'file-storage', 'sessions', 'dashboard', 'settings'];
+const MODULE_ROUTES = ['auth', 'components', 'server-actions', 'optimistic-ui', 'async-render', 'streaming', 'stream', 'suspense', 'directives', 'frames', 'todo', 'websockets', 'broadcast', 'rate-limit', 'file-storage', 'sessions'];
 
 async function tempCwd() {
   return mkdtemp(join(tmpdir(), 'webjs-scaffold-gallery-'));

@@ -56,19 +56,9 @@ So the loop is: `add` the component, then query `ui <name>` (MCP) or
 ## Inventory (run `npx webjsdev ui list` or the MCP `ui` tool for the authoritative, current set)
 
 **Tier 1 (class helpers):** accordion, alert, aspect-ratio, avatar, badge,
-breadcrumb, button, card, checkbox, collapsible, description-list, empty-state,
-field-group, input, kbd, label, native-select, page-header, pagination, popover,
-progress, radio-group, separator, skeleton, stat, switch, table, textarea,
-timeline.
-
-Six of those are the design primitives, and they are the ones an agent is most
-likely to hand-roll instead: **empty-state** (what a region says when it has
-nothing to show, which seeded data hides), **stat** (a number with its label,
-where the value outweighs the label), **page-header** (the page's one `<h1>` and
-its one primary action), **field-group** (fieldset grouping, input addons, and
-the reserved error space), **description-list** (labelled values, replacing a
-label and a colon on one line), and **timeline** (events in order). See
-`references/design.md` for when each belongs on a screen.
+breadcrumb, button, card, checkbox, collapsible, input, kbd, label,
+native-select, pagination, popover, progress, radio-group, separator, skeleton,
+switch, table, textarea.
 
 **Tier 2 (custom elements, own their ARIA):** alert-dialog, dialog,
 dropdown-menu, hover-card, sonner, tabs, tooltip, plus toggle and toggle-group

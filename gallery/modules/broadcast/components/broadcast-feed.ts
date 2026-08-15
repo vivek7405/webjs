@@ -40,7 +40,7 @@ export class BroadcastFeed extends WebComponent {
   render() {
     const on = this.connected.get();
     return html`
-      <div class="grid gap-4 max-w-md">
+      <div class="grid gap-4 max-w-[420px]">
         <div class="flex items-center gap-2 text-sm">
           <span class="w-2 h-2 rounded-full ${on ? 'bg-primary' : 'bg-muted-foreground/40'}"></span>
           <span class="text-muted-foreground">${on ? 'in the room' : 'connecting (the live room needs JavaScript)'}</span>
@@ -53,7 +53,7 @@ export class BroadcastFeed extends WebComponent {
         </form>
         <ul class="grid gap-1.5 list-none m-0 p-0">
           ${this.lines.get().map((line) => html`
-            <li class="px-3 py-2 rounded-xl bg-card border border-border text-sm text-foreground">${line}</li>
+            <li class="px-3 py-2 rounded-xl bg-card border border-border text-[15px] text-foreground">${line}</li>
           `)}
         </ul>
       </div>
