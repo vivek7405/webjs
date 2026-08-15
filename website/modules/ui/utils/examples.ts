@@ -143,28 +143,6 @@ import {
 // "callable, returns a class string". `never[]` says exactly that: each
 // concrete helper is assignable to it, and it refuses a direct call with
 // invented arguments, which `any[]` would have waved through.
-import {
-  emptyStateClass, emptyStateMediaClass, emptyStateTitleClass,
-  emptyStateDescriptionClass, emptyStateActionsClass,
-} from '#modules/ui/components/empty-state.ts';
-import {
-  statGroupClass, statClass, statLabelClass, statValueClass, statDeltaClass,
-} from '#modules/ui/components/stat.ts';
-import {
-  pageHeaderClass, pageHeaderTitleClass, pageHeaderDescriptionClass, pageHeaderActionsClass,
-} from '#modules/ui/components/page-header.ts';
-import {
-  fieldSetClass, fieldLegendClass, fieldGroupClass, inputGroupClass,
-  inputGroupAddonClass, inputGroupTextClass, fieldErrorClass,
-} from '#modules/ui/components/field-group.ts';
-import {
-  descriptionListClass, descriptionRowClass, descriptionTermClass, descriptionDetailsClass,
-} from '#modules/ui/components/description-list.ts';
-import {
-  timelineClass, timelineItemClass, timelineMarkerClass, timelineConnectorClass,
-  timelineContentClass, timelineTitleClass, timelineTimeClass,
-} from '#modules/ui/components/timeline.ts';
-
 const HELPERS: Record<string, (...args: never[]) => string> = {
   accordionClass, accordionContentClass, accordionItemClass, accordionTriggerClass,
   alertClass, alertDescriptionClass, alertTitleClass,
@@ -188,17 +166,6 @@ const HELPERS: Record<string, (...args: never[]) => string> = {
   tableBodyClass, tableCellClass, tableClass, tableContainerClass, tableHeadClass, tableHeaderClass, tableRowClass,
   tableCaptionClass,
   tabsListClass, textareaClass, toggleClass,
-  // #1116. A helper missing from this map is not an error: evalHole fails soft
-  // to an empty class, so the preview renders unstyled and still returns 200.
-  emptyStateClass, emptyStateMediaClass, emptyStateTitleClass,
-  emptyStateDescriptionClass, emptyStateActionsClass,
-  statGroupClass, statClass, statLabelClass, statValueClass, statDeltaClass,
-  pageHeaderClass, pageHeaderTitleClass, pageHeaderDescriptionClass, pageHeaderActionsClass,
-  fieldSetClass, fieldLegendClass, fieldGroupClass, inputGroupClass,
-  inputGroupAddonClass, inputGroupTextClass, fieldErrorClass,
-  descriptionListClass, descriptionRowClass, descriptionTermClass, descriptionDetailsClass,
-  timelineClass, timelineItemClass, timelineMarkerClass, timelineConnectorClass,
-  timelineContentClass, timelineTitleClass, timelineTimeClass,
 };
 
 // Evaluate one authored call expression such as buttonClass({ variant: 'x' })
@@ -267,102 +234,6 @@ export function codeExample(src: string): string {
 // --------------------------------------------------------------------------
 
 const EXAMPLES: Record<string, string> = {
-  // #1116. Live previews for the six primitives added with the design work.
-  // Without an entry here the gallery page serves its "no live preview"
-  // fallback, so a component can ship, be listed, and still show nothing.
-  'empty-state': `
-    <div class="\${emptyStateClass({ variant: 'bordered' })}">
-      <h3 class="\${emptyStateTitleClass()}">No invoices yet</h3>
-      <p class="\${emptyStateDescriptionClass()}">Invoices you send appear here, with their payment status.</p>
-      <div class="\${emptyStateActionsClass()}">
-        <button class="\${buttonClass()}">Create invoice</button>
-        <button class="\${buttonClass({ variant: 'ghost' })}">Learn more</button>
-      </div>
-    </div>
-  `,
-
-  stat: `
-    <div class="\${statGroupClass({ columns: 3 })}">
-      <dl class="\${statClass({ variant: 'card' })}">
-        <dt class="\${statLabelClass()}">Delivered</dt>
-        <dd class="\${statValueClass()}">1,284</dd>
-        <dd class="\${statDeltaClass({ direction: 'up' })}">up 12% from yesterday</dd>
-      </dl>
-      <dl class="\${statClass({ variant: 'card' })}">
-        <dt class="\${statLabelClass()}">In transit</dt>
-        <dd class="\${statValueClass()}">37</dd>
-        <dd class="\${statDeltaClass({ direction: 'flat' })}">unchanged</dd>
-      </dl>
-      <dl class="\${statClass({ variant: 'card' })}">
-        <dt class="\${statLabelClass()}">Failed</dt>
-        <dd class="\${statValueClass()}">3</dd>
-        <dd class="\${statDeltaClass({ direction: 'down' })}">down 2 from yesterday</dd>
-      </dl>
-    </div>
-  `,
-
-  'page-header': `
-    <header class="\${pageHeaderClass({ variant: 'bordered' })}">
-      <div>
-        <h1 class="\${pageHeaderTitleClass()}">Invoices</h1>
-        <p class="\${pageHeaderDescriptionClass()}">Everything you have sent, and whether it has been paid.</p>
-      </div>
-      <div class="\${pageHeaderActionsClass()}">
-        <button class="\${buttonClass({ variant: 'outline' })}">Export</button>
-        <button class="\${buttonClass()}">New invoice</button>
-      </div>
-    </header>
-  `,
-
-  'field-group': `
-    <fieldset class="\${fieldSetClass()}">
-      <legend class="\${fieldLegendClass()}">Billing</legend>
-      <div class="\${fieldGroupClass()}">
-        <div class="grid gap-1">
-          <label class="text-sm font-medium" for="ui-price">Price</label>
-          <div class="\${inputGroupClass()}">
-            <span class="\${inputGroupAddonClass({ side: 'start' })}" aria-hidden="true">$</span>
-            <input id="ui-price" class="\${inputClass()}" value="49.00">
-          </div>
-          <div class="\${fieldErrorClass()}"></div>
-        </div>
-      </div>
-    </fieldset>
-  `,
-
-  'description-list': `
-    <dl class="\${descriptionListClass({ layout: 'inline' })}">
-      <div class="\${descriptionRowClass({ layout: 'inline' })}">
-        <dt class="\${descriptionTermClass()}">Carrier</dt>
-        <dd class="\${descriptionDetailsClass()}">Northwind Freight</dd>
-      </div>
-      <div class="\${descriptionRowClass({ layout: 'inline' })}">
-        <dt class="\${descriptionTermClass()}">Tracking</dt>
-        <dd class="\${descriptionDetailsClass()}">NW-4471-QT</dd>
-      </div>
-    </dl>
-  `,
-
-  timeline: `
-    <ol class="\${timelineClass()}">
-      <li class="\${timelineItemClass()}">
-        <span class="\${timelineMarkerClass({ variant: 'success' })}" aria-hidden="true"></span>
-        <span class="\${timelineConnectorClass()}" aria-hidden="true"></span>
-        <div class="\${timelineContentClass()}">
-          <p class="\${timelineTitleClass()}">Delivered to Bristol depot</p>
-          <time class="\${timelineTimeClass()}" datetime="2026-08-14T09:24:00Z">09:24</time>
-        </div>
-      </li>
-      <li class="\${timelineItemClass()}">
-        <span class="\${timelineMarkerClass({ variant: 'destructive' })}" aria-hidden="true"></span>
-        <div class="\${timelineContentClass()}">
-          <p class="\${timelineTitleClass()}">Delivery failed, retry booked</p>
-          <time class="\${timelineTimeClass()}" datetime="2026-08-14T08:02:00Z">08:02</time>
-        </div>
-      </li>
-    </ol>
-  `,
-
   button: `
     <div class="flex flex-wrap items-center gap-3">
       <button class="\${buttonClass()}">Default</button>

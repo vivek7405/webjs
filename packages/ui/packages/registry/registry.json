@@ -4,6 +4,43 @@
   "homepage": "https://webjs.dev/ui",
   "items": [
     {
+      "name": "lib-utils",
+      "type": "registry:lib",
+      "description": "cn() class-merge helper",
+      "files": [
+        {
+          "path": "lib/utils.ts",
+          "type": "registry:lib",
+          "target": "lib/utils.ts"
+        }
+      ]
+    },
+    {
+      "name": "lib-dom",
+      "type": "registry:lib",
+      "description": "onBeforeCache() client-router cache hook",
+      "files": [
+        {
+          "path": "lib/dom.ts",
+          "type": "registry:lib",
+          "target": "lib/dom.ts"
+        }
+      ]
+    },
+    {
+      "name": "theme-neutral",
+      "type": "registry:theme",
+      "title": "Neutral",
+      "description": "Pure grayscale (default)",
+      "files": [
+        {
+          "path": "themes/index.css",
+          "type": "registry:file",
+          "target": "app/globals.css"
+        }
+      ]
+    },
+    {
       "name": "accordion",
       "type": "registry:ui",
       "dependencies": [
@@ -161,22 +198,6 @@
       ]
     },
     {
-      "name": "description-list",
-      "type": "registry:ui",
-      "registryDependencies": [
-        "lib-utils"
-      ],
-      "dependencies": [
-        "@webjsdev/core"
-      ],
-      "files": [
-        {
-          "path": "components/description-list.ts",
-          "type": "registry:ui"
-        }
-      ]
-    },
-    {
       "name": "dialog",
       "type": "registry:ui",
       "registryDependencies": [
@@ -207,38 +228,6 @@
       "files": [
         {
           "path": "components/dropdown-menu.ts",
-          "type": "registry:ui"
-        }
-      ]
-    },
-    {
-      "name": "empty-state",
-      "type": "registry:ui",
-      "registryDependencies": [
-        "lib-utils"
-      ],
-      "dependencies": [
-        "@webjsdev/core"
-      ],
-      "files": [
-        {
-          "path": "components/empty-state.ts",
-          "type": "registry:ui"
-        }
-      ]
-    },
-    {
-      "name": "field-group",
-      "type": "registry:ui",
-      "registryDependencies": [
-        "lib-utils"
-      ],
-      "dependencies": [
-        "@webjsdev/core"
-      ],
-      "files": [
-        {
-          "path": "components/field-group.ts",
           "type": "registry:ui"
         }
       ]
@@ -306,30 +295,6 @@
       ]
     },
     {
-      "name": "lib-dom",
-      "type": "registry:lib",
-      "description": "onBeforeCache() client-router cache hook",
-      "files": [
-        {
-          "path": "lib/dom.ts",
-          "type": "registry:lib",
-          "target": "lib/dom.ts"
-        }
-      ]
-    },
-    {
-      "name": "lib-utils",
-      "type": "registry:lib",
-      "description": "cn() class-merge helper",
-      "files": [
-        {
-          "path": "lib/utils.ts",
-          "type": "registry:lib",
-          "target": "lib/utils.ts"
-        }
-      ]
-    },
-    {
       "name": "native-select",
       "type": "registry:ui",
       "dependencies": [
@@ -338,22 +303,6 @@
       "files": [
         {
           "path": "components/native-select.ts",
-          "type": "registry:ui"
-        }
-      ]
-    },
-    {
-      "name": "page-header",
-      "type": "registry:ui",
-      "registryDependencies": [
-        "lib-utils"
-      ],
-      "dependencies": [
-        "@webjsdev/core"
-      ],
-      "files": [
-        {
-          "path": "components/page-header.ts",
           "type": "registry:ui"
         }
       ]
@@ -462,22 +411,6 @@
       ]
     },
     {
-      "name": "stat",
-      "type": "registry:ui",
-      "registryDependencies": [
-        "lib-utils"
-      ],
-      "dependencies": [
-        "@webjsdev/core"
-      ],
-      "files": [
-        {
-          "path": "components/stat.ts",
-          "type": "registry:ui"
-        }
-      ]
-    },
-    {
       "name": "switch",
       "type": "registry:ui",
       "dependencies": [
@@ -525,35 +458,6 @@
       "files": [
         {
           "path": "components/textarea.ts",
-          "type": "registry:ui"
-        }
-      ]
-    },
-    {
-      "name": "theme-neutral",
-      "type": "registry:theme",
-      "title": "Neutral",
-      "description": "Pure grayscale (default)",
-      "files": [
-        {
-          "path": "themes/index.css",
-          "type": "registry:file",
-          "target": "app/globals.css"
-        }
-      ]
-    },
-    {
-      "name": "timeline",
-      "type": "registry:ui",
-      "registryDependencies": [
-        "lib-utils"
-      ],
-      "dependencies": [
-        "@webjsdev/core"
-      ],
-      "files": [
-        {
-          "path": "components/timeline.ts",
           "type": "registry:ui"
         }
       ]

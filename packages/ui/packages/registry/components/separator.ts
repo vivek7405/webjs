@@ -7,12 +7,6 @@
  *   Separator (orientation: horizontal | vertical, decorative: bool)
  *                          → separatorClass({ orientation }) + role + data-orientation
  *
- * Design: A separator is the weakest grouping tool in the kit, so reach for space first.
- * Whitespace groups without adding a line, and a screen ruled into boxes reads
- * as busier than the same screen grouped by rhythm. Use one where the boundary
- * is real and space alone has not carried it, typically between sections of
- * different kinds rather than between peers.
- *
  * A11y (required for accessible output): a meaningful divider needs
  * role="separator" plus aria-orientation. A purely decorative one needs
  * role="none" (or aria-hidden="true") so assistive tech does not announce

@@ -44,14 +44,6 @@
  * Keyboard: Escape is blocked (alert dialogs require explicit choice);
  * Tab cycles trapped within the dialog (native focus trap).
  *
- * Design: This interrupts. That is the whole point, so spend it only on something
- * irreversible, and never on a confirmation the reader will learn to dismiss
- * without reading. The title asks the actual question and the confirm button
- * names the actual verb, so `Delete workspace` beats `Are you sure?` with an
- * `OK`, which forces a reader to reconstruct what they are agreeing to. A
- * destructive confirm takes the destructive variant and sits on the right,
- * with cancel to its left where the reflex lands.
- *
  * A11y (owned by the element, but SUPPLY A TITLE):
  *   On open the element names and describes the panel from the
  *   `data-slot="alert-dialog-title"` / `alert-dialog-description` nodes,
@@ -106,7 +98,7 @@ import { onBeforeCache } from '../lib/dom.ts';
 import { buttonClass, type ButtonVariant, type ButtonSize } from './button.ts';
 
 export const alertDialogContentClass = (): string =>
-  'group/alert-dialog-content fixed top-[50%] left-[50%] z-50 grid w-full max-w-[calc(100%-2rem)] translate-x-[-50%] translate-y-[-50%] gap-4 rounded-lg border bg-background p-6 shadcn-lg shadow-e3 duration-200 data-[size=sm]:max-w-xs data-[size=default]:sm:max-w-lg';
+  'group/alert-dialog-content fixed top-[50%] left-[50%] z-50 grid w-full max-w-[calc(100%-2rem)] translate-x-[-50%] translate-y-[-50%] gap-4 rounded-lg border bg-background p-6 shadcn-lg shadow-lg duration-200 data-[size=sm]:max-w-xs data-[size=default]:sm:max-w-lg';
 
 export const alertDialogHeaderClass = (): string =>
   'grid grid-rows-[auto_1fr] place-items-center gap-1.5 text-center sm:group-data-[size=default]/alert-dialog-content:place-items-start sm:group-data-[size=default]/alert-dialog-content:text-left';

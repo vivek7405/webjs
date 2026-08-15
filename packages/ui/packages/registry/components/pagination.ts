@@ -12,12 +12,6 @@
  *   PaginationNext       → paginationNextClass()
  *   PaginationEllipsis   → paginationEllipsisClass()
  *
- * Design: Pagination is a promise about scale, so show the total when you know it: `Page
- * 3 of 12` tells the reader whether to keep going, and a bare next arrow does
- * not. Keep the current page unmistakable, since its whole job is to say where
- * the reader is. For a feed with no meaningful end, an infinite list or a load
- * more is kinder than page numbers nobody will use.
- *
  * A11y (required for accessible output): wrap the list in <nav
  * aria-label="pagination">, set aria-current="page" on the active page
  * link, give an icon-only Previous / Next control an aria-label, and mark

@@ -66,7 +66,7 @@ export class ClockReader extends WebComponent {
   render() {
     const rows = this.rows.get();
     return html`
-      <div class="${cardClass()} grid gap-4 p-5 max-w-lg">
+      <div class="${cardClass()} grid gap-4 p-5 max-w-[520px]">
         <div class="flex flex-wrap gap-2">
           <button type="button" @click=${() => this.read()} ?disabled=${this.busy.get()}
             aria-busy=${this.busy.get() ? 'true' : 'false'}

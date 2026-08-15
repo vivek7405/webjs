@@ -7,13 +7,6 @@
  *   AlertTitle                              → alertTitleClass()
  *   AlertDescription                        → alertDescriptionClass()
  *
- * Design: An alert competes with the content around it, so more than one on a screen
- * means none of them reads as urgent. Match the variant to the severity rather
- * than to how much attention you want: a `destructive` alert for something
- * broken, the default for something worth knowing. An alert that is always
- * present is furniture and should be plain text instead; if it can be dismissed
- * and never returns, it was not important enough to be an alert.
- *
  * A11y (required for accessible output): put role="alert" on the container
  * for an urgent, interrupting message, or role="status" for a polite,
  * non-urgent update. The class helper sets no role, so without one the

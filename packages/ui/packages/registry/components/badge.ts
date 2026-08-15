@@ -9,13 +9,6 @@
  * The `[a&]:hover:...` hover styles only apply when the element is an `<a>`,
  * so a static `<span>` doesn't pick up an unwanted hover.
  *
- * Design: A badge is the loudest thing per pixel in the kit, which is exactly why it
- * should be rare. Use it for state that changes what the reader does (overdue,
- * failed, draft) and not for a static category, which is quieter as plain text.
- * Route the colour through the semantic roles rather than picking one that looks
- * good next to the row, so the same state is the same colour everywhere and the
- * reader learns it once.
- *
  * A11y (required for accessible output): render a static badge as a plain
  * <span> (not focusable, no tabindex). Only an interactive badge (an <a>
  * or <button>) is focusable, and an icon-only one needs an aria-label.

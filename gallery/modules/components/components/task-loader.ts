@@ -34,11 +34,11 @@ export class TaskLoader extends WebComponent {
     const t = this.task;
     const body =
       t.status === TaskStatus.PENDING ? html`<span class="text-muted-foreground">loading…</span>`
-      : t.status === TaskStatus.ERROR ? html`<span class="text-destructive">${String((t.error as Error)?.message ?? t.error)}</span>`
+      : t.status === TaskStatus.ERROR ? html`<span class="text-destructive">error: ${String((t.error as Error)?.message ?? t.error)}</span>`
       : t.status === TaskStatus.COMPLETE ? html`<span class="text-foreground">${t.value}</span>`
       : html`<span class="text-muted-foreground">idle</span>`;
     return html`
-      <div class="flex items-center gap-3 text-sm">
+      <div class="flex items-center gap-3 text-[15px]">
         <button @click=${() => this.reload()}
           class=${buttonClass({ variant: 'secondary', size: 'sm' })}>reload</button>
         ${body}
