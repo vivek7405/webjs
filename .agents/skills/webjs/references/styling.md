@@ -36,7 +36,18 @@ When custom CSS IS unavoidable inside a light-DOM component, the tag-prefix inva
 
 ## DRY via a JS helper, not `@apply`
 
-When the same Tailwind bundle repeats across 2+ places, extract it into a helper in `lib/utils/ui.ts` that returns an `html` fragment (SSR-time, no client runtime, output identical to inline classes):
+When the same Tailwind bundle repeats across 2+ places, extract it into a helper that returns an `html` fragment (SSR-time, no client runtime, output identical to inline classes). Where the helper LIVES follows the narrowest-owner rule, so pick the tier by who consumes it:
+
+| Consumers | Home |
+|---|---|
+| routes across the app (a heading, a lede, a back link) | `lib/utils/ui.ts` |
+| one feature (a board, a match card, a comment row) | `modules/<feature>/utils/ui/<name>.ts` |
+
+One file per fragment under `utils/ui/`, because a feature accumulates several and one-per-file keeps them greppable. A fragment promotes from the feature tier to `lib/` only when a second feature genuinely consumes it.
+
+The `ui` segment is the part that carries meaning, so keep it at both tiers: inside `modules/<feature>/`, `components/` holds custom elements, `utils/ui/` holds functions returning a `TemplateResult`, and the rest of `utils/` holds functions returning data. Dropping it lands a view fragment beside a pure data helper with nothing in the path to tell them apart.
+
+The example below is the app-wide tier:
 
 ```ts
 import { html } from '@webjsdev/core';
@@ -62,11 +73,18 @@ export default function Post({ params }) {
 | Repeats | Action |
 |---|---|
 | Once | Inline the classes. |
-| 2 to 3 times, identical | Extract to `lib/utils/ui.ts`. |
+| 2 to 3 times, identical, inside ONE feature | Extract to `modules/<feature>/utils/ui/<name>.ts`. |
+| 2 to 3 times, identical, across features or routes | Extract to `lib/utils/ui.ts`. |
 | Varies by 1 to 2 props | Extract with a small parameter (`mb: 'sm' \| 'md'`). |
 | Radically different per call site | Keep inline, do not force-fit. |
 
 Avoid `@apply`: it hides which utilities a class uses and creates a second source of truth. A JS helper keeps the bundle visible at the definition site, composes with conditional classes and active states, and runs at SSR time.
+
+### Reach for a fragment before a component
+
+A fragment helper, not a display-only component, is the default for read-only markup, and the reason is cost rather than taste. A component that only renders is normally elided from the browser, so making one looks free. It stops being free the moment a SHIPPING island renders it, because a component rendered by a component that ships can no longer be elided: the class downloads, and it upgrades once per instance. A board drawn inside a live `<match-replay>` island is exactly that case, so as a fragment it stays free SSR markup and as a component it becomes shipped JavaScript.
+
+Reach for a component when the markup needs behaviour of its own (state, an event handler, a lifecycle hook), and for nothing less. "It felt tidier as an element" is how free HTML turns into a payload.
 
 ### A design system for repeated PRIMITIVES: class helpers built on `@webjsdev/ui`
 

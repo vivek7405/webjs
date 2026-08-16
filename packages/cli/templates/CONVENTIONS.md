@@ -9,8 +9,10 @@ is the short version.
 
 - **`app/` is routing only.** Only routing files live there (page, layout, route,
   middleware, metadata routes). Feature logic goes in `modules/<feature>/`
-  (`actions/`, `queries/`, `components/`, `utils/`); shared UI primitives go in
-  top-level `components/`; browser-safe helpers in `lib/utils/`.
+  (`actions/`, `queries/`, `components/` for custom elements, `utils/` for pure
+  helpers returning data, `utils/ui/` for pure helpers returning an `html`
+  fragment); shared UI primitives go in top-level `components/`; browser-safe
+  helpers in `lib/utils/`, with app-wide markup fragments in `lib/utils/ui.ts`.
 - **Server-only code goes behind `.server.ts`.** Reach it from a page or component
   through a `'use server'` action, never by importing a server-only utility
   directly into browser-bound code.

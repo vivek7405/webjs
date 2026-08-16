@@ -45,6 +45,7 @@ Rows point rather than explain. The reference is the authority on the rule, and 
 | abandon a render because something is missing or not allowed | throw `notFound()` / `forbidden()` / `unauthorized()` | returning an error object and branching in the template | `references/routing-and-pages.md` | `app/features/boundaries` |
 | set a page's title, description, or social preview | `export const metadata` or `generateMetadata()` | writing `<head>` tags in the page | `references/routing-and-pages.md` | `app/features/metadata` |
 | make part of the page respond to a click or hold state | a `WebComponent` custom element | expecting the page's own markup to hydrate | `references/components.md` | `app/features/components` |
+| draw the same READ-ONLY markup in two places | an `html` fragment helper (`modules/<feature>/utils/ui/`, or `lib/utils/ui.ts` when app-wide) | a display-only custom element, which ships JS once an island renders it | `references/styling.md` | `app/examples/todo` |
 | render a keyed list, or swap one node when state changes | `repeat()` / `watch()` from `/directives` | re-rendering the component or diffing by hand | `references/components.md` | `app/features/directives` |
 | get server data into a component's first paint | `async render()` awaiting an action | fetching in `connectedCallback`, which SSR never calls | `references/components.md` | `app/features/async-render` |
 | call server code from the browser | import the `'use server'` function and call it | hand-writing `fetch()` against an endpoint | `references/data-and-actions.md` | `app/features/server-actions` |
@@ -122,8 +123,10 @@ app/                  ROUTING ONLY (thin adapters importing from modules/)
   error.ts loading.ts not-found.ts forbidden.ts unauthorized.ts   boundaries (nearest wins)
 middleware.ts         root middleware
 modules/<feature>/    actions/ (mutations, *.server.ts), queries/ (reads, *.server.ts),
-                      components/, utils/ (pure), types.ts
-lib/                  lib/*.server.ts server-only infra, lib/utils/ browser-safe helpers
+                      components/ (custom elements), utils/ (pure, returns data),
+                      utils/ui/ (pure, returns an html fragment), types.ts
+lib/                  lib/*.server.ts server-only infra, lib/utils/ browser-safe helpers,
+                      lib/utils/ui.ts app-wide html fragments
 components/*.ts        shared presentational custom elements (one per file)
 db/*.server.ts        Drizzle: schema, connection
 public/*              static assets, served at /public/<name>

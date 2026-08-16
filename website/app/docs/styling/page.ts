@@ -183,7 +183,11 @@ Card.register('my-card');</code-block>
 .wordmark  { background: currentColor; }             /* the painted descendant */</code-block>
 
     <h2>DRY'ing up repeated Tailwind classes via JS helpers</h2>
-    <p>When the same bundle of Tailwind classes appears in 2+ places, extract it into a JS helper in <code>lib/utils/ui.ts</code>. The helper runs at SSR time inside <code>html\`\`</code>, so the browser sees fully materialised HTML. No client-side runtime, no diff from inline classes.</p>
+    <p>When the same bundle of Tailwind classes appears in 2+ places, extract it into a JS helper that returns an <code>html</code> fragment. The helper runs at SSR time inside <code>html\`\`</code>, so the browser sees fully materialised HTML. No client-side runtime, no diff from inline classes.</p>
+
+    <p>Where it lives follows who consumes it. A fragment used across the app goes in <code>lib/utils/ui.ts</code>; one used by a single feature goes in <code>modules/&lt;feature&gt;/utils/ui/&lt;name&gt;.ts</code>, one file per fragment. The <code>ui</code> segment is what separates a function returning markup from the plain <code>utils/</code> neighbours that return data, and from <code>components/</code>, which means custom elements.</p>
+
+    <p>Prefer a fragment over a display-only custom element for read-only markup. A render-only component is normally elided from the browser, but a component rendered by a component that <em>ships</em> can no longer be elided, so the moment an interactive island draws it, the class downloads and upgrades per instance. Reach for a component when the markup needs state, an event handler, or a lifecycle hook.</p>
 
     <code-block>// lib/utils/ui.ts
 import { html } from '@webjsdev/core';

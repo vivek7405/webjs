@@ -14,7 +14,7 @@ export default function Conventions() {
       <li><strong>Module architecture</strong>: where actions, queries, and components go.</li>
       <li><strong>Testing rules</strong>: when unit vs E2E tests are required.</li>
       <li><strong>Component patterns</strong>: light DOM by default with Tailwind, shadow DOM opt-in, <code>Class.register('tag')</code>, and the class-prefix rule for light-DOM custom CSS.</li>
-      <li><strong>Styling convention</strong>: a static compiled Tailwind stylesheet (<code>css:build</code>) + <code>@theme</code> tokens, JS helpers in <code>lib/utils/ui.ts</code> to dedupe repeated class bundles, no <code>@apply</code>.</li>
+      <li><strong>Styling convention</strong>: a static compiled Tailwind stylesheet (<code>css:build</code>) + <code>@theme</code> tokens, JS helpers to dedupe repeated class bundles (<code>lib/utils/ui.ts</code> app-wide, <code>modules/&lt;feature&gt;/utils/ui/</code> per feature), no <code>@apply</code>.</li>
       <li><strong>Server action patterns</strong>: one function per file, <code>ActionResult</code> envelope.</li>
       <li><strong>Code style</strong>: TypeScript extensions, const/let preferences, async/await patterns.</li>
     </ul>
