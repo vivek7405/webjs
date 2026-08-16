@@ -903,6 +903,17 @@ export function extractRenderedTags(src) {
 const TS_SOURCE_RE = /\.m?tsx?$/;
 
 /**
+ * Per-file memo of {@link eraseTypesForScan}, holding the source it was derived
+ * from so a hit is proven rather than assumed. One entry per file, so it is
+ * bounded by the app's file count and needs no eviction policy; a deleted file
+ * leaves one dead entry until the process ends, which is cheaper than tracking
+ * liveness for it.
+ *
+ * @type {Map<string, { src: string, out: string }>}
+ */
+const STRIP_CACHE = new Map();
+
+/**
  * Return `src` with its TYPE syntax erased, so every scan below reads the code
  * that actually RUNS rather than the code as authored (#1423).
  *
@@ -965,16 +976,8 @@ function eraseTypesForScan(stripper, file, src) {
   return out;
 }
 
-/**
- * Per-file memo of {@link eraseTypesForScan}, holding the source it was derived
- * from so a hit is proven rather than assumed. One entry per file, so it is
- * bounded by the app's file count and needs no eviction policy; a deleted file
- * leaves one dead entry until the process ends, which is cheaper than tracking
- * liveness for it.
- *
- * @type {Map<string, { src: string, out: string }>}
- */
-const STRIP_CACHE = new Map();
+/** Whether {@link resolveScanStripper} has already reported a missing backend. */
+let warnedNoStripper = false;
 
 /**
  * Resolve the TypeScript stripper backend once for a whole analysis run, or
@@ -988,7 +991,6 @@ const STRIP_CACHE = new Map();
  *
  * @returns {Promise<import('./ts-strip.js').Stripper | null>}
  */
-let warnedNoStripper = false;
 async function resolveScanStripper() {
   try {
     return await ensureStripper();
