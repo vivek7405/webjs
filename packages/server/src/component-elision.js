@@ -881,8 +881,17 @@ export function extractRenderedTags(src) {
   return tags;
 }
 
-/** Source extensions whose types must be erased before the scans below read them. */
-const TS_SOURCE_RE = /\.(?:m|c)?tsx?$/;
+/**
+ * The TypeScript source extensions, which are exactly the ones WebJs treats as
+ * TypeScript everywhere else: the `MIME` map and `stripTs` in `dev/`, the
+ * servable-extension test in `dev/serve.js`, the graph walker's file filter in
+ * `module-graph.js`, and the router's `<name>.<js|mjs|ts|mts>` convention.
+ * Keep this set EQUAL to those rather than merely a superset. A wider one reads
+ * as support the framework does not have (there is no `.cts` and no JSX
+ * anywhere in it), and it cannot even be exercised, since the graph walker and
+ * the router are what decide which files reach this analysis at all.
+ */
+const TS_SOURCE_RE = /\.m?ts$/;
 
 /**
  * Return `src` with its TYPE syntax erased, so every scan below reads the code
@@ -904,10 +913,13 @@ const TS_SOURCE_RE = /\.(?:m|c)?tsx?$/;
  * wrong. It is position-preserving whitespace replacement, so every offset,
  * line, and column the other scans depend on is unchanged.
  *
- * Non-TS files are returned untouched (there is nothing to erase, and running a
- * TS parser over them buys only new ways to fail). A strip FAILURE also returns
- * the source untouched, which is the pre-#1423 behaviour and therefore the
- * conservative direction: the scans then over-detect at worst.
+ * A `.js` / `.mjs` file is returned untouched (there is nothing to erase, and
+ * running a TS parser over them buys only new ways to fail). A strip FAILURE
+ * also returns the source untouched, which is the pre-#1423 behaviour and
+ * therefore the conservative direction: the scans then over-detect at worst.
+ * That is the path a non-erasable module takes, which invariant 10 forbids and
+ * `webjs check` catches at edit time, so it is a broken app rather than a
+ * supported one.
  *
  * @param {string} file absolute path, read for its extension only
  * @param {string} src

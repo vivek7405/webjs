@@ -463,8 +463,8 @@ conditional leaves a CSP-off document one newline shorter than a CSP-on one).
    map), so a `#` import is never sent to the resolver; the rare alias mapped to
    a real package (`"#x": "some-pkg"`) is consequently not vendored, an accepted
    limitation since the scaffold's catch-all `"#*": "./*"` is always local.
-   Every scan reads TYPE-ERASED source: `analyzeElision` runs a `.ts` / `.mts` /
-   `.tsx` module through the framework's own stripper (`eraseTypesForScan`)
+   Every scan reads TYPE-ERASED source: `analyzeElision` runs a `.ts` / `.mts`
+   module through the framework's own stripper (`eraseTypesForScan`)
    before scanning it, because the scans are lexical and TS annotations are
    call-shaped often enough to matter (`readonly (readonly [number, number,
    number])[]` is an identifier immediately followed by `(`, which the
