@@ -390,7 +390,7 @@ A component that does no client-side work renders the same SSR'd HTML with or wi
 - a factory-declared reactive property that is not `{ state: true }`
 - an overridden lifecycle hook (including `renderFallback` / `renderError`)
 - an imported `signal` / `computed` / `watch` / `Task` / `ref` / streaming directive, or `addController` / `requestUpdate`
-- code that runs at module load (a top-level call, non-data `new`, dynamic `import(...)`, top-level `await`); only declarations and `X.register(...)` are allowed
+- code that runs at module load (a top-level call, non-data `new`, dynamic `import(...)`, top-level `await`); only declarations and `X.register(...)` are allowed. TypeScript types are erased before the analyser reads a module, so an annotation can never be a blocker however call-shaped it looks (`readonly (readonly [number, number, number])[]` is fine)
 - the dynamic slot READ surface (`slotchange`, `assignedNodes` / `assignedElements` / `assignedSlot`); merely RENDERING a `<slot>` does not ship (the SSR output carries the placed children, so a display-only slotted wrapper is byte-identical without its JS; native-write liveness is consumer-driven and the consumer's tag reference forces the ship)
 - being rendered by a component that itself ships
 
