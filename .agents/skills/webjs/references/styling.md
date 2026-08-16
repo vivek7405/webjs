@@ -82,13 +82,26 @@ Avoid `@apply`: it hides which utilities a class uses and creates a second sourc
 
 ### Fragment or display-only component?
 
-Read-only markup can be a fragment helper or a display-only component, and WHO RENDERS IT decides what either one costs. Be precise about this, because the obvious summary ("fragments are free, components ship") is wrong in both directions.
+Start with the question that actually decides it: **can the markup carry an extra wrapper element at all?** A component is a tag in the DOM, so choosing one adds a node between the parent and the markup. Usually that is fine and the component is the better choice, since it gets a tag name to target and can grow behaviour later. In four places it is not, and there the fragment is the only shape that works:
+
+| Parent | A `<my-row>` wrapper does this |
+|---|---|
+| `<table>` / `<tbody>` | the parser FOSTER-PARENTS it out of the table (an HTML spec rule, not a WebJs one), so it lands before the table and its cells are adopted by a `<tr>` it no longer owns |
+| `<select>` | the element survives, but the wrapped `<option>`s are no longer `select > option`, so the control does not offer them |
+| `<ul>` / `<ol>` / `<dl>` | the element survives, but `ul > li`, `:nth-child`, and list markers all now see the wrapper |
+| a `grid` / `flex` container | the element survives and becomes THE ITEM, so the children you meant to lay out are one level too deep |
+
+Anything that is not a DOM node at all is the fifth case: a `<webjs-stream>` payload, or HTML a `route.ts` returns, is a STRING, and a component cannot produce one.
+
+Everywhere else the two are interchangeable, and the remaining difference is cost. Be precise about that too, because the obvious summary ("fragments are free, components ship") is wrong in both directions.
 
 **Rendered only by pages, they cost the same: nothing.** A page is inert or import-only, so a fragment it calls runs at SSR and is never fetched. A component that does no client work is elided, so it is never fetched either. Byte arguments do not decide this case; pick whichever reads better.
 
 **Rendered by a shipping island, BOTH ship.** A module a shipping component imports is fetched, fragment or not, so the fragment's function is downloaded too (verify it yourself: watch the network panel for the helper's path). What differs is what else comes with it. The component ships a custom element class plus its registration and upgrades once per instance, and, because elision propagates downward, it un-elides every display-only component IT renders. The fragment ships a function and stops there.
 
-So the fragment is the smaller and more predictable choice near an island, not a free one, and the gap is a class and its blast radius rather than everything. The other half of the argument is stability: a fragment cannot change category, while a component that is free today starts shipping the day an island renders it, or the day it grows a lifecycle hook or a non-state reactive prop, with no edit to its own file. Take the component when the markup needs behaviour of its own, take it freely for page-level markup if you prefer elements, and prefer the fragment where a shipping island is or might become the renderer. When it matters, measure with `webjs elision` instead of reasoning from either rule of thumb.
+So near an island the fragment is the smaller and more predictable choice, not a free one, and the gap is a class and its blast radius rather than everything. That is a tiebreaker, not a rule: it is worth acting on where a shipping island is or might become the renderer, and not worth reorganising page-level markup over. When it matters, measure with `webjs elision` rather than reasoning from either rule of thumb.
+
+**The summary.** Take the fragment where a wrapper element cannot exist (the table above all, plus a string payload); take the component whenever the markup needs behaviour, wants a tag to target, or might grow either; and treat the byte difference as the last consideration rather than the first.
 
 ### A design system for repeated PRIMITIVES: class helpers built on `@webjsdev/ui`
 

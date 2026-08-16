@@ -14,10 +14,13 @@
 import { WebComponent, html, renderStream } from '@webjsdev/core';
 import { buttonClass } from '#components/ui/button.ts';
 // The row markup lives in ONE place, a feature-local view fragment under
-// `utils/ui/`, because both the seeded list below and every streamed-in row
-// draw it. A display-only <stream-row> element would have worked too, but this
-// component ships, so an element rendered here would ship with it; a fragment
-// is a function, so what arrives is the function and nothing else.
+// `utils/ui/` (see references/styling.md for that folder). A fragment rather
+// than a display-only <stream-row> element because BOTH of this demo's uses
+// rule an element out, which is the test to apply: the seeded list needs a
+// direct `<ul> > <li>` child (a wrapper tag would sit between them and break
+// the selector and the list semantics), and the streamed payload is an HTML
+// STRING, which a component cannot produce at all. Where a wrapper IS fine,
+// prefer the component.
 import { streamRow, streamRowHTML } from '../utils/ui/row.ts';
 
 // Build a <webjs-stream> payload string. It is a plain string (NOT an html``

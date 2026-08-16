@@ -3,10 +3,17 @@
 // holds helpers returning DATA) or `components/` (which holds custom elements).
 // See .agents/skills/webjs/references/styling.md.
 //
-// The row exists in two shapes because <webjs-stream> carries its payload as an
-// HTML STRING while the component's own template wants a TemplateResult. Both
-// come off one class list here, so the streamed row and the initial rows cannot
-// drift apart, which is exactly what the three scattered copies used to allow.
+// WHY a fragment and not a display-only <stream-row> element: an element is a
+// tag in the DOM, and neither caller can carry one. The list wants a direct
+// `<ul> > <li>` child, so a wrapper would break that selector and the list
+// semantics; and <webjs-stream> takes its payload as an HTML STRING, which no
+// component can return. That is the test, not bytes: where a wrapper element is
+// harmless, reach for the component instead.
+//
+// Hence the two shapes below, off one class list, so the streamed row and the
+// seeded rows cannot drift apart. That drift was live: the class list used to
+// exist three times in this feature, once in a `rowCls` const and twice inlined
+// in the component's own template, which did not use the const.
 import { html } from '@webjsdev/core';
 
 const ROW =
