@@ -58,6 +58,8 @@ test('the footer Community column carries the social profiles', async () => {
   }
   assert.ok(out.includes('>X<'), 'the X link is labelled');
   assert.ok(out.includes('>Bluesky<'), 'the Bluesky link is labelled');
+  // Bluesky sits above X, so the column ends on the account we promote least.
+  assert.ok(out.indexOf('>Bluesky<') < out.indexOf('>X<'), 'Bluesky is listed before X');
 });
 
 test('the header still carries the rest of the nav', async () => {
