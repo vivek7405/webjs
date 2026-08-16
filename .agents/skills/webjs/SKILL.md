@@ -125,7 +125,7 @@ modules/<feature>/    actions/ (mutations, *.server.ts), queries/ (reads, *.serv
                       components/ (custom elements), types.ts,
                       utils/ (pure; returns data, or an html fragment under utils/ui/)
 lib/                  lib/*.server.ts server-only infra, lib/utils/ browser-safe helpers,
-                      lib/utils/ui.ts app-wide html fragments
+                      lib/utils/ui.ts app-wide html fragments (lib/ui/ once they grow)
 components/*.ts        shared presentational custom elements (one per file)
 db/*.server.ts        Drizzle: schema, connection
 public/*              static assets, served at /public/<name>

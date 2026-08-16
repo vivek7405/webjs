@@ -45,6 +45,8 @@ When the same Tailwind bundle repeats across 2+ places, extract it into a helper
 
 One file per fragment under `utils/ui/`, because a feature accumulates several and one-per-file keeps them greppable. A fragment promotes from the feature tier to `lib/` only when a second feature genuinely consumes it.
 
+The app-wide tier grows the same way. `lib/utils/ui.ts` is where it starts, and it stays a single file while it holds a few small helpers. Once app-wide fragments become a subsystem of their own (three or more, or one that composes others), split them into `lib/ui/<name>.ts`, one file per fragment, and keep `lib/utils/ui.ts` for the small class-bundle helpers or retire it. That is the same barrel-to-directory move `references/module-structure.md` describes, and it is what the framework's own website did: its four composed page fragments live in `lib/ui/`. So the three spellings you may meet are one convention at three sizes: `modules/<feature>/utils/ui/` for one feature, `lib/utils/ui.ts` for a handful of app-wide helpers, `lib/ui/` for an app-wide fragment subsystem.
+
 The `ui` segment is the part that carries meaning, so keep it at both tiers: inside `modules/<feature>/`, `components/` holds custom elements, `utils/ui/` holds functions returning a `TemplateResult`, and the rest of `utils/` holds functions returning data. Dropping it lands a view fragment beside a pure data helper with nothing in the path to tell them apart.
 
 The example below is the app-wide tier:
