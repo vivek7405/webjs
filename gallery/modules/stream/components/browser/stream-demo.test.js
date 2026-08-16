@@ -37,6 +37,16 @@ suite('<stream-demo>', () => {
     assert(streamed.className === seeded, `streamed row classes match seeded:\n  ${streamed.className}\n  ${seeded}`);
   });
 
+  test('the string shape escapes its holes', async () => {
+    // The html`` shape escapes its own holes; this plain-string one has to do
+    // it by hand, and it is the shape a reader copies. A raw value here would
+    // become markup as soon as renderStream() inserted it.
+    const { streamRowHTML } = await import('../../utils/ui/row.ts');
+    const out = streamRowHTML('x" onload="boom', '<img src=x onerror=boom>');
+    assert(!out.includes('<img'), `text hole is escaped, got ${out}`);
+    assert(!out.includes('" onload'), `attribute hole is escaped, got ${out}`);
+  });
+
   test('replace keeps the id and reset restores the seed list', async () => {
     const el = await ssrFixture(html`<stream-demo></stream-demo>`);
     button(el, 'Replace Row 1').click();
