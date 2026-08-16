@@ -82,9 +82,11 @@ Avoid `@apply`: it hides which utilities a class uses and creates a second sourc
 
 ### Reach for a fragment before a component
 
-A fragment helper, not a display-only component, is the default for read-only markup, and the reason is cost rather than taste. A component that only renders is normally elided from the browser, so making one looks free. It stops being free the moment a SHIPPING island renders it, because a component rendered by a component that ships can no longer be elided: the class downloads, and it upgrades once per instance. A board drawn inside a live `<match-replay>` island is exactly that case, so as a fragment it stays free SSR markup and as a component it becomes shipped JavaScript.
+Read-only markup can be a fragment helper or a display-only component, and for markup a PAGE renders the two cost the same: a component that does no client work is elided, so the browser never fetches it. Anyone telling you to always prefer the fragment on byte grounds is wrong about that case.
 
-Reach for a component when the markup needs behaviour of its own (state, an event handler, a lifecycle hook), and for nothing less. "It felt tidier as an element" is how free HTML turns into a payload.
+The difference is where the markup ends up rendered. A component stays elidable only while nothing that ships renders it, and elision propagates downward, so a display-only component drawn inside a live island ships with it: the class downloads and upgrades once per instance. A board drawn by a page is free either way; the same board drawn inside a `<match-replay>` island is free as a fragment and shipped JavaScript as a component.
+
+That asymmetry is what makes the fragment the safer default rather than the always-cheaper one. Its cost is unconditionally zero. A component's is conditional on facts OUTSIDE its own file, so a component that is free today starts shipping the day someone renders it from an island, or the day it grows a lifecycle hook or a non-state reactive prop, and nothing about the file changed. Take the component when the markup needs behaviour of its own, take it freely for page-level markup if you prefer elements, and prefer the fragment where a shipping island is or might become the renderer.
 
 ### A design system for repeated PRIMITIVES: class helpers built on `@webjsdev/ui`
 

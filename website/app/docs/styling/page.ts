@@ -187,7 +187,7 @@ Card.register('my-card');</code-block>
 
     <p>Where it lives follows who consumes it. A fragment used across the app goes in <code>lib/utils/ui.ts</code>; one used by a single feature goes in <code>modules/&lt;feature&gt;/utils/ui/&lt;name&gt;.ts</code>, one file per fragment. The <code>ui</code> segment is what separates a function returning markup from the plain <code>utils/</code> neighbours that return data, and from <code>components/</code>, which means custom elements.</p>
 
-    <p>Prefer a fragment over a display-only custom element for read-only markup. A render-only component is normally elided from the browser, but a component rendered by a component that <em>ships</em> can no longer be elided, so the moment an interactive island draws it, the class downloads and upgrades per instance. Reach for a component when the markup needs state, an event handler, or a lifecycle hook.</p>
+    <p>Read-only markup can be a fragment or a display-only component, and for markup a page renders the two cost the same, because a component that does no client work is elided. The difference shows up one level down: a component rendered by a component that <em>ships</em> can no longer be elided, so the moment an interactive island draws it, the class downloads and upgrades per instance. The fragment's cost is unconditionally zero, while the component's depends on who renders it, which is why the fragment is the safer default around islands rather than the always-cheaper choice.</p>
 
     <code-block>// lib/utils/ui.ts
 import { html } from '@webjsdev/core';
