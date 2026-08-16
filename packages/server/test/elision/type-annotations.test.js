@@ -15,15 +15,16 @@
  * These tests drive the REAL pipeline over a REAL `.ts` app on disk, because
  * that is the only level the fix lives at: the analyser erases types before it
  * scans, so a unit call on a source string would prove nothing about the path
- * that decides what the browser downloads. The three positive cases are the
- * issue's acceptance criteria, and the last one is the counterweight that
- * keeps them honest, since blanket-erasing too much would satisfy the first
- * three by simply never detecting anything.
+ * that decides what the browser downloads. The first three are the issue's
+ * acceptance criteria, and they are the discriminating ones: reverting the
+ * erasure reds exactly those three (proven at 3b3cb6a5). The rest are the
+ * counterweight that keeps them honest, since erasing too much would satisfy
+ * the first three by simply never detecting anything, and they stay green in
+ * both directions on purpose.
  */
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdtemp, mkdir, writeFile, rm } from 'node:fs/promises';
-import { readFile } from 'node:fs/promises';
+import { mkdtemp, mkdir, writeFile, readFile, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
@@ -52,7 +53,12 @@ export function winner(cells: Cell[]): Cell {
  * Write a throwaway TypeScript app, run the real pipeline over it, and return
  * the verdict plus the paths the assertions key on.
  *
- * @param {{ utilSrc: string, badgeExtra?: string }} spec
+ * `direct: true` has the PAGE import the util and render no component, which is
+ * the shape the report hit: there the util is the page's whole client closure,
+ * so a wrong verdict on it shows up directly as the page's blocker instead of
+ * being laundered through a component that ships for its own reason.
+ *
+ * @param {{ utilSrc: string, direct?: boolean }} spec
  */
 async function analyseApp(spec) {
   const dir = await mkdtemp(join(tmpdir(), 'webjs-type-annotations-'));
@@ -61,16 +67,19 @@ async function analyseApp(spec) {
     await mkdir(join(dir, 'components'), { recursive: true });
     await mkdir(join(dir, 'modules/game/utils'), { recursive: true });
     await writeFile(join(dir, 'modules/game/utils/game.ts'), spec.utilSrc);
-    await writeFile(join(dir, 'components/badge.ts'), `
+    if (!spec.direct) await writeFile(join(dir, 'components/badge.ts'), `
 import { WebComponent, html } from '@webjsdev/core';
 import { LINES } from '../modules/game/utils/game.ts';
 export class Badge extends WebComponent {
-  ${spec.badgeExtra || ''}
   render() { return html\`<span class="badge">\${LINES.length}</span>\`; }
 }
 Badge.register('my-badge');
 `);
-    await writeFile(join(dir, 'app/page.ts'), `
+    await writeFile(join(dir, 'app/page.ts'), spec.direct ? `
+import { html } from '@webjsdev/core';
+import { LINES } from '../modules/game/utils/game.ts';
+export default () => html\`<p>\${LINES.length}</p>\`;
+` : `
 import { html } from '@webjsdev/core';
 import '../components/badge.ts';
 export default () => html\`<my-badge></my-badge>\`;
@@ -90,7 +99,7 @@ export default () => html\`<my-badge></my-badge>\`;
 }
 
 test('a parenthesised type annotation does not mark its module as running code at module scope', async () => {
-  const { verdict, pageFile } = await analyseApp({ utilSrc: LINES_TS });
+  const { verdict, pageFile } = await analyseApp({ utilSrc: LINES_TS, direct: true });
   const shipped = verdict.shippedRouteModules.get(pageFile);
   assert.equal(shipped, undefined,
     `the page must not ship; it did, blocked by ${shipped && shipped.blocker} (${shipped && shipped.reason})`);
@@ -118,7 +127,7 @@ test('the pin is the ANNOTATION, not the data: an `as const` spelling was alread
     'export const LINES = [',
   ).replace(/\n\];/, '\n] as const;');
   assert.notEqual(asConst, LINES_TS, 'the control rewrite must actually apply');
-  const { verdict, pageFile } = await analyseApp({ utilSrc: asConst });
+  const { verdict, pageFile } = await analyseApp({ utilSrc: asConst, direct: true });
   assert.ok(verdict.inertRouteModules.has(pageFile));
 });
 
@@ -136,6 +145,7 @@ test('real module-scope work in a .ts module still ships the page', async () => 
   for (const [label, stmt] of Object.entries(cases)) {
     const { verdict, pageFile } = await analyseApp({
       utilSrc: `export const LINES: readonly (readonly [number, number, number])[] = [[0, 1, 2]];\n${stmt}\n`,
+      direct: true,
     });
     assert.ok(!verdict.inertRouteModules.has(pageFile), `${label} must keep the page shipping`);
   }
@@ -147,6 +157,7 @@ test('a genuine top-level call named like a type keyword still ships', async () 
   // analyser may not take. Erasing types instead leaves the real call visible.
   const { verdict, pageFile } = await analyseApp({
     utilSrc: 'function readonly(x: number) { return x; }\nexport const LINES = readonly(1);\n',
+    direct: true,
   });
   assert.ok(!verdict.inertRouteModules.has(pageFile),
     'a call to a function named `readonly` is a call');
@@ -161,6 +172,7 @@ test('a .ts module with non-erasable syntax falls back to scanning it as authore
   // silently gave up and called the module clean.
   const { verdict, pageFile } = await analyseApp({
     utilSrc: 'export enum E { A, B }\nexport const LINES = init();\nfunction init() { return []; }\n',
+    direct: true,
   });
   assert.ok(!verdict.inertRouteModules.has(pageFile),
     'an unstrippable module is still scanned, and its real call still ships the page');
