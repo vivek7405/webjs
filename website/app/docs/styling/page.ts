@@ -183,7 +183,13 @@ Card.register('my-card');</code-block>
 .wordmark  { background: currentColor; }             /* the painted descendant */</code-block>
 
     <h2>DRY'ing up repeated Tailwind classes via JS helpers</h2>
-    <p>When the same bundle of Tailwind classes appears in 2+ places, extract it into a JS helper in <code>lib/utils/ui.ts</code>. The helper runs at SSR time inside <code>html\`\`</code>, so the browser sees fully materialised HTML. No client-side runtime, no diff from inline classes.</p>
+    <p>When the same bundle of Tailwind classes appears in 2+ places, extract it into a JS helper that returns an <code>html</code> fragment. The helper runs at SSR time inside <code>html\`\`</code>, so the browser sees fully materialised HTML. No client-side runtime, no diff from inline classes.</p>
+
+    <p>Where it lives follows who consumes it. A fragment used across the app goes in <code>lib/utils/ui.ts</code> (and once app-wide fragments become a subsystem of their own, one file each under <code>lib/ui/</code>); one used by a single feature goes in <code>modules/&lt;feature&gt;/utils/ui/&lt;name&gt;.ts</code>, one file per fragment. The <code>ui</code> segment is what separates a function returning markup from the plain <code>utils/</code> neighbours that return data, and from <code>components/</code>, which means custom elements.</p>
+
+    <p>Read-only markup can be a fragment or a display-only component, and structure decides it, not bytes. A component is a tag in the DOM, so it adds a wrapper node. Two cases rule the element out entirely: a <code>&lt;table&gt;</code> child, where the HTML parser foster-parents an unknown element out of the table so it never renders where you put it, and output that is a string rather than DOM, such as a <code>&lt;webjs-stream&gt;</code> payload. Three more render but land wrong, so they are strong reasons rather than hard blocks: a <code>&lt;ul&gt;</code> / <code>&lt;ol&gt;</code> / <code>&lt;dl&gt;</code> child, where <code>ul &gt; li</code>, <code>:nth-child</code>, and list markers now see the wrapper; a <code>&lt;select&gt;</code> child, where the control still offers the option but it is no longer <code>select &gt; option</code>; and a grid or flex child, where the wrapper becomes the laid-out item. Prefer the component everywhere else, since it gets a tag you can target and can grow behaviour later.</p>
+
+    <p>On cost the two tie under a page: the page is inert, so the fragment runs at SSR and is never fetched, and a component doing no client work is elided. Under an interactive island <em>both</em> ship, because an island's imports are fetched either way. The component additionally carries an element class plus its registration, an upgrade per instance, and the display-only components it renders, which stop being elided with it. Treat that as the last consideration, not the first.</p>
 
     <code-block>// lib/utils/ui.ts
 import { html } from '@webjsdev/core';

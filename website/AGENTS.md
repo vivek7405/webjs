@@ -207,7 +207,12 @@ folder once it reaches about three related files. The design system
 (`lib/design/`) and the composed page fragments (`lib/ui/`) both crossed that
 bar; `links.ts` and `samples.ts` have not, so they stay loose. Fragments in
 `lib/ui/` are one file per fragment for the same reason the framework keeps
-one action per file: the filename is the index.
+one action per file: the filename is the index. This is the app-wide fragment
+tier at its grown-up size; the skill's `references/styling.md` names all three
+sizes (`modules/<feature>/utils/ui/` for one feature, `lib/utils/ui.ts` for
+app-wide helpers, `lib/ui/` for a subsystem like this one). An app with a
+handful of small helpers is right to keep them in `lib/utils/ui.ts` instead;
+this site split because its fragments compose.
 
 The site is intentionally one page in long-form scroll. When you edit
 copy, find the section in `app/page.ts` (search for the visible text

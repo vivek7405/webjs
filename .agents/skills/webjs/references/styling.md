@@ -36,7 +36,20 @@ When custom CSS IS unavoidable inside a light-DOM component, the tag-prefix inva
 
 ## DRY via a JS helper, not `@apply`
 
-When the same Tailwind bundle repeats across 2+ places, extract it into a helper in `lib/utils/ui.ts` that returns an `html` fragment (SSR-time, no client runtime, output identical to inline classes):
+When the same Tailwind bundle repeats across 2+ places, extract it into a helper that returns an `html` fragment (SSR-time, no client runtime, output identical to inline classes). Where the helper LIVES follows the narrowest-owner rule, so pick the tier by who consumes it:
+
+| Consumers | Home |
+|---|---|
+| routes across the app (a heading, a lede, a back link) | `lib/utils/ui.ts` |
+| one feature (a todo row, a comment card, a board) | `modules/<feature>/utils/ui/<name>.ts` |
+
+One file per fragment under `utils/ui/`, because a feature accumulates several and one-per-file keeps them greppable. A fragment promotes from the feature tier to `lib/` only when a second feature genuinely consumes it.
+
+The app-wide tier grows the same way, on the same judgment `references/module-structure.md` applies to any module. `lib/utils/ui.ts` is where it starts and where it usually stays: small, independent, one-element helpers belong together in one file, however many of them there are (the blog example keeps nine there quite happily). Split to `lib/ui/<name>.ts`, one file per fragment, when a fragment stops being a one-liner, when one composes others, or when the single file is no longer scannable. The framework's own website crossed that line and its four composed page fragments live in `lib/ui/`.
+
+So `modules/<feature>/utils/ui/`, `lib/utils/ui.ts`, and `lib/ui/` are one convention at three sizes rather than three conventions, and the `ui` segment is the part carrying the meaning at every one of them: inside `modules/<feature>/`, `components/` holds custom elements, `utils/ui/` holds functions returning a `TemplateResult`, and the rest of `utils/` holds functions returning data. Drop the segment and a view fragment ends up beside a pure data helper with nothing in the path to tell them apart.
+
+The example below is the app-wide tier:
 
 ```ts
 import { html } from '@webjsdev/core';
@@ -62,11 +75,43 @@ export default function Post({ params }) {
 | Repeats | Action |
 |---|---|
 | Once | Inline the classes. |
-| 2 to 3 times, identical | Extract to `lib/utils/ui.ts`. |
+| 2 to 3 times, identical, inside ONE feature | Extract to `modules/<feature>/utils/ui/<name>.ts`. |
+| 2 to 3 times, identical, across features or routes | Extract to `lib/utils/ui.ts`. |
 | Varies by 1 to 2 props | Extract with a small parameter (`mb: 'sm' \| 'md'`). |
 | Radically different per call site | Keep inline, do not force-fit. |
 
 Avoid `@apply`: it hides which utilities a class uses and creates a second source of truth. A JS helper keeps the bundle visible at the definition site, composes with conditional classes and active states, and runs at SSR time.
+
+### Fragment or display-only component?
+
+Two questions, in order.
+
+**First, is this a UNIT or a repeated CLASS BUNDLE?** The helpers this section began with (a heading, a lede, a back link) are the second kind: one element with a class list you did not want to type twice. That is a fragment by definition and never a component; nobody wants `<page-lede>` as a tag in their DOM, and promoting a class bundle to an element is the same over-reach as absorbing a page section into an island. The question below only arises for a genuine unit of markup (a row, a card, a board) that could reasonably be either.
+
+**Second, for a unit: can the markup carry an extra wrapper element at all?** A component is a tag in the DOM, so choosing one adds a node between the parent and the markup. Usually that is fine and the component is the better choice, since it gets a tag name to target and can grow behaviour later. Two cases make it impossible outright:
+
+| Case | What happens |
+|---|---|
+| a `<table>` / `<tbody>` child | the parser FOSTER-PARENTS the element out of the table (an HTML spec rule, not a WebJs one), so it lands BEFORE the table and its cells are adopted by a `<tr>` it no longer owns. The component never renders where you put it |
+| output that is not DOM | a `<webjs-stream>` payload, or HTML a `route.ts` returns, is a STRING, and a component has no way to produce one |
+
+Three more render fine and are wrong in ways that surface later, so treat them as strong reasons rather than hard blocks. Measured in Chromium, the element survives in all three:
+
+| Case | What survives, what breaks |
+|---|---|
+| a `<ul>` / `<ol>` / `<dl>` child | the list renders, but `ul > li`, `:nth-child`, and list markers now see the wrapper instead of the row |
+| a `<select>` child | the control still offers a wrapped `<option>` (it is in `select.options`), but it is no longer `select > option`, so selector-based CSS and DOM code miss it, and the content model is invalid |
+| a `grid` / `flex` child | the wrapper becomes THE ITEM, so the children you meant to lay out sit one level too deep and the track sizing applies to the wrong box |
+
+Everywhere else the two are interchangeable, and the remaining difference is cost. Be precise about that too, because the obvious summary ("fragments are free, components ship") is wrong in both directions.
+
+**Rendered only by pages, they cost the same: nothing.** A page is inert or import-only, so a fragment it calls runs at SSR and is never fetched. A component that does no client work is elided, so it is never fetched either. Byte arguments do not decide this case; pick whichever reads better.
+
+**Rendered by a shipping island, BOTH ship.** A module a shipping component imports is fetched, fragment or not, so the fragment's function is downloaded too (verify it yourself: watch the network panel for the helper's path). What differs is what else comes with it. The component ships a custom element class plus its registration and upgrades once per instance, and, because elision propagates downward, it un-elides every display-only component IT renders. The fragment ships a function and stops there.
+
+So near an island the fragment is the smaller and more predictable choice, not a free one, and the gap is a class and its blast radius rather than everything. That is a tiebreaker, not a rule: it is worth acting on where a shipping island is or might become the renderer, and not worth reorganising page-level markup over. When it matters, measure with `webjs elision` rather than reasoning from either rule of thumb.
+
+**The summary.** A repeated class bundle is always a fragment. For a real unit, take the fragment where a wrapper element cannot exist (a table child, or string output) and where it would land wrong (a list, select, grid, or flex child); take the component whenever the markup needs behaviour, wants a tag to target, or might grow either; and treat the byte difference as the last consideration rather than the first.
 
 ### A design system for repeated PRIMITIVES: class helpers built on `@webjsdev/ui`
 

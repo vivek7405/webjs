@@ -501,7 +501,10 @@ and available everywhere via utility classes (`text-foreground`, `bg-card`,
 
 **Dedup repeated Tailwind class bundles with JS helpers, not `@apply`.**
 When the same string of classes appears in 2+ places, extract it into a
-small function in `lib/utils/ui.ts`:
+small function returning an `html` fragment. App-wide chunks live in
+`lib/utils/ui.ts` (this file's examples); a chunk only one feature draws
+lives in `modules/<feature>/utils/ui/<name>.ts` instead, so a view helper
+never sits unlabelled beside the pure data helpers in `utils/`:
 
 ```ts
 // lib/utils/ui.ts

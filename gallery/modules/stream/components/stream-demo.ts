@@ -13,6 +13,15 @@
 // region-swap would clobber.
 import { WebComponent, html, renderStream } from '@webjsdev/core';
 import { buttonClass } from '#components/ui/button.ts';
+// The row markup lives in ONE place, a feature-local view fragment under
+// `utils/ui/` (see references/styling.md for that folder). A fragment rather
+// than a display-only <stream-row> element because BOTH of this demo's uses
+// rule an element out, which is the test to apply: the seeded list needs a
+// direct `<ul> > <li>` child (a wrapper tag would sit between them and break
+// the selector and the list semantics), and the streamed payload is an HTML
+// STRING, which a component cannot produce at all. Where a wrapper IS fine,
+// prefer the component.
+import { streamRow, streamRowHTML } from '../utils/ui/row.ts';
 
 // Build a <webjs-stream> payload string. It is a plain string (NOT an html``
 // template), so interpolating the row markup here is fine. `remove` needs no
@@ -21,9 +30,6 @@ function streamPayload(action: string, target: string, inner = '') {
   const body = action === 'remove' ? '' : `<template>${inner}</template>`;
   return `<webjs-stream action="${action}" target="${target}">${body}</webjs-stream>`;
 }
-
-const rowCls = 'flex items-center gap-2 px-3 py-2 rounded-xl bg-card border border-border text-[15px] text-foreground';
-const row = (id: string, label: string) => `<li id="${id}" class="${rowCls}">${label}</li>`;
 
 export class StreamDemo extends WebComponent {
   // A plain instance field, NOT a signal: incremented to mint unique row ids.
@@ -37,16 +43,16 @@ export class StreamDemo extends WebComponent {
   // never runs. Name your handlers something else (see muscle-memory-gotchas).
   appendRow() {
     this.#n++;
-    renderStream(streamPayload('append', 'stream-list', row(`row-${this.#n}`, `Row ${this.#n} (appended)`)));
+    renderStream(streamPayload('append', 'stream-list', streamRowHTML(`row-${this.#n}`, `Row ${this.#n} (appended)`)));
   }
   prependRow() {
     this.#n++;
-    renderStream(streamPayload('prepend', 'stream-list', row(`row-${this.#n}`, `Row ${this.#n} (prepended)`)));
+    renderStream(streamPayload('prepend', 'stream-list', streamRowHTML(`row-${this.#n}`, `Row ${this.#n} (prepended)`)));
   }
   replaceFirst() {
     // `replace` swaps the target element itself. The replacement keeps id row-1,
     // so the button stays repeatable.
-    renderStream(streamPayload('replace', 'row-1', row('row-1', 'Row 1 (replaced)')));
+    renderStream(streamPayload('replace', 'row-1', streamRowHTML('row-1', 'Row 1 (replaced)')));
   }
   removeSecond() {
     // `remove` deletes the target and needs no <template>.
@@ -54,7 +60,7 @@ export class StreamDemo extends WebComponent {
   }
   reset() {
     // `update` replaces the target's children, restoring the seed list.
-    renderStream(streamPayload('update', 'stream-list', row('row-1', 'Row 1') + row('row-2', 'Row 2')));
+    renderStream(streamPayload('update', 'stream-list', streamRowHTML('row-1', 'Row 1') + streamRowHTML('row-2', 'Row 2')));
   }
 
   render() {
@@ -71,8 +77,7 @@ export class StreamDemo extends WebComponent {
         <!-- The target list. renderStream() mutates it by id; this markup renders
              once and is never re-rendered by the component. -->
         <ul id="stream-list" class="grid gap-2 m-0 p-0 list-none">
-          <li id="row-1" class="flex items-center gap-2 px-3 py-2 rounded-xl bg-card border border-border text-[15px] text-foreground">Row 1</li>
-          <li id="row-2" class="flex items-center gap-2 px-3 py-2 rounded-xl bg-card border border-border text-[15px] text-foreground">Row 2</li>
+          ${streamRow('row-1', 'Row 1')}${streamRow('row-2', 'Row 2')}
         </ul>
       </div>
     `;

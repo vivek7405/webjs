@@ -80,6 +80,7 @@ The table above routes by the job; this one routes by the topic, for when you al
 | Server actions, mutations, queries, validation, the `ActionResult` envelope | `references/data-and-actions.md`              |
 | Sessions, login flows, route protection, `forbidden()` / `unauthorized()`   | `references/auth-and-sessions.md`             |
 | Tailwind, light-DOM tag-prefix rule, tokens, fixed headers, no-reflow layout | `references/styling.md`                        |
+| Where a repeated markup helper lives (`utils/ui/` vs `lib/`), and fragment vs display-only component | `references/styling.md`                        |
 | Client router, prefetch, frames, view transitions, Suspense streaming        | `references/client-router-and-streaming.md`   |
 | Optimistic UI for a user-facing mutation                                     | `references/optimistic-ui.md`                 |
 | The `@webjsdev/ui` component kit (a `components.json` is present): class helpers, tokens, `add` / `view`, the MCP `ui` tool | `references/ui-kit.md`                         |
@@ -122,8 +123,10 @@ app/                  ROUTING ONLY (thin adapters importing from modules/)
   error.ts loading.ts not-found.ts forbidden.ts unauthorized.ts   boundaries (nearest wins)
 middleware.ts         root middleware
 modules/<feature>/    actions/ (mutations, *.server.ts), queries/ (reads, *.server.ts),
-                      components/, utils/ (pure), types.ts
-lib/                  lib/*.server.ts server-only infra, lib/utils/ browser-safe helpers
+                      components/ (custom elements), types.ts,
+                      utils/ (pure; returns data, or an html fragment under utils/ui/)
+lib/                  lib/*.server.ts server-only infra, lib/utils/ browser-safe helpers,
+                      lib/utils/ui.ts app-wide html fragments (lib/ui/ once they grow)
 components/*.ts        shared presentational custom elements (one per file)
 db/*.server.ts        Drizzle: schema, connection
 public/*              static assets, served at /public/<name>
