@@ -45,6 +45,7 @@ import {
   redactToPlaceholders,
 } from './js-scan.js';
 import { transitiveDeps, expandImportAlias } from './module-graph.js';
+import { stripTypeScript } from './ts-strip.js';
 
 /**
  * Named imports from a `@webjsdev/core` specifier that imply the
@@ -285,13 +286,22 @@ const COMPONENT_CLIENT_GLOBAL_RE = /\b(?:window|document|navigator|localStorage|
  *
  * Scans the redacted copy (strings / templates / comments blanked, regex
  * literals and nested `${...}` interpolation tracked by the lexer) so template
- * prose and JSDoc / TS type annotations cannot trip it; quoted-string bodies,
- * which redaction keeps verbatim for other rules, are blanked here too so a
- * string like `"foo()"` or `"{"` is not read as a call and cannot unbalance
- * the brace scan. The unbalanced-brace and unterminated-string fallbacks below
- * are defense in depth: with the lexer tracking regex literals, neither should
- * trigger on valid code, but if either does the module ships rather than risk
- * hiding client work.
+ * prose and JSDoc cannot trip it; quoted-string bodies, which redaction keeps
+ * verbatim for other rules, are blanked here too so a string like `"foo()"` or
+ * `"{"` is not read as a call and cannot unbalance the brace scan. The
+ * unbalanced-brace and unterminated-string fallbacks below are defense in
+ * depth: with the lexer tracking regex literals, neither should trigger on
+ * valid code, but if either does the module ships rather than risk hiding
+ * client work.
+ *
+ * PASS TYPE-ERASED SOURCE for a TypeScript module. Redaction blanks comments
+ * and literals, NOT type syntax, and TS annotations are call-shaped often
+ * enough to matter: `readonly (readonly [number, number, number])[]` is an
+ * identifier immediately followed by `(`, so a module holding nothing but a
+ * typed data literal reads as running code at module scope (#1423). The
+ * analyser erases types before it calls this (`eraseTypesForScan`), so the
+ * request path is covered; a DIRECT caller handing it `.ts` source as authored
+ * is opting into that false positive.
  *
  * Over-detection is safe (a top-level arrow whose body calls something, or a
  * pure top-level helper call, only ships). The accepted residual misses, all
@@ -299,7 +309,7 @@ const COMPONENT_CLIENT_GLOBAL_RE = /\b(?:window|document|navigator|localStorage|
  * top-level object / array initializer or a destructuring default, and a
  * side-effecting tagged-template hole evaluated at module scope.
  *
- * @param {string} src raw module source
+ * @param {string} src module source, type-erased if it came from a `.ts` file
  */
 /**
  * Constructors that produce inert DATA with no side effect, so a module-scope
@@ -893,6 +903,47 @@ export function extractRenderedTags(src) {
  * @param {string} [appDir]  app root; enables the helper-closure render rule
  * @returns {Promise<Set<string>>} absolute paths of elidable component files
  */
+/** Source extensions whose types must be erased before the scans below read them. */
+const TS_SOURCE_RE = /\.(?:m|c)?tsx?$/;
+
+/**
+ * Return `src` with its TYPE syntax erased, so every scan below reads the code
+ * that actually RUNS rather than the code as authored (#1423).
+ *
+ * The scans are lexical heuristics, and TypeScript annotations are syntax the
+ * heuristics were never designed for: `readonly (readonly [number, number,
+ * number])[]` is an identifier immediately followed by `(`, which the
+ * top-level-call matcher in `hasModuleScopeSideEffect` reads as a call, so a
+ * module holding nothing but a typed data literal was classified as running
+ * code at module scope and pinned every route module that imported it. Type
+ * syntax is erased before anything runs, so it can never be a runtime signal,
+ * and the only sound reading of it is none at all.
+ *
+ * This uses the framework's own stripper rather than a lexical annotation
+ * matcher: it is the same erasure the browser is served, so the analyser and
+ * the runtime agree by construction, where a hand-rolled matcher would meet
+ * generics, `as`, `satisfies`, and conditional types and get some of them
+ * wrong. It is position-preserving whitespace replacement, so every offset,
+ * line, and column the other scans depend on is unchanged.
+ *
+ * Non-TS files are returned untouched (there is nothing to erase, and running a
+ * TS parser over them buys only new ways to fail). A strip FAILURE also returns
+ * the source untouched, which is the pre-#1423 behaviour and therefore the
+ * conservative direction: the scans then over-detect at worst.
+ *
+ * @param {string} file absolute path, read for its extension only
+ * @param {string} src
+ * @returns {Promise<string>}
+ */
+async function eraseTypesForScan(file, src) {
+  if (!TS_SOURCE_RE.test(file)) return src;
+  try {
+    return await stripTypeScript(src);
+  } catch {
+    return src;
+  }
+}
+
 export async function computeElidableComponents(components, moduleGraph, readFileFn, appDir) {
   const { elidableComponents } = await analyzeElision(components, [], moduleGraph, readFileFn, appDir);
   return elidableComponents;
@@ -989,6 +1040,11 @@ export async function analyzeElision(components, routeModules, moduleGraph, read
       continue;
     }
     if (typeof src !== 'string') continue;
+    // Erase type syntax first, so every scan below reads the code that RUNS
+    // (#1423). This is the single point where the analyser reads a file, so
+    // doing it here covers the module-scope, template, import, and component
+    // scans at once.
+    src = await eraseTypesForScan(file, src);
     // Mask comments once for every signal scan below (#179): a `<tag>`, an
     // `@event`, a browser global, an `import`, or a `whenDefined` written in a
     // comment must not register as a real signal. String and template content
