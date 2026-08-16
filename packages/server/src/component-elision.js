@@ -881,28 +881,6 @@ export function extractRenderedTags(src) {
   return tags;
 }
 
-/**
- * Compute the set of component FILES whose browser download can be
- * elided. A file is elidable only when every component it defines is
- * display-only AND it is not pulled into the client by an interactive
- * component (rendered by, or imported by, a shipping module).
- *
- * Two propagation rules iterate to a fixpoint:
- *   - render rule:  a shipping component that can emit `<child-tag>` on a
- *     client re-render forces the child to ship. The tags a component can
- *     emit are not only those in its own template but also those returned
- *     by the template helpers it imports (the documented `lib/utils/ui.ts`
- *     pattern), so the rule scans the component's transitive app-internal
- *     import closure, not just its own source.
- *   - import rule:  a component that imports a shipping component module
- *     ships too (matches the issue's transitive criterion; conservative).
- *
- * @param {Array<{ tag: string, file: string }>} components
- * @param {import('./module-graph.js').ModuleGraph} moduleGraph
- * @param {(file: string) => Promise<string>} readFileFn
- * @param {string} [appDir]  app root; enables the helper-closure render rule
- * @returns {Promise<Set<string>>} absolute paths of elidable component files
- */
 /** Source extensions whose types must be erased before the scans below read them. */
 const TS_SOURCE_RE = /\.(?:m|c)?tsx?$/;
 
@@ -944,6 +922,28 @@ async function eraseTypesForScan(file, src) {
   }
 }
 
+/**
+ * Compute the set of component FILES whose browser download can be
+ * elided. A file is elidable only when every component it defines is
+ * display-only AND it is not pulled into the client by an interactive
+ * component (rendered by, or imported by, a shipping module).
+ *
+ * Two propagation rules iterate to a fixpoint:
+ *   - render rule:  a shipping component that can emit `<child-tag>` on a
+ *     client re-render forces the child to ship. The tags a component can
+ *     emit are not only those in its own template but also those returned
+ *     by the template helpers it imports (the documented `lib/utils/ui.ts`
+ *     pattern), so the rule scans the component's transitive app-internal
+ *     import closure, not just its own source.
+ *   - import rule:  a component that imports a shipping component module
+ *     ships too (matches the issue's transitive criterion; conservative).
+ *
+ * @param {Array<{ tag: string, file: string }>} components
+ * @param {import('./module-graph.js').ModuleGraph} moduleGraph
+ * @param {(file: string) => Promise<string>} readFileFn
+ * @param {string} [appDir]  app root; enables the helper-closure render rule
+ * @returns {Promise<Set<string>>} absolute paths of elidable component files
+ */
 export async function computeElidableComponents(components, moduleGraph, readFileFn, appDir) {
   const { elidableComponents } = await analyzeElision(components, [], moduleGraph, readFileFn, appDir);
   return elidableComponents;
