@@ -20,7 +20,7 @@ Pick a runtime from the deploy target, not the code. Default to Node unless you 
 Three seams pick a runtime-specific implementation, all inside the framework, none in your app:
 
 - **The listener.** `startServer` selects the `node:http` request shell on Node and a native `Bun.serve` shell on Bun. Both parse the request, run middleware, dispatch to your routes, and stream the response through the same downstream pipeline, so an SSR page, a server action RPC, and a route handler behave identically.
-- **The type stripper.** WebJs serves `.ts` / `.tsx` as ES modules by erasing the types in place with no bundler. On Node that is the built-in `module.stripTypeScriptTypes`; on Bun it is `amaro` (the same engine, byte-identical and position-preserving so stack traces still point at the right line). Either way your TypeScript must be erasable (see `typescript.md`).
+- **The type stripper.** WebJs serves `.ts` / `.mts` as ES modules by erasing the types in place with no bundler. Those two are the whole set: there is no JSX anywhere in the framework, so a `.tsx` file is not served. On Node that is the built-in `module.stripTypeScriptTypes`; on Bun it is `amaro` (the same engine, byte-identical and position-preserving so stack traces still point at the right line). Either way your TypeScript must be erasable (see `typescript.md`).
 - **A few built-ins.** SQLite, hot reload, and WebSockets each bind to the runtime's native primitive (see the table).
 
 ## Node vs Bun at a glance

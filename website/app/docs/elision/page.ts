@@ -33,7 +33,7 @@ export default function Elision() {
       <li>A factory-declared reactive property that is not <code>{ state: true }</code>.</li>
       <li>An overridden lifecycle hook, <code>renderFallback()</code> and <code>renderError()</code> included.</li>
       <li>An imported <code>signal</code> / <code>computed</code> / <code>watch</code> / <code>Task</code> / <code>ref</code> or a streaming directive, or a call to <code>addController</code> / <code>requestUpdate</code>.</li>
-      <li>Code that runs at module load: a top-level call, a non-data <code>new</code>, a dynamic <code>import(...)</code>, a top-level <code>await</code>. Only declarations and the <code>register(...)</code> call are inert.</li>
+      <li>Code that runs at module load: a top-level call, a non-data <code>new</code>, a dynamic <code>import(...)</code>, a top-level <code>await</code>. Only declarations and the <code>register(...)</code> call are inert. TypeScript types are erased before the analyser reads a module, so an annotation is never a signal however call-shaped it looks: <code>readonly (readonly [number, number, number])[]</code> is inert data.</li>
       <li>A browser global at module scope, or a side-effect import of an npm package.</li>
       <li>The dynamic slot READ surface (<code>slotchange</code>, <code>assignedNodes</code> / <code>assignedElements</code> / <code>assignedSlot</code>). Merely rendering a <code>&lt;slot&gt;</code> does not ship, because the SSR output already carries the placed children.</li>
       <li>Being rendered or imported by a component that itself ships.</li>

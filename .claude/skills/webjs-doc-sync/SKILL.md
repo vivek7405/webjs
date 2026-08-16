@@ -43,7 +43,7 @@ applies, then update or consciously skip each.
    relevant `references/` file.
 2. **`README.md`** (repo root). Update when a headline capability changes (the
    feature list, the quickstart, the runtime/template matrix).
-3. **The docs site: `website/app/docs/<topic>/page.tsx`.** This is the
+3. **The docs site: `website/app/docs/<topic>/page.ts`.** This is the
    user-facing documentation at webjs.dev/docs. Find the topic page(s) that cover
    the area (`server-actions`, `routing`, `components`, `caching`, `configuration`,
    `client-router`, `data-fetching`, ...) and update them. `llms.txt` /
@@ -102,7 +102,7 @@ The surface checks below are independent reads, so run them fanned out: one read
 4. Verify: re-run the grep and confirm each applicable surface now describes the
    new behaviour, and no surface still describes the old one.
 5. Respect the prose-punctuation invariant (#11) and run `webjs check` if any
-   code-shaped doc (a `.tsx` doc page) changed.
+   code-shaped doc (a `.ts` doc page) changed.
 
 ## Audit-mode procedure (sweep shipped work for drift)
 

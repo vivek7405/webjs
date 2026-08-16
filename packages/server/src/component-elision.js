@@ -45,6 +45,7 @@ import {
   redactToPlaceholders,
 } from './js-scan.js';
 import { transitiveDeps, expandImportAlias } from './module-graph.js';
+import { ensureStripper } from './ts-strip.js';
 
 /**
  * Named imports from a `@webjsdev/core` specifier that imply the
@@ -268,6 +269,23 @@ const INSTANCEOF_RE = /\binstanceof\s+([A-Z][A-Za-z0-9_$]*)/g;
 const COMPONENT_CLIENT_GLOBAL_RE = /\b(?:window|document|navigator|localStorage|sessionStorage|matchMedia|addEventListener)\b/;
 
 /**
+ * Constructors that produce inert DATA with no side effect, so a module-scope
+ * `export const X = new Set([...])` (a lookup table, a compiled RegExp, a
+ * parsed URL) is not client work and must not pin an importing page/layout
+ * (#623). Any constructor NOT in this set (`new WebSocket()`, `new Worker()`,
+ * `new EventSource()`, `new Audio()`) IS a side effect and still ships.
+ */
+const PURE_DATA_CONSTRUCTORS = new Set([
+  'Set', 'Map', 'WeakSet', 'WeakMap', 'Date', 'RegExp', 'Array', 'Object',
+  'Number', 'String', 'Boolean', 'BigInt', 'Symbol',
+  'Error', 'TypeError', 'RangeError', 'SyntaxError',
+  'URL', 'URLSearchParams', 'ArrayBuffer', 'DataView',
+  'Int8Array', 'Uint8Array', 'Uint8ClampedArray', 'Int16Array', 'Uint16Array',
+  'Int32Array', 'Uint32Array', 'Float32Array', 'Float64Array',
+  'BigInt64Array', 'BigUint64Array',
+]);
+
+/**
  * Module-scope client work, detected by an ALLOWLIST of safe top-level forms
  * rather than a denylist of browser globals. A module that runs ANY code when
  * it loads (other than registering a component) does client work the render /
@@ -285,13 +303,22 @@ const COMPONENT_CLIENT_GLOBAL_RE = /\b(?:window|document|navigator|localStorage|
  *
  * Scans the redacted copy (strings / templates / comments blanked, regex
  * literals and nested `${...}` interpolation tracked by the lexer) so template
- * prose and JSDoc / TS type annotations cannot trip it; quoted-string bodies,
- * which redaction keeps verbatim for other rules, are blanked here too so a
- * string like `"foo()"` or `"{"` is not read as a call and cannot unbalance
- * the brace scan. The unbalanced-brace and unterminated-string fallbacks below
- * are defense in depth: with the lexer tracking regex literals, neither should
- * trigger on valid code, but if either does the module ships rather than risk
- * hiding client work.
+ * prose and JSDoc cannot trip it; quoted-string bodies, which redaction keeps
+ * verbatim for other rules, are blanked here too so a string like `"foo()"` or
+ * `"{"` is not read as a call and cannot unbalance the brace scan. The
+ * unbalanced-brace and unterminated-string fallbacks below are defense in
+ * depth: with the lexer tracking regex literals, neither should trigger on
+ * valid code, but if either does the module ships rather than risk hiding
+ * client work.
+ *
+ * PASS TYPE-ERASED SOURCE for a TypeScript module. Redaction blanks comments
+ * and literals, NOT type syntax, and TS annotations are call-shaped often
+ * enough to matter: `readonly (readonly [number, number, number])[]` is an
+ * identifier immediately followed by `(`, so a module holding nothing but a
+ * typed data literal reads as running code at module scope (#1423). The
+ * analyser erases types before it calls this (`eraseTypesForScan`), so the
+ * request path is covered; a DIRECT caller handing it `.ts` source as authored
+ * is opting into that false positive.
  *
  * Over-detection is safe (a top-level arrow whose body calls something, or a
  * pure top-level helper call, only ships). The accepted residual misses, all
@@ -299,25 +326,10 @@ const COMPONENT_CLIENT_GLOBAL_RE = /\b(?:window|document|navigator|localStorage|
  * top-level object / array initializer or a destructuring default, and a
  * side-effecting tagged-template hole evaluated at module scope.
  *
- * @param {string} src raw module source
+ * @param {string} src module source, type-erased if it came from a TypeScript file
+ * @param {string[]} [literals] the redaction's literal bodies, when already computed
+ * @returns {boolean}
  */
-/**
- * Constructors that produce inert DATA with no side effect, so a module-scope
- * `export const X = new Set([...])` (a lookup table, a compiled RegExp, a
- * parsed URL) is not client work and must not pin an importing page/layout
- * (#623). Any constructor NOT in this set (`new WebSocket()`, `new Worker()`,
- * `new EventSource()`, `new Audio()`) IS a side effect and still ships.
- */
-const PURE_DATA_CONSTRUCTORS = new Set([
-  'Set', 'Map', 'WeakSet', 'WeakMap', 'Date', 'RegExp', 'Array', 'Object',
-  'Number', 'String', 'Boolean', 'BigInt', 'Symbol',
-  'Error', 'TypeError', 'RangeError', 'SyntaxError',
-  'URL', 'URLSearchParams', 'ArrayBuffer', 'DataView',
-  'Int8Array', 'Uint8Array', 'Uint8ClampedArray', 'Int16Array', 'Uint16Array',
-  'Int32Array', 'Uint32Array', 'Float32Array', 'Float64Array',
-  'BigInt64Array', 'BigUint64Array',
-]);
-
 export function hasModuleScopeSideEffect(src, literals) {
   let redacted = src;
   if (!literals) {
@@ -872,6 +884,131 @@ export function extractRenderedTags(src) {
 }
 
 /**
+ * The extensions that can carry TypeScript type syntax INTO this analysis.
+ *
+ * Derive it from what actually reaches `allFiles`, which is seeded from three
+ * places with three different filters: the component set from `scanComponents`
+ * (`/\.m?[jt]sx?$/`), the route modules from the router (`js|mjs|ts|mts`), and
+ * the module graph from its walker (`/\.(js|ts|mjs|mts)$/`). The COMPONENT set
+ * is the widest and it does not pass through the other two, so a `.tsx`
+ * component arrives here whatever the walker and the router admit. Hence
+ * `.tsx`, even though nothing in WebJs serves one: leaving it out is how the
+ * #1423 false positive comes back for exactly the file class no other filter
+ * would have let through. `.cts` is absent because no filter admits it.
+ *
+ * The rule to hold, if any of those three filters moves: this set is every
+ * TypeScript-carrying extension in their UNION. Narrowing it to the servable
+ * set instead is a change that looks tighter and silently un-erases files.
+ */
+const TS_SOURCE_RE = /\.m?tsx?$/;
+
+/**
+ * Per-file memo of {@link eraseTypesForScan}, holding the source it was derived
+ * from so a hit is proven rather than assumed. One entry per file, so it is
+ * bounded by the app's file count and needs no eviction policy; a deleted file
+ * leaves one dead entry until the process ends, which is cheaper than tracking
+ * liveness for it.
+ *
+ * @type {Map<string, { src: string, out: string }>}
+ */
+const STRIP_CACHE = new Map();
+
+/**
+ * Return `src` with its TYPE syntax erased, so every scan below reads the code
+ * that actually RUNS rather than the code as authored (#1423).
+ *
+ * The scans are lexical heuristics, and TypeScript annotations are syntax the
+ * heuristics were never designed for: `readonly (readonly [number, number,
+ * number])[]` is an identifier immediately followed by `(`, which the
+ * top-level-call matcher in `hasModuleScopeSideEffect` reads as a call, so a
+ * module holding nothing but a typed data literal was classified as running
+ * code at module scope and pinned every route module that imported it. Type
+ * syntax is erased before anything runs, so it can never be a runtime signal,
+ * and the only sound reading of it is none at all.
+ *
+ * This uses the framework's own stripper rather than a lexical annotation
+ * matcher: it is the same erasure the browser is served, so the analyser and
+ * the runtime agree by construction, where a hand-rolled matcher would meet
+ * generics, `as`, `satisfies`, and conditional types and get some of them
+ * wrong. It is position-preserving whitespace replacement, so every offset,
+ * line, and column the other scans depend on is unchanged.
+ *
+ * A non-TypeScript file is returned untouched (there is nothing to erase, and
+ * running a TS parser over one buys only new ways to fail). A PER-FILE strip
+ * failure also returns the source untouched, which is the pre-#1423 behaviour
+ * and therefore the conservative direction: the scans then over-detect at
+ * worst. Two things take that path, both silent because both are one file's
+ * problem. A non-erasable module, which invariant 10 forbids and `webjs check`
+ * catches at edit time, so it is a broken app rather than a supported one. And
+ * a `.tsx` holding real JSX, which the stripper parses as non-JSX TypeScript
+ * and rejects, so a JSX component is scanned as authored while a `.tsx` that is
+ * only TypeScript is erased normally.
+ *
+ * A missing stripper BACKEND is the failure that does not stay silent, and it
+ * is why the backend is resolved once by the caller rather than per file. It
+ * means no TypeScript in the app can be erased (a runtime with neither the
+ * built-in nor `amaro`), so every module is scanned as authored and the #1423
+ * verdict comes back app-wide. Swallowing that alongside a syntax rejection
+ * would make an app-wide regression indistinguishable from one broken file, so
+ * `resolveScanStripper` warns once and this returns the source untouched.
+ *
+ * Results are memoized per file and validated against the exact source, since
+ * this runs on every dev rebuild and stripping costs roughly 50x the read it
+ * sits beside. Validating on content rather than mtime means a same-mtime
+ * rewrite cannot serve a stale strip.
+ *
+ * @param {import('./ts-strip.js').Stripper | null} stripper resolved once per run, null when unavailable
+ * @param {string} file absolute path, the cache key and the extension source
+ * @param {string} src
+ * @returns {string}
+ */
+function eraseTypesForScan(stripper, file, src) {
+  if (!stripper || !TS_SOURCE_RE.test(file)) return src;
+  const hit = STRIP_CACHE.get(file);
+  if (hit && hit.src === src) return hit.out;
+  let out;
+  try {
+    out = stripper.fn(src);
+  } catch {
+    out = src;
+  }
+  STRIP_CACHE.set(file, { src, out });
+  return out;
+}
+
+/** Whether {@link resolveScanStripper} has already reported a missing backend. */
+let warnedNoStripper = false;
+
+/**
+ * Resolve the TypeScript stripper backend once for a whole analysis run, or
+ * `null` when this runtime has none.
+ *
+ * `analyzeElision` runs outside the dev request handler too (`webjs check`,
+ * `webjs elision`), and `ensureStripper` is called on the dev path only, so
+ * this is where the no-backend case surfaces for the other entry points. It
+ * warns once per process rather than per file: the condition is a property of
+ * the runtime, so repeating it once per module would bury it.
+ *
+ * @returns {Promise<import('./ts-strip.js').Stripper | null>}
+ */
+async function resolveScanStripper() {
+  try {
+    return await ensureStripper();
+  } catch (e) {
+    if (!warnedNoStripper) {
+      warnedNoStripper = true;
+      console.warn(
+        '[webjs] elision analysis could not resolve a TypeScript stripper, so type syntax ' +
+        'is not erased before the scans read a module. A type annotation can then read as ' +
+        'module-scope work, which ships modules that would otherwise be elided. Underlying: ' +
+        (e && e.message ? e.message : String(e)),
+      );
+    }
+    return null;
+  }
+}
+
+/**
  * Compute the set of component FILES whose browser download can be
  * elided. A file is elidable only when every component it defines is
  * display-only AND it is not pulled into the client by an interactive
@@ -978,6 +1115,11 @@ export async function analyzeElision(components, routeModules, moduleGraph, read
     for (const v of vs) if (!appDir || v.startsWith(appDir)) allFiles.add(v);
   }
 
+  // Resolve the stripper ONCE for the run: the backend is a property of the
+  // runtime, not of a file, and the no-backend case must be reported rather
+  // than swallowed per module (see `eraseTypesForScan`).
+  const scanStripper = await resolveScanStripper();
+
   for (const file of allFiles) {
     if (SERVER_FILE_RE.test(file)) { serverFiles.add(file); continue; }
     let src;
@@ -989,6 +1131,11 @@ export async function analyzeElision(components, routeModules, moduleGraph, read
       continue;
     }
     if (typeof src !== 'string') continue;
+    // Erase type syntax first, so every scan below reads the code that RUNS
+    // (#1423). This is the single point where the analyser reads a file, so
+    // doing it here covers the module-scope, template, import, and component
+    // scans at once.
+    src = eraseTypesForScan(scanStripper, file, src);
     // Mask comments once for every signal scan below (#179): a `<tag>`, an
     // `@event`, a browser global, an `import`, or a `whenDefined` written in a
     // comment must not register as a real signal. String and template content

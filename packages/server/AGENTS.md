@@ -463,6 +463,27 @@ conditional leaves a CSP-off document one newline shorter than a CSP-on one).
    map), so a `#` import is never sent to the resolver; the rare alias mapped to
    a real package (`"#x": "some-pkg"`) is consequently not vendored, an accepted
    limitation since the scaffold's catch-all `"#*": "./*"` is always local.
+   Every scan reads TYPE-ERASED source: `analyzeElision` runs a `.ts` / `.mts` /
+   `.tsx` module through the framework's own stripper (`eraseTypesForScan`)
+   before scanning it, because the scans are lexical and TS annotations are
+   call-shaped often enough to matter (`readonly (readonly [number, number,
+   number])[]` is an identifier immediately followed by `(`, which the
+   module-scope scan read as a top-level call, pinning every importing route
+   module, #1423). The stripper rather than a lexical annotation matcher, so the
+   analyser and the runtime agree by construction, and it is position-preserving,
+   so every offset the other scans depend on survives. The extension set is the
+   union of the TypeScript-carrying extensions in the three filters that seed
+   `allFiles`, NOT the servable set: `scanComponents` admits `/\.m?[jt]sx?$/`,
+   wider than the graph walker and the router, so a `.tsx` component reaches the
+   analysis and narrowing to `.ts` / `.mts` silently un-erases it. A non-TS file,
+   and a source the stripper rejects (non-erasable syntax, which invariant 10
+   forbids, or real JSX in a `.tsx`), are scanned as authored, the conservative
+   direction; a missing stripper BACKEND is the one failure that warns, since it
+   un-erases the whole app rather than one file. Results are memoized per file
+   and validated against the source, so a dev rebuild re-strips only what
+   changed. Consequence for a DIRECT caller of `hasModuleScopeSideEffect` /
+   `analyzeComponentSource`: both still take source as given, so handing either
+   one `.ts` as authored opts back into that false positive.
    Import-only modules join the elision fingerprint (a verdict flip busts `?v`)
    and the bare-import scan exclusion (an SSR-only page import is no longer
    vendored), like inert modules. `collectRouteModules` (`dev.js`) feeds only

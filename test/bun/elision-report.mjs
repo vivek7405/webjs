@@ -8,9 +8,13 @@
  * WebJs runs on Node 24+ AND Bun (#508), and an app scaffolded with `--runtime
  * bun` runs `webjs elision` against a Bun-served app, so a verdict that drifted
  * between runtimes would mean the report told a Bun author something untrue
- * about their own app. The analysis is filesystem reads plus regular
- * expressions with no runtime-specific API, so there is nothing legitimate to
- * skip and this file carries no DENYLIST entry.
+ * about their own app. The analysis is filesystem reads and regular expressions
+ * over source the framework's TypeScript stripper has erased (#1423), and that
+ * stripper IS runtime-specific: Node's built-in `module.stripTypeScriptTypes`
+ * on one side, `amaro` on the other. The two are meant to be byte-identical,
+ * and the `.ts` route below is what holds them to it, since a divergence there
+ * would silently change what a Bun-served app downloads. Nothing here is
+ * legitimate to skip, so this file carries no DENYLIST entry.
  *
  * The fixture covers one component of each verdict and one route module of each
  * class, so a divergence in ANY of the projection's moving parts (the tag sort,
@@ -57,6 +61,15 @@ Counter.register('my-counter');
   // Import-only: the page itself does no client work, and the only client work
   // its closure reaches is a shipping component.
   write('app/page.js', "import { html } from '@webjsdev/core';\nimport '../components/counter.js';\nexport default () => html`<my-counter></my-counter>`;");
+  // Inert, and the row that exercises the STRIPPER seam: a parenthesised type
+  // annotation is call-shaped, so a runtime whose stripper left it behind would
+  // read this util as running code at module scope and report the page as
+  // shipping whole (#1423).
+  write('modules/game/utils/game.ts', `
+export type Cell = 'X' | 'O' | null;
+export const LINES: readonly (readonly [number, number, number])[] = [[0, 1, 2], [3, 4, 5]];
+`);
+  write('app/typed/page.ts', "import { html } from '@webjsdev/core';\nimport { LINES } from '../../modules/game/utils/game.ts';\nexport default () => html`<p>${LINES.length}</p>`;");
 
   const r = await analyzeAppElision(dir);
 
@@ -81,13 +94,14 @@ Counter.register('my-counter');
     [
       ['app/about/page.js', 'inert', ''],
       ['app/page.js', 'import-only', 'components/counter.js'],
+      ['app/typed/page.ts', 'inert', ''],
     ],
   );
 
   assert.deepEqual(r.orphans, []);
   assert.deepEqual(r.summary, {
     components: 2, elided: 1, shipped: 1,
-    routeModules: 2, inert: 1, importOnly: 1, shippedWhole: 0,
+    routeModules: 3, inert: 2, importOnly: 1, shippedWhole: 0,
     orphans: 0,
   });
 
