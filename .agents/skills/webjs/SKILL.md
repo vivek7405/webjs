@@ -80,6 +80,7 @@ The table above routes by the job; this one routes by the topic, for when you al
 | Server actions, mutations, queries, validation, the `ActionResult` envelope | `references/data-and-actions.md`              |
 | Sessions, login flows, route protection, `forbidden()` / `unauthorized()`   | `references/auth-and-sessions.md`             |
 | Tailwind, light-DOM tag-prefix rule, tokens, fixed headers, no-reflow layout | `references/styling.md`                        |
+| Where a repeated markup helper lives (`utils/ui/` vs `lib/`), and fragment vs display-only component | `references/styling.md`                        |
 | Client router, prefetch, frames, view transitions, Suspense streaming        | `references/client-router-and-streaming.md`   |
 | Optimistic UI for a user-facing mutation                                     | `references/optimistic-ui.md`                 |
 | The `@webjsdev/ui` component kit (a `components.json` is present): class helpers, tokens, `add` / `view`, the MCP `ui` tool | `references/ui-kit.md`                         |
