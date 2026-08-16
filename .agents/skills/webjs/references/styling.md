@@ -41,7 +41,7 @@ When the same Tailwind bundle repeats across 2+ places, extract it into a helper
 | Consumers | Home |
 |---|---|
 | routes across the app (a heading, a lede, a back link) | `lib/utils/ui.ts` |
-| one feature (a board, a match card, a comment row) | `modules/<feature>/utils/ui/<name>.ts` |
+| one feature (a todo row, a comment card, a board) | `modules/<feature>/utils/ui/<name>.ts` |
 
 One file per fragment under `utils/ui/`, because a feature accumulates several and one-per-file keeps them greppable. A fragment promotes from the feature tier to `lib/` only when a second feature genuinely consumes it.
 
@@ -80,13 +80,15 @@ export default function Post({ params }) {
 
 Avoid `@apply`: it hides which utilities a class uses and creates a second source of truth. A JS helper keeps the bundle visible at the definition site, composes with conditional classes and active states, and runs at SSR time.
 
-### Reach for a fragment before a component
+### Fragment or display-only component?
 
-Read-only markup can be a fragment helper or a display-only component, and for markup a PAGE renders the two cost the same: a component that does no client work is elided, so the browser never fetches it. Anyone telling you to always prefer the fragment on byte grounds is wrong about that case.
+Read-only markup can be a fragment helper or a display-only component, and WHO RENDERS IT decides what either one costs. Be precise about this, because the obvious summary ("fragments are free, components ship") is wrong in both directions.
 
-The difference is where the markup ends up rendered. A component stays elidable only while nothing that ships renders it, and elision propagates downward, so a display-only component drawn inside a live island ships with it: the class downloads and upgrades once per instance. A board drawn by a page is free either way; the same board drawn inside a `<match-replay>` island is free as a fragment and shipped JavaScript as a component.
+**Rendered only by pages, they cost the same: nothing.** A page is inert or import-only, so a fragment it calls runs at SSR and is never fetched. A component that does no client work is elided, so it is never fetched either. Byte arguments do not decide this case; pick whichever reads better.
 
-That asymmetry is what makes the fragment the safer default rather than the always-cheaper one. Its cost is unconditionally zero. A component's is conditional on facts OUTSIDE its own file, so a component that is free today starts shipping the day someone renders it from an island, or the day it grows a lifecycle hook or a non-state reactive prop, and nothing about the file changed. Take the component when the markup needs behaviour of its own, take it freely for page-level markup if you prefer elements, and prefer the fragment where a shipping island is or might become the renderer.
+**Rendered by a shipping island, BOTH ship.** A module a shipping component imports is fetched, fragment or not, so the fragment's function is downloaded too (verify it yourself: watch the network panel for the helper's path). What differs is what else comes with it. The component ships a custom element class plus its registration and upgrades once per instance, and, because elision propagates downward, it un-elides every display-only component IT renders. The fragment ships a function and stops there.
+
+So the fragment is the smaller and more predictable choice near an island, not a free one, and the gap is a class and its blast radius rather than everything. The other half of the argument is stability: a fragment cannot change category, while a component that is free today starts shipping the day an island renders it, or the day it grows a lifecycle hook or a non-state reactive prop, with no edit to its own file. Take the component when the markup needs behaviour of its own, take it freely for page-level markup if you prefer elements, and prefer the fragment where a shipping island is or might become the renderer. When it matters, measure with `webjs elision` instead of reasoning from either rule of thumb.
 
 ### A design system for repeated PRIMITIVES: class helpers built on `@webjsdev/ui`
 

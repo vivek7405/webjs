@@ -122,8 +122,8 @@ app/                  ROUTING ONLY (thin adapters importing from modules/)
   error.ts loading.ts not-found.ts forbidden.ts unauthorized.ts   boundaries (nearest wins)
 middleware.ts         root middleware
 modules/<feature>/    actions/ (mutations, *.server.ts), queries/ (reads, *.server.ts),
-                      components/ (custom elements), utils/ (pure, returns data),
-                      utils/ui/ (pure, returns an html fragment), types.ts
+                      components/ (custom elements), types.ts,
+                      utils/ (pure; returns data, or an html fragment under utils/ui/)
 lib/                  lib/*.server.ts server-only infra, lib/utils/ browser-safe helpers,
                       lib/utils/ui.ts app-wide html fragments
 components/*.ts        shared presentational custom elements (one per file)
