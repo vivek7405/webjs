@@ -82,7 +82,11 @@ Avoid `@apply`: it hides which utilities a class uses and creates a second sourc
 
 ### Fragment or display-only component?
 
-Start with the question that actually decides it: **can the markup carry an extra wrapper element at all?** A component is a tag in the DOM, so choosing one adds a node between the parent and the markup. Usually that is fine and the component is the better choice, since it gets a tag name to target and can grow behaviour later. In four places it is not, and there the fragment is the only shape that works:
+Two questions, in order.
+
+**First, is this a UNIT or a repeated CLASS BUNDLE?** The helpers this section began with (a heading, a lede, a back link) are the second kind: one element with a class list you did not want to type twice. That is a fragment by definition and never a component; nobody wants `<page-lede>` as a tag in their DOM, and promoting a class bundle to an element is the same over-reach as absorbing a page section into an island. The question below only arises for a genuine unit of markup (a row, a card, a board) that could reasonably be either.
+
+**Second, for a unit: can the markup carry an extra wrapper element at all?** A component is a tag in the DOM, so choosing one adds a node between the parent and the markup. Usually that is fine and the component is the better choice, since it gets a tag name to target and can grow behaviour later. In four places it is not, and there the fragment is the only shape that works:
 
 | Parent | A `<my-row>` wrapper does this |
 |---|---|
@@ -101,7 +105,7 @@ Everywhere else the two are interchangeable, and the remaining difference is cos
 
 So near an island the fragment is the smaller and more predictable choice, not a free one, and the gap is a class and its blast radius rather than everything. That is a tiebreaker, not a rule: it is worth acting on where a shipping island is or might become the renderer, and not worth reorganising page-level markup over. When it matters, measure with `webjs elision` rather than reasoning from either rule of thumb.
 
-**The summary.** Take the fragment where a wrapper element cannot exist (the table above all, plus a string payload); take the component whenever the markup needs behaviour, wants a tag to target, or might grow either; and treat the byte difference as the last consideration rather than the first.
+**The summary.** A repeated class bundle is always a fragment. For a real unit, take the fragment where a wrapper element cannot exist (the table above all, plus a string payload); take the component whenever the markup needs behaviour, wants a tag to target, or might grow either; and treat the byte difference as the last consideration rather than the first.
 
 ### A design system for repeated PRIMITIVES: class helpers built on `@webjsdev/ui`
 
