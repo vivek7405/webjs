@@ -163,6 +163,37 @@ test('a genuine top-level call named like a type keyword still ships', async () 
     'a call to a function named `readonly` is a call');
 });
 
+test('a .tsx component is erased too, because it reaches the analysis by a wider filter', async () => {
+  // `allFiles` is seeded from the COMPONENT set before the module graph, and
+  // `scanComponents` admits `/\.m?[jt]sx?$/`, which is wider than both the
+  // graph walker's file filter and the router's. So a `.tsx` component lands
+  // in the analysis whatever those two admit, and an erasure set narrowed to
+  // the SERVABLE extensions would leave exactly this file class un-erased,
+  // with the #1423 verdict intact and nothing else covering it.
+  const dir = await mkdtemp(join(tmpdir(), 'webjs-type-annotations-tsx-'));
+  try {
+    await mkdir(join(dir, 'components'), { recursive: true });
+    await writeFile(join(dir, 'components/badge.tsx'), `
+import { WebComponent, html } from '@webjsdev/core';
+export const LINES: readonly (readonly [number, number, number])[] = [[0, 1, 2]];
+export class Badge extends WebComponent {
+  render() { return html\`<span>\${LINES.length}</span>\`; }
+}
+Badge.register('my-badge');
+`);
+    const graph = await buildModuleGraph(dir);
+    const components = await scanComponents(dir);
+    const badgeFile = join(dir, 'components/badge.tsx');
+    assert.ok(components.some((c) => c.file === badgeFile),
+      'precondition: the component scanner admits a .tsx file');
+    const verdict = await analyzeElision(components, [], graph, (f) => readFile(f, 'utf8'), dir);
+    assert.ok(verdict.elidableComponents.has(badgeFile),
+      'the annotation is not a signal in a .tsx file either');
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
 test('a .ts module with non-erasable syntax falls back to scanning it as authored', async () => {
   // The stripper throws on non-erasable TypeScript (invariant 10 forbids it and
   // `webjs check` catches it at edit time, so this is a broken app rather than a
