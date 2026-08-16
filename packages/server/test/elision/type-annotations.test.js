@@ -194,6 +194,41 @@ Badge.register('my-badge');
   }
 });
 
+test('the strip memo is validated against the source, so an edit is re-erased', async () => {
+  // The memo is keyed by PATH and holds the source it was derived from, because
+  // this runs on every dev rebuild and stripping costs roughly 50x the read it
+  // sits beside. Keying by path alone would serve a stale strip after an edit,
+  // and mtime would miss a same-mtime rewrite, so the check is on content. Same
+  // path, two different sources, two different verdicts is what proves it.
+  const dir = await mkdtemp(join(tmpdir(), 'webjs-type-annotations-memo-'));
+  try {
+    await mkdir(join(dir, 'app'), { recursive: true });
+    await mkdir(join(dir, 'modules/game/utils'), { recursive: true });
+    const util = join(dir, 'modules/game/utils/game.ts');
+    const pageFile = join(dir, 'app/page.ts');
+    await writeFile(pageFile, `
+import { html } from '@webjsdev/core';
+import { LINES } from '../modules/game/utils/game.ts';
+export default () => html\`<p>\${LINES.length}</p>\`;
+`);
+    const analyse = async () => {
+      const graph = await buildModuleGraph(dir);
+      return analyzeElision(await scanComponents(dir), [pageFile], graph, (f) => readFile(f, 'utf8'), dir);
+    };
+
+    await writeFile(util, 'export const LINES: readonly (readonly [number, number, number])[] = [[0, 1, 2]];\n');
+    assert.ok((await analyse()).inertRouteModules.has(pageFile), 'pure typed data is inert');
+
+    // Same path, new content that DOES do module-scope work. A memo keyed only
+    // by path would hand back the erased first version and call this inert too.
+    await writeFile(util, 'export const LINES = init();\nfunction init() { return [[0, 1, 2]]; }\n');
+    assert.ok(!(await analyse()).inertRouteModules.has(pageFile),
+      'the edit must be re-read and re-scanned, not served from the memo');
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
 test('a .ts module with non-erasable syntax falls back to scanning it as authored', async () => {
   // The stripper throws on non-erasable TypeScript (invariant 10 forbids it and
   // `webjs check` catches it at edit time, so this is a broken app rather than a

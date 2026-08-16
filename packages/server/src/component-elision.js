@@ -45,7 +45,7 @@ import {
   redactToPlaceholders,
 } from './js-scan.js';
 import { transitiveDeps, expandImportAlias } from './module-graph.js';
-import { stripTypeScript } from './ts-strip.js';
+import { ensureStripper } from './ts-strip.js';
 
 /**
  * Named imports from a `@webjsdev/core` specifier that imply the
@@ -923,25 +923,86 @@ const TS_SOURCE_RE = /\.m?tsx?$/;
  * line, and column the other scans depend on is unchanged.
  *
  * A non-TypeScript file is returned untouched (there is nothing to erase, and
- * running a TS parser over one buys only new ways to fail). A strip FAILURE
- * also returns the source untouched, which is the pre-#1423 behaviour and
- * therefore the conservative direction: the scans then over-detect at worst.
- * Two things take that path. A non-erasable module, which invariant 10 forbids
- * and `webjs check` catches at edit time, so it is a broken app rather than a
- * supported one. And a `.tsx` file holding real JSX, which the stripper parses
- * as non-JSX TypeScript and rejects, so a JSX component is scanned as authored
- * while a `.tsx` that is only TypeScript is erased normally.
+ * running a TS parser over one buys only new ways to fail). A PER-FILE strip
+ * failure also returns the source untouched, which is the pre-#1423 behaviour
+ * and therefore the conservative direction: the scans then over-detect at
+ * worst. Two things take that path, both silent because both are one file's
+ * problem. A non-erasable module, which invariant 10 forbids and `webjs check`
+ * catches at edit time, so it is a broken app rather than a supported one. And
+ * a `.tsx` holding real JSX, which the stripper parses as non-JSX TypeScript
+ * and rejects, so a JSX component is scanned as authored while a `.tsx` that is
+ * only TypeScript is erased normally.
  *
- * @param {string} file absolute path, read for its extension only
+ * A missing stripper BACKEND is the failure that does not stay silent, and it
+ * is why the backend is resolved once by the caller rather than per file. It
+ * means no TypeScript in the app can be erased (a runtime with neither the
+ * built-in nor `amaro`), so every module is scanned as authored and the #1423
+ * verdict comes back app-wide. Swallowing that alongside a syntax rejection
+ * would make an app-wide regression indistinguishable from one broken file, so
+ * `resolveScanStripper` warns once and this returns the source untouched.
+ *
+ * Results are memoized per file and validated against the exact source, since
+ * this runs on every dev rebuild and stripping costs roughly 50x the read it
+ * sits beside. Validating on content rather than mtime means a same-mtime
+ * rewrite cannot serve a stale strip.
+ *
+ * @param {import('./ts-strip.js').Stripper | null} stripper resolved once per run, null when unavailable
+ * @param {string} file absolute path, the cache key and the extension source
  * @param {string} src
- * @returns {Promise<string>}
+ * @returns {string}
  */
-async function eraseTypesForScan(file, src) {
-  if (!TS_SOURCE_RE.test(file)) return src;
+function eraseTypesForScan(stripper, file, src) {
+  if (!stripper || !TS_SOURCE_RE.test(file)) return src;
+  const hit = STRIP_CACHE.get(file);
+  if (hit && hit.src === src) return hit.out;
+  let out;
   try {
-    return await stripTypeScript(src);
+    out = stripper.fn(src);
   } catch {
-    return src;
+    out = src;
+  }
+  STRIP_CACHE.set(file, { src, out });
+  return out;
+}
+
+/**
+ * Per-file memo of {@link eraseTypesForScan}, holding the source it was derived
+ * from so a hit is proven rather than assumed. One entry per file, so it is
+ * bounded by the app's file count and needs no eviction policy; a deleted file
+ * leaves one dead entry until the process ends, which is cheaper than tracking
+ * liveness for it.
+ *
+ * @type {Map<string, { src: string, out: string }>}
+ */
+const STRIP_CACHE = new Map();
+
+/**
+ * Resolve the TypeScript stripper backend once for a whole analysis run, or
+ * `null` when this runtime has none.
+ *
+ * `analyzeElision` runs outside the dev request handler too (`webjs check`,
+ * `webjs elision`), and `ensureStripper` is called on the dev path only, so
+ * this is where the no-backend case surfaces for the other entry points. It
+ * warns once per process rather than per file: the condition is a property of
+ * the runtime, so repeating it once per module would bury it.
+ *
+ * @returns {Promise<import('./ts-strip.js').Stripper | null>}
+ */
+let warnedNoStripper = false;
+async function resolveScanStripper() {
+  try {
+    return await ensureStripper();
+  } catch (e) {
+    if (!warnedNoStripper) {
+      warnedNoStripper = true;
+      console.warn(
+        '[webjs] elision analysis could not resolve a TypeScript stripper, so type syntax ' +
+        'is not erased before the scans read a module. A type annotation can then read as ' +
+        'module-scope work, which ships modules that would otherwise be elided. Underlying: ' +
+        (e && e.message ? e.message : String(e)),
+      );
+    }
+    return null;
   }
 }
 
@@ -1052,6 +1113,11 @@ export async function analyzeElision(components, routeModules, moduleGraph, read
     for (const v of vs) if (!appDir || v.startsWith(appDir)) allFiles.add(v);
   }
 
+  // Resolve the stripper ONCE for the run: the backend is a property of the
+  // runtime, not of a file, and the no-backend case must be reported rather
+  // than swallowed per module (see `eraseTypesForScan`).
+  const scanStripper = await resolveScanStripper();
+
   for (const file of allFiles) {
     if (SERVER_FILE_RE.test(file)) { serverFiles.add(file); continue; }
     let src;
@@ -1067,7 +1133,7 @@ export async function analyzeElision(components, routeModules, moduleGraph, read
     // (#1423). This is the single point where the analyser reads a file, so
     // doing it here covers the module-scope, template, import, and component
     // scans at once.
-    src = await eraseTypesForScan(file, src);
+    src = eraseTypesForScan(scanStripper, file, src);
     // Mask comments once for every signal scan below (#179): a `<tag>`, an
     // `@event`, a browser global, an `import`, or a `whenDefined` written in a
     // comment must not register as a real signal. String and template content
