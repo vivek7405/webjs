@@ -94,13 +94,23 @@ const FRAME_RESPONSE =
  * boundary with the live DOM, so the router degrades to a full page load rather
  * than swapping, and the case would then assert scroll behaviour on a
  * navigation that never applied.
+ *
+ * It also echoes the LIVE head back, which is not cosmetic. A page swap merges
+ * the incoming head and REMOVES any live head element the response does not
+ * carry, so an empty `<head>` here strips web-test-runner's own session scripts
+ * out of the page. That does not fail this file, which has already loaded: it
+ * destabilizes the Firefox session and shows up as unrelated later files
+ * failing to start a test page. Echoing the head makes the merge a no-op (an
+ * element already live is neither removed nor re-appended, so nothing runs
+ * twice).
  */
-const PAGE_RESPONSE =
-  '<!doctype html><html><head></head><body>'
-  + '<!--wj:children:/:/frame-scroll-a-->'
-  + `<div id="wj-swapped-1427" style="height:${SPACER}px">swapped</div>`
-  + '<!--/wj:children:/-->'
-  + '</body></html>';
+function pageResponse() {
+  return '<!doctype html><html><head>' + document.head.innerHTML + '</head><body>'
+    + '<!--wj:children:/:/frame-scroll-a-->'
+    + `<div id="wj-swapped-1427" style="height:${SPACER}px">swapped</div>`
+    + '<!--/wj:children:/-->'
+    + '</body></html>';
+}
 
 suite('Client router: a <webjs-frame> swap leaves the window scroll alone (#1427)', () => {
   let navGuard, container, origFetch, origScrollBehavior, origUrl;
@@ -132,7 +142,7 @@ suite('Client router: a <webjs-frame> swap leaves the window scroll alone (#1427
       const headers = (init && init.headers) || {};
       const framed = Boolean(headers['x-webjs-frame']);
       fetched.push((framed ? 'frame:' : 'page:') + url);
-      return Promise.resolve(new Response(framed ? FRAME_RESPONSE : PAGE_RESPONSE, {
+      return Promise.resolve(new Response(framed ? FRAME_RESPONSE : pageResponse(), {
         headers: { 'content-type': 'text/html', 'x-webjs-build': '' },
       }));
     };
