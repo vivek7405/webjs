@@ -470,6 +470,22 @@ export default function LandingPage() {
       </div>
     </section>
 
+    <section class="pb-16">
+      <div class="max-w-3xl mx-auto px-6">
+        <div class="aspect-video overflow-hidden border border-border-strong shadow-[var(--shadow)]">
+          <iframe
+            class="w-full h-full"
+            src="https://www.youtube-nocookie.com/embed/iz23lVMvlVY?rel=0"
+            title="WebJs introduction video"
+            loading="lazy"
+            allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
+            referrerpolicy="strict-origin-when-cross-origin"
+            allowfullscreen
+          ></iframe>
+        </div>
+      </div>
+    </section>
+
     <section class="py-16">
       <div class="max-w-6xl mx-auto px-6">
         <div class="max-w-3xl mx-auto mb-12 text-center">
