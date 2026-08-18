@@ -29,6 +29,7 @@ import { parseHTML } from 'linkedom';
 // does not trip the auto-enable the barrel's dynamic import exists to defer.
 import { cacheKey } from '../../src/router-client/snapshot-cache.js';
 import { prefetchEvict } from '../../src/router-client/prefetch.js';
+import { diagFlag, diagFrameYield } from '../../src/router-client/diagnostics.js';
 
 let _collect, _plan, _keyOf, _diffEl, _reconcile,
   _addNewHead, _merge, _isNonHtmlPath, navigate,
@@ -5217,6 +5218,74 @@ test('applySwap: the history callback fires BEFORE the DOM mutation (#1406)', ()
     globalThis.location = savedLocation;
     globalThis.document.head.innerHTML = savedHead;
     globalThis.document.body.innerHTML = savedBody;
+  }
+});
+
+/* --------------------------------------------------------------------------
+ * #1428: the on-device A/B levers for the back-swipe blank.
+ *
+ * #1410 shipped the ordering fix with its iOS acceptance criterion openly
+ * unmet, and the blank survived on a real iPhone, so one assumption behind it
+ * is still untested: that WebKit binds the gesture snapshot synchronously at
+ * the `pushState` call rather than from a later composited frame. The levers
+ * exist to let a device decide, and the thing to pin here is that they are
+ * INERT unless an app opts in, since they sit on the live navigation path.
+ * ------------------------------------------------------------------------ */
+
+test('diagFlag: false when the app sets nothing, so the nav path is untouched (#1428)', () => {
+  const saved = globalThis.window ? globalThis.window.__webjsDiag : undefined;
+  try {
+    if (globalThis.window) delete globalThis.window.__webjsDiag;
+    assert.equal(diagFlag('raf'), false, 'no diag object means no lever');
+    assert.equal(diagFlag('raf2'), false);
+    assert.equal(diagFlag('scrolllast'), false);
+  } finally {
+    if (globalThis.window && saved !== undefined) globalThis.window.__webjsDiag = saved;
+  }
+});
+
+test('diagFlag: reads the lever an app opted into, and only that one (#1428)', () => {
+  const saved = globalThis.window ? globalThis.window.__webjsDiag : undefined;
+  try {
+    globalThis.window.__webjsDiag = { raf: true, raf2: false, scrolllast: false };
+    assert.equal(diagFlag('raf'), true, 'the opted-in lever reads true');
+    assert.equal(diagFlag('raf2'), false, 'a sibling lever stays off');
+    // An unknown name must not throw its way onto the navigation path.
+    assert.equal(diagFlag('nope'), false, 'an unknown lever is simply off');
+  } finally {
+    if (globalThis.window) {
+      if (saved === undefined) delete globalThis.window.__webjsDiag;
+      else globalThis.window.__webjsDiag = saved;
+    }
+  }
+});
+
+test('diagFrameYield: null without requestAnimationFrame, so the caller degrades (#1428)', () => {
+  const saved = globalThis.requestAnimationFrame;
+  try {
+    // The unit runner's DOM shim has no rAF, which is the case the call sites
+    // guard with `if (painted) await painted`. A promise that never resolves
+    // here would hang a navigation rather than skip a diagnostic.
+    delete globalThis.requestAnimationFrame;
+    assert.equal(diagFrameYield(1), null, 'no rAF means nothing to await');
+  } finally {
+    if (saved !== undefined) globalThis.requestAnimationFrame = saved;
+  }
+});
+
+test('diagFrameYield: waits the requested number of frames (#1428)', async () => {
+  const saved = globalThis.requestAnimationFrame;
+  try {
+    let frames = 0;
+    globalThis.requestAnimationFrame = (fn) => { frames += 1; queueMicrotask(fn); return frames; };
+    await diagFrameYield(2);
+    // Two frames, not one: `?raf2` exists because a single rAF can still land
+    // before the commit WebKit needs, and the double-rAF is the standard
+    // after-next-paint idiom.
+    assert.equal(frames, 2, 'the double-frame lever really waits two frames');
+  } finally {
+    if (saved === undefined) delete globalThis.requestAnimationFrame;
+    else globalThis.requestAnimationFrame = saved;
   }
 });
 

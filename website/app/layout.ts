@@ -195,6 +195,22 @@ export default function RootLayout({ children }: LayoutProps) {
         if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', measure);
         else measure();
       })();
+      // #1428, TEMPORARY: capture the back-swipe A/B levers off the query
+      // string into window.__webjsDiag, so a real iPhone can compare the
+      // candidate paint timings against the current one. Captured ONCE here
+      // rather than read per navigation, because the flag is gone from the URL
+      // the moment the first soft nav replaces it, and the run needs the lever
+      // to hold for the whole session. Inline and in the head so it lands
+      // before the router boots (a module script is deferred). Removed with
+      // the levers once the device has answered.
+      (function(){
+        try {
+          var p = new URLSearchParams(location.search);
+          if (p.has('raf') || p.has('raf2') || p.has('scrolllast')) {
+            window.__webjsDiag = { raf: p.has('raf'), raf2: p.has('raf2'), scrolllast: p.has('scrolllast') };
+          }
+        } catch (_) {}
+      })();
     </script>
 
     <link rel="stylesheet" href=${asset('/public/tailwind.css')}>

@@ -340,6 +340,51 @@ export function warnIfSmoothScrollOnHtml() {
 }
 
 /**
+ * #1428 diagnostic, TEMPORARY. Reads a guarded paint-timing lever an app sets
+ * on `window.__webjsDiag` (e.g. `{ raf: true }`) so the iOS back-swipe blank
+ * can be A/B'd on a real device. Default off, so the production nav path is
+ * byte-for-byte unchanged when nothing sets the object.
+ *
+ * The same shape as the #637 levers that isolated #610, and for the same
+ * reason: the symptom exists only on a real iPhone, where no harness we have
+ * can see it, so the only way to tell a candidate fix from a guess is to ship
+ * both behaviours behind a flag and let the device choose.
+ *
+ * @param {string} name
+ * @returns {boolean}
+ */
+export function diagFlag(name) {
+  try { return !!(typeof window !== 'undefined' && window.__webjsDiag && window.__webjsDiag[name]); }
+  catch { return false; }
+}
+
+/**
+ * #1428 diagnostic, TEMPORARY. Resolve after `frames` animation frames, or
+ * `null` when there is no `requestAnimationFrame` to wait on (the unit runner's
+ * DOM shim), so a caller can `await` it unconditionally.
+ *
+ * Why a frame and not a microtask: the thing being tested is whether WebKit has
+ * COMPOSITED the outgoing page before it captures the back-forward snapshot. A
+ * microtask runs inside the same task and paints nothing, so only a frame
+ * boundary can tell the two hypotheses apart.
+ *
+ * @param {number} frames
+ * @returns {Promise<void> | null}
+ */
+export function diagFrameYield(frames) {
+  if (typeof requestAnimationFrame !== 'function') return null;
+  return new Promise((resolve) => {
+    let left = frames;
+    const step = () => {
+      left -= 1;
+      if (left <= 0) resolve(undefined);
+      else requestAnimationFrame(step);
+    };
+    requestAnimationFrame(step);
+  });
+}
+
+/**
  * Nav-in-flight signalling. The router can expose `data-navigating` on <html>
  * so an app may style a loading indicator with `html[data-navigating] { … }`.
  *
