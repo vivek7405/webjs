@@ -165,13 +165,23 @@ suite('Client router: back-swipe A/B levers (#1428)', () => {
       window.scrollTo = function (...args) { scrolls.push('scroll'); return origScrollTo.apply(this, args); };
       await navigate(location.origin + '/swipe-ab-superseded');
 
-      // Start a second navigation inside the deferred scroll's frame gap. Its
-      // fetch never settles, so it bumps the nav token and then does nothing
-      // else, which isolates the guard from anything the newer navigation
-      // would itself have done to scroll.
-      window.fetch = () => new Promise(() => {});
-      navigate(location.origin + '/swipe-ab-superseder');
+      // Start a second navigation inside the deferred scroll's frame gap. It
+      // bumps the nav token and then does nothing else, which isolates the
+      // guard from anything the newer navigation would itself have done to
+      // scroll.
+      //
+      // Aborted rather than left pending. A fetch that never settles leaves a
+      // navigation in flight for the rest of the page's life, holding the
+      // router's token and its own frame state, and a test that never cleans
+      // that up is a leak looking for somewhere to surface. An AbortError is
+      // the shape the router already treats as a superseded navigation, so it
+      // settles down the path it would take in production.
+      let abortPending;
+      window.fetch = () => new Promise((_, reject) => { abortPending = reject; });
+      const superseder = navigate(location.origin + '/swipe-ab-superseder');
       await settleFrames();
+      if (abortPending) abortPending(new DOMException('aborted', 'AbortError'));
+      await superseder.catch(() => {});
 
       // Without the token guard the first navigation's scroll fires here, into
       // a document a newer navigation already owns.
