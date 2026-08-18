@@ -472,7 +472,7 @@ export default function LandingPage() {
 
     <section class="pb-16">
       <div class="max-w-3xl mx-auto px-6">
-        <div class="aspect-video rounded-2xl overflow-hidden border border-border-strong shadow-[var(--shadow)]">
+        <div class="aspect-video overflow-hidden border border-border-strong shadow-[var(--shadow)]">
           <iframe
             class="w-full h-full"
             src="https://www.youtube-nocookie.com/embed/iz23lVMvlVY"
