@@ -405,7 +405,15 @@ export async function fetchAndApply(href, frameId, recordHistory, optimisticStat
     // both paths run identical code and the run compares one variable.
     if (diagFlag('scrolllast')) {
       const painted = diagFrameYield(1);
-      if (painted) painted.then(applyNavScroll);
+      // Guarded on the nav token, because deferring the scroll puts it outside
+      // this navigation's own task: a newer navigation can start in that frame,
+      // and then this would scroll ITS page. The synchronous path cannot do
+      // that, so an unguarded `.then` would be the lever writing scroll into a
+      // page it has nothing to do with. Worst on the hash branch, where
+      // `scrollIntoView` would hunt this URL's anchor in the new document and
+      // land somewhere arbitrary if the id happens to exist. A diagnostic
+      // measuring scroll behaviour cannot afford to move scroll on its own.
+      if (painted) painted.then(() => { if (myToken === currentNavigationToken) applyNavScroll(); });
       else applyNavScroll();
     } else {
       applyNavScroll();

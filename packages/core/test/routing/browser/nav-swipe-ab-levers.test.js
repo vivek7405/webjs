@@ -137,6 +137,49 @@ suite('Client router: back-swipe A/B levers (#1428)', () => {
     } finally { teardown(); }
   });
 
+  test('?scrolllast: the scroll-to-top lands after a frame, not in the swap\'s task', async () => {
+    setup({ scrolllast: true });
+    const scrolls = [];
+    const origScrollTo = window.scrollTo;
+    try {
+      // Recorded rather than suppressed: the lever is about WHEN the write
+      // happens, so the write still has to happen.
+      window.scrollTo = function (...args) { scrolls.push(seq.slice()); return origScrollTo.apply(this, args); };
+      await navigate(location.origin + '/swipe-ab-scrolllast');
+      const beforeFrame = scrolls.length;
+      await settleFrames();
+
+      assert.equal(beforeFrame, 0,
+        `the deferred scroll must not have run yet when the navigation resolved (ran ${beforeFrame} times)`);
+      assert.equal(scrolls.length, 1, 'the scroll still runs, one frame later');
+      assert.ok(scrolls[0].includes('frame'),
+        `the scroll landed after a frame boundary (trace at the write: ${JSON.stringify(scrolls[0])})`);
+    } finally { window.scrollTo = origScrollTo; teardown(); }
+  });
+
+  test('?scrolllast: a superseded navigation does not scroll the page that replaced it', async () => {
+    setup({ scrolllast: true });
+    const scrolls = [];
+    const origScrollTo = window.scrollTo;
+    try {
+      window.scrollTo = function (...args) { scrolls.push('scroll'); return origScrollTo.apply(this, args); };
+      await navigate(location.origin + '/swipe-ab-superseded');
+
+      // Start a second navigation inside the deferred scroll's frame gap. Its
+      // fetch never settles, so it bumps the nav token and then does nothing
+      // else, which isolates the guard from anything the newer navigation
+      // would itself have done to scroll.
+      window.fetch = () => new Promise(() => {});
+      navigate(location.origin + '/swipe-ab-superseder');
+      await settleFrames();
+
+      // Without the token guard the first navigation's scroll fires here, into
+      // a document a newer navigation already owns.
+      assert.equal(scrolls.length, 0,
+        'the superseded navigation abandoned its deferred scroll');
+    } finally { window.scrollTo = origScrollTo; teardown(); }
+  });
+
   test('?raf: the #1410 guarantee survives, the outgoing page is still live at the push', async () => {
     setup({ raf: true });
     try {
