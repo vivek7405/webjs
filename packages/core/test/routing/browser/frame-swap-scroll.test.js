@@ -152,16 +152,29 @@ suite('Client router: a <webjs-frame> swap leaves the window scroll alone (#1427
       'the fixture is tall enough to scroll: without this the test proves nothing');
   }
 
+  /**
+   * Undo everything `setup` installed. Every step is guarded, because `setup`
+   * ASSERTS (its precondition) and so can throw partway through, and a teardown
+   * that threw on the first missing field would leave the fetch stub and the nav
+   * guard installed for the rest of the RUN, not just the rest of this file.
+   * That failure is invisible where it happens and surfaces as unrelated later
+   * files misbehaving, which is exactly the shape this fixture already produced
+   * once through its head handling. So each test calls `setup` INSIDE its try,
+   * and this cleans up whatever got as far as being installed.
+   */
   function teardown() {
-    window.fetch = origFetch;
+    if (origFetch) { window.fetch = origFetch; origFetch = null; }
     // A page swap replaces the container's contents and nothing puts them back.
     const swapped = document.getElementById('wj-swapped-1427');
     if (swapped) swapped.remove();
-    container.remove();
-    history.replaceState(null, '', origUrl);
-    document.documentElement.style.scrollBehavior = origScrollBehavior;
+    if (container) { container.remove(); container = null; }
+    if (origUrl) { history.replaceState(null, '', origUrl); origUrl = null; }
+    if (origScrollBehavior != null) {
+      document.documentElement.style.scrollBehavior = origScrollBehavior;
+      origScrollBehavior = null;
+    }
     window.scrollTo({ left: 0, top: 0, behavior: 'instant' });
-    navGuard.remove();
+    if (navGuard) { navGuard.remove(); navGuard = null; }
     // Re-arm cleanly for the next case; every other suite in the run expects
     // the router enabled.
     disableClientRouter();
@@ -169,8 +182,8 @@ suite('Client router: a <webjs-frame> swap leaves the window scroll alone (#1427
   }
 
   test('a link INSIDE a frame swaps the frame and holds the scroll offset', async () => {
-    setup();
     try {
+      setup();
       document.getElementById('wj-frame-link').click();
       await settle();
 
@@ -182,8 +195,8 @@ suite('Client router: a <webjs-frame> swap leaves the window scroll alone (#1427
   });
 
   test('an EXTERNAL data-webjs-frame link holds the scroll offset too', async () => {
-    setup();
     try {
+      setup();
       // Same fixture, driven from outside the frame: the resolve path differs
       // (an explicit id rather than the enclosing-frame default) but it reaches
       // the same swap, so both spellings need pinning.
@@ -205,8 +218,8 @@ suite('Client router: a <webjs-frame> swap leaves the window scroll alone (#1427
   });
 
   test('a frame-targeted FORM submission holds the scroll offset', async () => {
-    setup();
     try {
+      setup();
       // The submit path reaches the scroll block through its own caller
       // (`submitForm`, which hardcodes `recordHistory: true`), so a fix proven
       // only on the click path would leave this one scrolling.
@@ -223,8 +236,8 @@ suite('Client router: a <webjs-frame> swap leaves the window scroll alone (#1427
   });
 
   test('a data-webjs-frame="_top" breakout is a page nav, so it still scrolls to top', async () => {
-    setup();
     try {
+      setup();
       document.getElementById('wj-top-link').click();
       await settle();
 
@@ -239,8 +252,8 @@ suite('Client router: a <webjs-frame> swap leaves the window scroll alone (#1427
   });
 
   test('an unresolvable frame id degrades to a page nav, and still scrolls to top', async () => {
-    setup();
     try {
+      setup();
       const origWarn = console.warn;
       console.warn = () => {};
       try {
