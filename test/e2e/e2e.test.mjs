@@ -3031,6 +3031,53 @@ describe('E2E: Blog example', { skip: !process.env.WEBJS_E2E && 'set WEBJS_E2E=1
     } finally { page.off('request', onReq); }
   });
 
+  test('frame: a frame swap holds the window scroll, while the _top breakout still scrolls to top (#1427)', async () => {
+    // The router used to gate its scroll-to-top on "is this a foreground
+    // navigation", which a frame click is (it advances the URL), so filtering
+    // a panel threw the reader back to the top of the page with the panel
+    // they had just clicked in off screen. Over the real wire here, because
+    // the offset only survives if the document is genuinely tall and the swap
+    // genuinely applied.
+    await page.goto(`${baseUrl}/frame-demo?tab=one`, { waitUntil: 'domcontentloaded', timeout: 15000 });
+    await sleep(1500);
+
+    // The page carries a 1200px spacer for the lazy deferred frame, so it
+    // scrolls. Stop well short of that frame: pulling it into view would start
+    // a self-load this case is not about.
+    const startY = await page.evaluate(() => {
+      window.scrollTo({ left: 0, top: 300, behavior: 'instant' });
+      return window.scrollY;
+    });
+    assert.equal(startY, 300, 'the page is tall enough to scroll, so the assertion below means something');
+
+    await page.evaluate(() => document.getElementById('tab-two')?.click());
+    await waitForCond(
+      () => page.evaluate(() => document.getElementById('panel-body')?.getAttribute('data-tab') === 'two'),
+      6000,
+      () => 'the tab click should swap the frame to tab two',
+    );
+
+    const afterFrame = await page.evaluate(() => window.scrollY);
+    assert.equal(afterFrame, 300, `a frame swap must leave the window scroll alone, got ${afterFrame}`);
+
+    // The same page, the same scroll offset, a link that is NOT a frame nav.
+    // Without this the assertion above would also pass on a router that had
+    // simply stopped scrolling altogether.
+    await page.evaluate(() => document.getElementById('top-link')?.click());
+    await waitForCond(
+      () => page.evaluate(() => location.pathname === '/'),
+      6000,
+      () => `_top should navigate to "/", got ${page.url()}`,
+    );
+    const after = await page.evaluate(() => ({
+      y: window.scrollY,
+      reachable: document.documentElement.scrollHeight - window.innerHeight,
+    }));
+    assert.ok(after.reachable > 300,
+      `the home page must be tall enough to hold the old offset, else a 0 proves nothing (max ${after.reachable})`);
+    assert.equal(after.y, 0, `a page navigation must still scroll to top, got ${after.y}`);
+  });
+
   test('frame: aria-busy toggles true during the frame fetch and clears after, with start+finish events', async () => {
     await page.goto(`${baseUrl}/frame-demo`, { waitUntil: 'domcontentloaded', timeout: 15000 });
     await sleep(1500);
