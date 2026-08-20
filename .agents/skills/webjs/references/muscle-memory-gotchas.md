@@ -288,7 +288,7 @@ The `@property()` decorator is banned by the erasable-TS invariant (decorators a
 
 ### Passing a method straight to an `@event` binding
 
-Lit invokes an `@event` listener with `this` set to the host element, so `@click=${this.handleClick}` is correct there. WebJs stores the handler verbatim and dispatches it as a bare call (`part.handler?.(ev)` in `core/src/render-client/parts.js`), so `this` is `undefined` inside a plain method and the first property access throws a `TypeError`. Nothing catches it statically: `webjs check` and `tsc` both pass, the component SSRs correctly, and it breaks only once the event fires.
+Lit invokes an `@event` listener with `this` set to the host element, so `@click=${this.handleClick}` is correct there. WebJs stores the handler verbatim and dispatches it through an internal part object (`part.handler?.(ev)` in `core/src/render-client/parts.js`), so `this` is THAT object, not your component. It does not fail loudly. A read such as `this.todos` returns `undefined`, and a write such as `this.count = 1` silently lands on the framework's internal object. The `TypeError` arrives later, when you dereference the `undefined` you read back, so the stack points away from the real cause. Nothing catches it statically either: `webjs check` and `tsc` both pass and the component SSRs correctly.
 
 Wrap the call at the binding site, which is the conventional spelling, or declare the handler as an arrow class field, which carries its own `this`.
 

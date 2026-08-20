@@ -44,6 +44,10 @@ import { createTodo } from '#modules/todos/actions/create-todo.server.ts';
 import type { Todo } from '#db/schema.server.ts';  // type-only, erased before the browser
 
 class TodoList extends WebComponent({ todos: prop&lt;Todo[]&gt;(Array) }) {
+  // A prop with no seeded value and no declared default is undefined, so give
+  // it one here. The page below seeds real rows through a .todos prop hole.
+  constructor() { super(); this.todos = []; }
+
   private optimisticTodos = optimistic(this, {
     source: () =&gt; this.todos,
     // KEEP THIS REDUCER PURE. See the section below.
@@ -120,7 +124,7 @@ TodoList.register('todo-list');</code-block>
     <h3>Author it as a degrade-first form</h3>
 
     <p>
-      That is what the <code>&lt;form&gt;</code> above is doing, and it is worth naming as a pattern. Wrap the mutation in a real form bound to the action, then intercept it for the optimistic path. One form serves both ends. With JS off the browser submits and the server dispatches to that action, which is the no-JS write path. With JS on, <code>@submit</code> calls <code>e.preventDefault()</code> and runs the optimistic path instead. Note the arrow wrapper on that listener. An <code>@event</code> handler is invoked as a bare function, so a plain method passed directly would run with no <code>this</code>.
+      That is what the <code>&lt;form&gt;</code> above is doing, and it is worth naming as a pattern. Wrap the mutation in a real form bound to the action, then intercept it for the optimistic path. One form serves both ends. With JS off the browser submits and the server dispatches to that action, which is the no-JS write path. With JS on, <code>@submit</code> calls <code>e.preventDefault()</code> and runs the optimistic path instead. Note the arrow wrapper on that listener. An <code>@event</code> handler is not bound to your component, so a plain method passed directly would see a framework-internal object as <code>this</code> and fail quietly rather than throw.
     </p>
 
     <p>

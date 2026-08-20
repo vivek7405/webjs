@@ -85,7 +85,7 @@ TodoList.register('todo-list');
 
 ### Author the optimistic mutation as a degrade-first form
 
-Wrap the mutation in a REAL `<form>` bound to the action, then intercept it for the optimistic path. One form serves both: with JS off the browser submits and the server dispatches to that action (the no-JS write path, see `routing-and-pages.md`), and with JS on `@submit` calls `e.preventDefault()` and runs the optimistic path. That is the progressive-enhancement contract, not a fetch-only handler. Note the arrow wrapper on the listener: WebJs does not bind `this` for an `@event` handler, so passing the method directly would run it with no `this` (see `muscle-memory-gotchas.md`).
+Wrap the mutation in a REAL `<form>` bound to the action, then intercept it for the optimistic path. One form serves both: with JS off the browser submits and the server dispatches to that action (the no-JS write path, see `routing-and-pages.md`), and with JS on `@submit` calls `e.preventDefault()` and runs the optimistic path. That is the progressive-enhancement contract, not a fetch-only handler. Note the arrow wrapper on the listener: WebJs does not bind an `@event` handler to your component, so passing the method directly would leave `this` pointing at a framework-internal object (see `muscle-memory-gotchas.md`).
 
 The SAME imported function is the form binding and the optimistic path's callee, which is what makes a degrade-first form cheap to write: there is no second wiring to keep in step.
 
