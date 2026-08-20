@@ -562,6 +562,25 @@ describe('framework-link repair (#1442)', () => {
     } finally { rmSync(primary, { recursive: true, force: true }); }
   });
 
+  test('--check stays read-only even with WEBJS_NO_WORKTREE_REPAIR=1 set', () => {
+    // The exit for `--check` used to live INSIDE the repair `else`, so this one
+    // combination fell through to the linking loop and the seed step. The flag
+    // pair AGENTS.md documents as changing nothing was the pair that wrote.
+    const primary = makeRepairPrimary();
+    const wt = makeWorktree();
+    try {
+      const r = spawnSync(process.execPath, [SCRIPT, primary, '--check'], {
+        cwd: wt,
+        encoding: 'utf8',
+        env: cleanEnv({ WEBJS_NO_WORKTREE_REPAIR: '1' }),
+      });
+      assert.equal(r.status, 0);
+      assert.match(r.stdout, /repair skipped/);
+      assert.doesNotMatch(r.stdout, /linked node_modules/, '--check must never link');
+      assert.ok(!existsSync(join(wt, 'node_modules')), '--check must not create the symlink');
+    } finally { rmSync(primary, { recursive: true, force: true }); rmSync(wt, { recursive: true, force: true }); }
+  });
+
   test('WEBJS_NO_WORKTREE_REPAIR=1 skips the pass entirely', () => {
     const primary = makeRepairPrimary();
     const wt = makeWorktree();

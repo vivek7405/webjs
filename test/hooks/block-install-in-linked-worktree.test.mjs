@@ -81,6 +81,32 @@ test('blocks the flags-before-verb form `npm --prefix <worktree> install`', () =
   } finally { rmSync(root, { recursive: true, force: true }); }
 });
 
+test('blocks every manager\'s install ALIAS, not just the canonical spelling', () => {
+  // A gate `bun i` walks past is worthless, and Bun is the manager that writes
+  // THROUGH the symlink into the primary rather than replacing it, so its
+  // aliases are the consequential ones. `yarn` bare is an install in yarn classic.
+  const { root, worktree } = makeLinkedPair();
+  try {
+    for (const cmd of [
+      'npm i', 'npm in', 'npm ic', 'npm it', 'npm clean-install', 'npm update',
+      'bun i', 'bun a nanoid', 'pnpm i', 'yarn', 'yarn --frozen-lockfile', 'yarn add x',
+    ]) {
+      assert.equal(runHook(cmd, worktree).status, 2, `expected block for \`${cmd}\``);
+    }
+  } finally { rmSync(root, { recursive: true, force: true }); }
+});
+
+test('the broadened alias table does not swallow non-install commands', () => {
+  const { root, worktree } = makeLinkedPair();
+  try {
+    // `npm init` must not match `in` or `i`, and a bare `yarn test` must not
+    // match the bare-yarn install branch.
+    for (const cmd of ['npm init', 'npm init -y', 'yarn test', 'yarn run build', 'bun run dev', 'bun test', 'pnpm run build']) {
+      assert.equal(runHook(cmd, worktree).status, 0, `expected allow for \`${cmd}\``);
+    }
+  } finally { rmSync(root, { recursive: true, force: true }); }
+});
+
 test('COUNTERFACTUAL: the identical command passes when node_modules is a real directory', () => {
   const { root, worktree } = makeLinkedPair();
   try {

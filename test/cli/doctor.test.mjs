@@ -1858,8 +1858,8 @@ test('framework-links WARNS when the link DANGLES', () => {
   assert.equal(inspectFrameworkLink(dir).state, 'dangling');
   const r = checkFrameworkLinks(dir);
   assert.equal(r.status, 'warn');
-  assert.match(r.fix, /worktree:link/);
-  assert.doesNotMatch(r.fix, /Run `npm install`/);
+  assert.match(r.fix, /owns this node_modules|owning checkout/);
+  assert.match(r.fix, /do NOT run `npm install`/i);
 });
 
 test('framework-links WARNS when the link resolves OUTSIDE the owning tree', () => {
@@ -1899,7 +1899,28 @@ test('framework-resolve stops recommending a bare npm install through a symlink'
   const r = checkFrameworkResolves(dir);
   assert.equal(r.status, 'warn');
   assert.match(r.fix, /do NOT run `npm install`/);
-  assert.match(r.fix, /worktree:link/);
+  assert.match(r.fix, /checkout that owns the tree/);
+});
+
+test('the published-CLI remedies never name a script a scaffolded app does not have', () => {
+  // These strings ship in the published CLI, and `bin/webjs.js` prints them
+  // verbatim as the `webjs dev` / `webjs start` preflight failure. The #954
+  // audience is a scaffolded APP worktree, which has no `worktree:link` script,
+  // so naming it there sends the user to run something that does not exist.
+  const app = tmpDir();
+  write(app, 'package.json', JSON.stringify({ name: 'my-app', scripts: { dev: 'webjs dev' } }));
+  write(app, '.git', 'gitdir: /somewhere/.git/worktrees/x');
+
+  const fresh = checkFrameworkResolves(app);
+  assert.equal(fresh.status, 'warn');
+  assert.doesNotMatch(fresh.fix, /worktree:link/, 'no monorepo-only script for a scaffolded app');
+  assert.match(fresh.fix, /npm install/, 'a fresh worktree with no symlink CAN just install');
+
+  // The same repo, once it DOES declare the script, may name it.
+  const mono = tmpDir();
+  write(mono, 'package.json', JSON.stringify({ name: 'repo', scripts: { 'worktree:link': 'node x.mjs' } }));
+  write(mono, '.git', 'gitdir: /somewhere/.git/worktrees/y');
+  assert.match(checkFrameworkResolves(mono).fix, /worktree:link/);
 });
 
 test('framework-links is wired into the runner and carries its declared code', async () => {

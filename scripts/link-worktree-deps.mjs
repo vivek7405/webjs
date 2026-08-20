@@ -408,16 +408,23 @@ if (!existsSync(join(primary, 'package.json'))) {
 // run or `--check` heals it from the primary itself. `WEBJS_NO_WORKTREE_REPAIR=1`
 // is why the `defaultPrimary()` test can run this against the real checkout
 // without mutating it, exactly as `WEBJS_NO_WORKTREE_SEED=1` does for seeding.
+let touched = 0;
 if (process.env.WEBJS_NO_WORKTREE_REPAIR === '1') {
   console.log('[link-worktree-deps] framework-link repair skipped (WEBJS_NO_WORKTREE_REPAIR=1).');
 } else {
   const repair = repairPrimaryFrameworkLinks(primary, { check: CHECK });
-  const touched = repair.repaired.length + repair.removed.length;
+  touched = repair.repaired.length + repair.removed.length;
   if (CHECK) {
     console.log(`[link-worktree-deps] --check: ${touched} entr${touched === 1 ? 'y' : 'ies'} to repair, ${repair.reported.length} reported.`);
-    process.exit(touched > 0 ? 1 : 0);
   }
 }
+
+// `--check` is READ-ONLY and TERMINAL, unconditionally. This exit sits OUTSIDE
+// the branch above on purpose: nested inside the `else`, a run with BOTH
+// `--check` and `WEBJS_NO_WORKTREE_REPAIR=1` fell through to the linking loop
+// and the seed step, so the one combination documented as changing nothing was
+// the one that wrote. Linking is a mutation, so `--check` must never reach it.
+if (CHECK) process.exit(touched > 0 ? 1 : 0);
 
 if (primary === here) {
   console.log('[link-worktree-deps] this IS the primary checkout, nothing to link.');

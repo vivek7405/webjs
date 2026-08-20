@@ -104,7 +104,10 @@ is_clean() {
 # scoped to links targeting THIS worktree; the general sweep belongs to
 # `npm run worktree:link`, which you run deliberately.
 repoint_primary_links() {
-  local wt="$1" scope wtreal base abs rel
+  # NOT `base`: that name holds the script-global merge-base ref that
+  # `is_merged()` reads, and bash `local` is dynamically scoped, so shadowing
+  # it here would blank the ref for anything this function ever calls.
+  local wt="$1" scope wtreal entry_name abs rel
   scope="$primary/node_modules/@webjsdev"
   [ -d "$scope" ] || return 0
   wtreal=$(cd "$wt" 2>/dev/null && pwd -P) || return 0
@@ -114,7 +117,7 @@ repoint_primary_links() {
     # An unmatched glob arrives literally, and is not a symlink, so this also
     # absorbs an empty scope.
     [ -L "$e" ] || continue
-    base=$(basename "$e")
+    entry_name=$(basename "$e")
     # Resolve without `readlink -f`, which is GNU-only.
     abs=$(cd "$(dirname "$e")" 2>/dev/null && cd "$(readlink "$e")" 2>/dev/null && pwd -P) || continue
     case "$abs" in
@@ -122,15 +125,15 @@ repoint_primary_links() {
       *) continue ;;
     esac
     rel="${abs#"$wtreal"/}"
-    case "$base" in
+    case "$entry_name" in
       .*-????????)
-        rm -f "$e" && relinked+=("dropped staging entry @webjsdev/$base")
+        rm -f "$e" && relinked+=("dropped staging entry @webjsdev/$entry_name")
         ;;
       *)
         if [ -e "$primary/$rel" ]; then
-          ln -sfn "../../$rel" "$e" && relinked+=("repointed @webjsdev/$base -> ../../$rel")
+          ln -sfn "../../$rel" "$e" && relinked+=("repointed @webjsdev/$entry_name -> ../../$rel")
         else
-          relinked+=("KEPT @webjsdev/$base (points into $wt, but $rel is missing in the primary)")
+          relinked+=("KEPT @webjsdev/$entry_name (points into $wt, but $rel is missing in the primary)")
         fi
         ;;
     esac

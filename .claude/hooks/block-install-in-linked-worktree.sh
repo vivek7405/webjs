@@ -31,11 +31,26 @@ if [ -z "$cmd" ]; then exit 0; fi
 
 # Install verbs only. `npm run test`, `npm test`, `npm exec`, `npm ls`, and every
 # `npx ...` must pass, so the verb is matched at a word boundary on both sides.
-# The second alternation branch is the flags-before-verb form
-# (`npm --prefix <dir> install`). Only the two flags that themselves name a
-# target directory are admitted there, so this stays targeted rather than
-# swallowing an arbitrary token run and matching something like `npm run install`.
-VERBS='(npm[[:space:]]+(install|i|ci|add|update|dedupe)|bun[[:space:]]+(install|add|update)|pnpm[[:space:]]+(install|add|update)|yarn[[:space:]]+(install|add)|(npm|pnpm|yarn)[[:space:]]+(--prefix|-C)[[:space:]=]+[^[:space:]&|;]+[[:space:]]+(install|i|ci|add|update|dedupe))'
+# Every manager's documented install ALIASES, not just its canonical spelling.
+# The gate is worthless if `bun i` walks past it, and Bun is the manager that
+# writes THROUGH the symlink into the primary rather than replacing it, so its
+# aliases are the consequential ones. npm's list is long because npm ships a
+# large alias table of its own (`npm help install`), typo aliases included.
+#
+# Word boundaries on BOTH sides keep this narrow: `npm init` does not match `in`
+# or `i`, because the next character is alphanumeric, and `npm run install-deps`
+# does not match because `run` is not a verb here.
+NPM_VERBS='install|i|in|ins|inst|insta|instal|isnt|isnta|isntal|isntall|add|ci|clean-install|ic|install-clean|sit|it|cit|update|up|upgrade|udpate|dedupe|ddp'
+BUN_VERBS='install|i|add|a|update|up'
+PNPM_VERBS='install|i|add|update|up'
+YARN_VERBS='install|add|up|upgrade'
+# The last two branches are the two shapes a plain verb regex cannot see:
+#   * `npm --prefix <dir> install`, flags BEFORE the verb. Only the two flags
+#     that themselves name a target directory are admitted, so this stays
+#     targeted rather than swallowing a token run and matching `npm run install`.
+#   * bare `yarn`, which IS an install in yarn classic. Matched only when it ends
+#     the command or is followed by a flag, so `yarn test` stays allowed.
+VERBS="(npm[[:space:]]+(${NPM_VERBS})|bun[[:space:]]+(${BUN_VERBS})|pnpm[[:space:]]+(${PNPM_VERBS})|yarn[[:space:]]+(${YARN_VERBS})|(npm|pnpm|yarn)[[:space:]]+(--prefix|-C)[[:space:]=]+[^[:space:]&|;]+[[:space:]]+(${NPM_VERBS})|yarn([[:space:]]+-[^[:space:]]*)*[[:space:]]*(\$|[&|;]))"
 if ! printf '%s' "$cmd" | grep -Eq "(^|[^[:alnum:]_-])${VERBS}([^[:alnum:]_-]|\$)"; then
   exit 0
 fi

@@ -1,4 +1,4 @@
-import { existsSync, lstatSync, readlinkSync, realpathSync, statSync } from 'node:fs';
+import { existsSync, lstatSync, readFileSync, readlinkSync, realpathSync, statSync } from 'node:fs';
 import { dirname, join, resolve, sep } from 'node:path';
 import { createRequire } from 'node:module';
 
@@ -60,7 +60,7 @@ export function checkFrameworkResolves(appDir) {
         '@webjsdev/core cannot be resolved from this directory, and this is a git worktree with no ' +
         'node_modules. Git worktrees do not copy node_modules, so the framework is unresolvable here ' +
         'and `webjs dev` / `webjs start` would fail at SSR with a raw ERR_MODULE_NOT_FOUND.',
-      fix: freshWorktreeFix(),
+      fix: freshWorktreeFix(appDir),
     };
   }
   if (!hasNodeModules) {
@@ -94,16 +94,47 @@ function modulesAreLinked(dir) {
 }
 
 /**
+ * The `npm run worktree:link` sentence, but ONLY where that script exists.
+ *
+ * This module ships in the PUBLISHED CLI, and `bin/webjs.js` prints these
+ * remedies verbatim as the `webjs dev` / `webjs start` preflight failure. A
+ * scaffolded app has no `worktree:link` script, so naming it unconditionally
+ * sends the exact audience this check exists for (#954, a fresh app worktree)
+ * to run something that does not exist. Walk up for a package.json that really
+ * declares it, and stay silent otherwise.
+ *
+ * @param {string} appDir
+ * @returns {string} a leading-space sentence, or the empty string
+ */
+function linkScriptHint(appDir) {
+  let dir = resolve(appDir);
+  for (let i = 0; i < 8; i += 1) {
+    try {
+      const pkg = JSON.parse(readFileSync(join(dir, 'package.json'), 'utf8'));
+      if (pkg?.scripts?.['worktree:link']) {
+        return ' In this repo, `npm run worktree:link` does the whole setup and also repairs the shared tree.';
+      }
+    } catch { /* no package.json here, keep walking */ }
+    const up = dirname(dir);
+    if (up === dir) break;
+    dir = up;
+  }
+  return '';
+}
+
+/**
  * Remedy for the #954 fresh-worktree case, which is a worktree with NO
  * `node_modules` at all. There is no symlink in the way yet, so a real install
- * is safe here; the link script is named first because it is the cheap path.
+ * is safe here, and this stays the app-generic advice it has always been.
+ * @param {string} appDir
  * @returns {string}
  */
-function freshWorktreeFix() {
+function freshWorktreeFix(appDir) {
   return (
-    'Link this worktree to the primary checkout (`npm run worktree:link`), which is the supported ' +
-    'setup and takes seconds. A real `npm install` here also works, since there is no node_modules ' +
-    'symlink in the way yet. Once one exists, never install through it (#1442).'
+    'Install dependencies in this worktree (`npm install`), or symlink node_modules from the ' +
+    'primary checkout (`ln -s ../<primary-checkout>/node_modules node_modules`). If you symlink, ' +
+    'never run an install through that link afterwards: it acts on the checkout that owns the ' +
+    'tree, not this one (#1442).' + linkScriptHint(appDir)
   );
 }
 
@@ -118,8 +149,8 @@ function linkAwareReinstallFix(appDir) {
   if (modulesAreLinked(appDir)) {
     return (
       'node_modules here is a SYMLINK at another checkout, so do NOT run `npm install`: it would act ' +
-      'on that checkout, not this one (#1442). Run `npm run worktree:link`, which repairs the shared ' +
-      'tree, or `rm node_modules` first if you want a real self-contained install.'
+      'on that checkout, not this one (#1442). Either reinstall in the checkout that owns the tree, ' +
+      'or `rm node_modules` first (it is only a link) and install here.' + linkScriptHint(appDir)
     );
   }
   return 'Reinstall dependencies (`npm install`, or remove node_modules and reinstall).';
@@ -203,9 +234,9 @@ export function checkFrameworkLinks(appDir) {
     };
   }
   const fix =
-    'Run `npm run worktree:link` from this checkout, which repoints it. Do NOT run `npm install` ' +
-    'here while node_modules is a symlink: it acts on the checkout that owns the tree (#1442). ' +
-    '`npm run check:worktree-links` lists every entry that needs repair without changing anything.';
+    'Repoint the entry at the package inside the checkout that owns this node_modules. Do NOT run ' +
+    '`npm install` here while node_modules is a symlink: it acts on that owning checkout, not this ' +
+    'one (#1442).' + linkScriptHint(appDir);
   if (r.state === 'dangling') {
     return {
       name,
