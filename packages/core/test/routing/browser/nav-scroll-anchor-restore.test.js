@@ -461,11 +461,18 @@ suite('Client router: a Back restore survives late layout growth (#1310)', () =>
     // the two features meet here and nothing covered it: the test above asserts
     // only that the window survives, not where the reader ends up.
     //
-    // A click-driven frame nav reaches `fetchAndApply` with `recordHistory:
-    // true` (unlike `loadFrame`, which passes false), so it runs the
-    // forward-nav scroll-to-top even though it swaps one region rather than the
-    // page. Inside an open restore that would drop the reader to the top of a
-    // page they just came back to.
+    // When this was written, a click-driven frame nav reached `fetchAndApply`
+    // with `recordHistory: true` and the scroll block had no `frameId` guard,
+    // so it ran the forward-nav scroll-to-top even though it swaps one region
+    // rather than the page, and inside an open restore that dropped the reader
+    // to the top of a page they had just come back to. #1429 has since fixed
+    // that at the source: the scroll block now excludes frame-scoped responses
+    // outright, so the stray scroll no longer happens at all.
+    //
+    // The case is kept because it asserts the OUTCOME rather than the
+    // mechanism, and the outcome is what must hold however the internals move:
+    // a frame swap must never disturb a restore in progress. It is now
+    // defended twice over, by #1429's guard and by the restore window.
     await setup();
     try {
       await goBack();
