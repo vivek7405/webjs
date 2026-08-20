@@ -491,13 +491,27 @@ TodoList.register('todo-list');
 For boolean toggles where the value itself is the mutation:
 
 ```ts
-import { signal, optimistic } from '@webjsdev/core';
+import { WebComponent, prop, signal, optimistic, html } from '@webjsdev/core';
 import { likePost } from '#actions/like-post.server.ts';
 
-const liked = signal(false);
-// in an @click handler:
-const result = await optimistic(liked, true, () => likePost(postId));
+class LikeButton extends WebComponent({ postId: prop(String) }) {
+  // INSTANCE scope, one signal per element. A module-scope `signal()` is SHARED
+  // by every instance (invariant 5), so a list of these would all flip together.
+  private liked = signal(false);
+
+  private async toggle() {
+    const next = !this.liked.get();
+    return optimistic(this.liked, next, () => likePost(this.postId));
+  }
+
+  render() {
+    return html`<button @click=${() => this.toggle()}>${this.liked.get() ? 'Liked' : 'Like'}</button>`;
+  }
+}
+LikeButton.register('like-button');
 ```
+
+The call RETURNS the action's `ActionResult`, so a `{ success: false }` both rolls back the signal and comes back to you for its `error` / `fieldErrors`. Module scope is the right choice when the state genuinely IS app-wide (a theme, a cart count, a sidebar-open flag). Per-item state belongs on the instance. `liked` is a plain instance field rather than a reactive property, so the class-field ban does not apply to it.
 
 ### When to skip optimistic UI
 
