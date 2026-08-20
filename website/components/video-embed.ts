@@ -1,6 +1,20 @@
 import { WebComponent, html, prop } from '@webjsdev/core';
 
 /**
+ * True while rendering on the server. Read once at module load, and only
+ * through typeof, so nothing here touches a browser global.
+ *
+ * It gates the noscript fallback, which must be emitted by SSR and NOT by the
+ * client render. A browser parsing the served HTML with scripting enabled
+ * treats a noscript body as raw TEXT, so the markup inside is inert. The
+ * client render has no such protection: it builds the same markup inside a
+ * template, where scripting is disabled, so every node becomes REAL. A style
+ * element applies wherever it sits in the DOM, noscript ancestor or not, so
+ * the rule below hid the poster on every JS-enabled visit after hydration.
+ */
+const IS_SERVER = typeof window === 'undefined';
+
+/**
  * `<video-embed>` renders a YouTube video as a poster the reader clicks,
  * swapping in the real player only on that click.
  *
@@ -32,6 +46,13 @@ import { WebComponent, html, prop } from '@webjsdev/core';
  * white-flash tradeoff rides along with it, and that is the right call: a
  * reader with no JS should get a working video, not a themed placeholder
  * with a dead button.
+ *
+ * Sizing. The component renders its OWN aspect-video box rather than relying
+ * on the consumer's wrapper for height. A custom element is display:block here
+ * (the framework's host rule) but its height is AUTO, so a child sized h-full
+ * resolves against auto and collapses to nothing. That shipped once: the host
+ * measured 0px tall and the poster was 0x0, an embed that was simply not there.
+ * Owning the box means the element is correct wherever it is placed.
  *
  * Usage:
  *   <video-embed videoid="XghCghezod4" label="WebJs introduction video">
@@ -88,63 +109,72 @@ export class VideoEmbed extends WebComponent({
     // Built out here, never inside the html template: a backtick anywhere in
     // a template body closes the literal at JS-parse time (invariant 9).
     const playLabel = 'Play ' + this.label;
-    const noscriptSrc = this.noscriptSrc();
+
+    // Built as its own value rather than inline, because the outer template
+    // may not contain a backtick (invariant 9) and this is a nested html tag.
+    // Empty on the client: JS is plainly on there, so the fallback is not
+    // just unnecessary, it is actively harmful (see IS_SERVER).
+    const fallback = IS_SERVER
+      ? html`
+        <noscript>
+          <!-- With JS off the component never hydrates, so the poster button
+               above is server-rendered and inert. Hide it and show the real
+               player instead. The selector carries the tag name because a
+               light-DOM component's CSS must (invariant 7). -->
+          <style>video-embed button { display: none }</style>
+          <iframe
+            class="absolute inset-0 w-full h-full"
+            src=${this.noscriptSrc()}
+            title=${this.label}
+            loading="lazy"
+            allow="accelerometer; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
+            referrerpolicy="strict-origin-when-cross-origin"
+            allowfullscreen
+          ></iframe>
+        </noscript>
+      `
+      : '';
 
     if (this.playing) {
       return html`
-        <iframe
-          class="w-full h-full"
-          src=${this.playerSrc()}
-          title=${this.label}
-          allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
-          referrerpolicy="strict-origin-when-cross-origin"
-          allowfullscreen
-        ></iframe>
+        <div class="relative w-full aspect-video">
+          <iframe
+            class="absolute inset-0 w-full h-full"
+            src=${this.playerSrc()}
+            title=${this.label}
+            allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
+            referrerpolicy="strict-origin-when-cross-origin"
+            allowfullscreen
+          ></iframe>
+        </div>
       `;
     }
 
     return html`
-      <button
-        type="button"
-        class="group relative block w-full h-full cursor-pointer border-0 p-0 bg-bg-sunken"
-        aria-label=${playLabel}
-        @click=${() => { this.playing = true; }}
-      >
-        <img
-          class="w-full h-full object-cover"
-          src=${this.posterSrc()}
-          alt=""
-          loading="lazy"
-          decoding="async"
+      <div class="relative w-full aspect-video">
+        <button
+          type="button"
+          class="group absolute inset-0 block w-full h-full cursor-pointer border-0 p-0 bg-bg-sunken"
+          aria-label=${playLabel}
+          @click=${() => { this.playing = true; }}
         >
-        <span
-          class="absolute inset-0 grid place-items-center bg-[oklch(0_0_0/0.15)] transition-colors group-hover:bg-[oklch(0_0_0/0.05)]"
-        >
-          <span
-            class="grid place-items-center w-[68px] h-[48px] rounded-[14px] bg-[oklch(0.55_0.24_25)] shadow-[var(--shadow)] transition-transform group-hover:scale-110"
+          <img
+            class="w-full h-full object-cover"
+            src=${this.posterSrc()}
+            alt=""
+            loading="lazy"
+            decoding="async"
           >
-            <svg width="24" height="24" viewBox="0 0 24 24" fill="#fff" aria-hidden="true">
-              <path d="M8 5.5v13l11-6.5z"/>
-            </svg>
+          <span class="absolute inset-0 grid place-items-center bg-[oklch(0_0_0/0.15)] transition-colors group-hover:bg-[oklch(0_0_0/0.05)]">
+            <span class="grid place-items-center w-[68px] h-[48px] rounded-[14px] bg-[oklch(0.55_0.24_25)] shadow-[var(--shadow)] transition-transform group-hover:scale-110">
+              <svg width="24" height="24" viewBox="0 0 24 24" fill="#fff" aria-hidden="true">
+                <path d="M8 5.5v13l11-6.5z"/>
+              </svg>
+            </span>
           </span>
-        </span>
-      </button>
-      <noscript>
-        <!-- With JS off the component never hydrates, so the poster button
-             above is server-rendered and inert. Hide it and show the real
-             player instead. The selector carries the tag name because a
-             light-DOM component's CSS must (invariant 7). -->
-        <style>video-embed button { display: none }</style>
-        <iframe
-          class="w-full h-full"
-          src=${noscriptSrc}
-          title=${this.label}
-          loading="lazy"
-          allow="accelerometer; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
-          referrerpolicy="strict-origin-when-cross-origin"
-          allowfullscreen
-        ></iframe>
-      </noscript>
+        </button>
+        ${fallback}
+      </div>
     `;
   }
 }

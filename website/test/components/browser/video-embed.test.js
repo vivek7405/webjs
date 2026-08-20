@@ -54,29 +54,23 @@ suite('video-embed', () => {
     cleanup();
   });
 
-  test('keeps a plain player in noscript for the JS-off path', async () => {
+  test('client render emits no noscript and no style element', async () => {
     const { el, cleanup } = await mount();
 
-    const fallback = el.querySelector('noscript');
-    assert.ok(fallback, 'expected a noscript fallback');
-    // innerHTML rather than textContent, because a noscript body parses two
-    // different ways and this element is read both ways. The client render
-    // builds it inside a template, where scripting is disabled, so it holds
-    // real elements. A browser parsing the SSR'd page has scripting enabled
-    // and holds the same markup as raw TEXT. innerHTML is the one read that
-    // returns the markup in both, which is what this assertion is about.
-    const markup = fallback.innerHTML;
+    // The regression this guards: the fallback used to be rendered on BOTH
+    // sides. In a template, scripting is disabled, so the noscript body
+    // becomes real elements, and a style element applies wherever it sits in
+    // the DOM. Its rule hid the poster button on every JS-enabled visit, so
+    // the embed looked like it had vanished. The server half of the fallback
+    // is covered in test/ssr/video-embed-ssr.test.ts.
+    assert.equal(el.querySelectorAll('noscript').length, 0, 'client render must emit no noscript');
+    assert.equal(el.querySelectorAll('style').length, 0, 'client render must emit no style element');
+
+    const btn = el.querySelector('button');
+    assert.ok(btn, 'the poster button must survive the client render');
     assert.ok(
-      markup.includes('https://www.youtube-nocookie.com/embed/abc123?rel=0'),
-      'noscript should carry the plain player url',
-    );
-    assert.ok(
-      !markup.includes('autoplay=1'),
-      'the JS-off player must not autoplay, since no reader asked it to',
-    );
-    assert.ok(
-      markup.includes('video-embed button'),
-      'noscript should hide the inert poster button',
+      getComputedStyle(btn).display !== 'none',
+      'the poster button must not be hidden by the component\'s own markup',
     );
 
     cleanup();
