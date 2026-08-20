@@ -492,6 +492,40 @@ suite('Client router: a Back restore survives late layout growth (#1310)', () =>
     } finally { await teardown(); }
   });
 
+  test('a FRAME-targeted navigation does not scroll the restored page (#1428)', async () => {
+    // The write-back added for #1428 lives in the restore window, and a frame
+    // nav is the one navigation that deliberately leaves that window OPEN. So
+    // the two features meet here and nothing covered it: the test above asserts
+    // only that the window survives, not where the reader ends up.
+    //
+    // A click-driven frame nav reaches `fetchAndApply` with `recordHistory:
+    // true` (unlike `loadFrame`, which passes false), so it runs the
+    // forward-nav scroll-to-top even though it swaps one region rather than the
+    // page. Inside an open restore that would drop the reader to the top of a
+    // page they just came back to.
+    await setup();
+    try {
+      await goBack();
+      await frame();
+      assert.ok(Math.abs(window.scrollY - RESTORED_Y) < 5,
+        `precondition: the restore landed (got ${window.scrollY})`);
+      const holder = document.createElement('div');
+      holder.innerHTML = '<webjs-frame id="wj-target-frame-1310b">'
+        + '<a id="wj-frame-link-1310b" href="/wj-frame-nav-1310">go</a></webjs-frame>';
+      document.body.appendChild(holder);
+      try {
+        holder.querySelector('#wj-frame-link-1310b').click();
+        await new Promise((r) => setTimeout(r, 0));
+        assert.ok(frameNavs > 0,
+          'precondition: the click reached the router as a frame-targeted nav');
+        await frame();
+        assert.ok(Math.abs(window.scrollY - RESTORED_Y) < 5,
+          `a frame swap must not move the reader off a restore in progress `
+          + `(expected ~${RESTORED_Y}, got ${window.scrollY})`);
+      } finally { holder.remove(); }
+    } finally { await teardown(); }
+  });
+
   test('a FRAME-targeted submission leaves an open window alone', async () => {
     // The submission half of the frame exemption. `performSubmission` has its
     // own `!frameId` guard, and nothing exercised it: the page-level submission
