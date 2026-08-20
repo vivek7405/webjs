@@ -20,7 +20,7 @@
  * the timing it ran before, and only a test that fails when the lever leaks can
  * say so.
  */
-import { enableClientRouter, navigate } from '../../../src/router-client.js';
+import { disableClientRouter, enableClientRouter, navigate } from '../../../src/router-client.js';
 
 import { assert } from '../../../../../test/browser-assert.js';
 import { installNavGuard } from '../../../../../test/browser-nav-guard.js';
@@ -208,5 +208,72 @@ suite('Client router: back-swipe A/B levers (#1428)', () => {
       assert.ok(at.scrollY >= SCROLL_TO - 5,
         `the outgoing scroll offset is still live at the pushState call (expected about ${SCROLL_TO}, got ${at.scrollY})`);
     } finally { teardown(); }
+  });
+});
+
+/**
+ * The `?scrollauto` lever (#1428).
+ *
+ * Separate suite because it is the one lever that acts at ROUTER ENABLE rather
+ * than mid-navigation, so the flag has to be in place before the router
+ * installs itself, which is the opposite ordering from the paint-timing levers
+ * above.
+ *
+ * Why this lever exists at all: an on-device prior-art run put
+ * `history.scrollRestoration` at the centre of the bug. WebJs sets 'manual' and
+ * blanks the preview, Turbo Drive sets 'manual' and blanks it too, and Next's
+ * App Router leaves 'auto' and is clean. Push ordering, the thing #1410
+ * changed, runs the other way across those three, so it cannot be the cause.
+ *
+ * What a browser can assert is the property itself, in both directions. The
+ * gesture preview remains iOS-only.
+ */
+suite('Client router: scrollauto lever (#1428)', () => {
+  let saved, savedDiag;
+
+  setup(() => {
+    saved = history.scrollRestoration;
+    savedDiag = window.__webjsDiag;
+    disableClientRouter();
+    // A fresh document load starts at 'auto'. Establish that baseline
+    // explicitly: the lever SKIPS the assignment rather than writing 'auto',
+    // so a leftover 'manual' from another suite would mask a working lever.
+    history.scrollRestoration = 'auto';
+  });
+
+  teardown(() => {
+    disableClientRouter();
+    if (savedDiag === undefined) delete window.__webjsDiag;
+    else window.__webjsDiag = savedDiag;
+    history.scrollRestoration = saved;
+  });
+
+  test('default: the router takes manual control, exactly as it does today', () => {
+    delete window.__webjsDiag;
+    enableClientRouter();
+    assert.equal(
+      history.scrollRestoration, 'manual',
+      'with no lever the production path must be unchanged',
+    );
+  });
+
+  test('?scrollauto: the browser keeps ownership of per-entry scroll', () => {
+    window.__webjsDiag = { scrollauto: true };
+    enableClientRouter();
+    assert.equal(
+      history.scrollRestoration, 'auto',
+      'the lever must leave scroll restoration with the browser',
+    );
+  });
+
+  test('a paint-timing lever does NOT change scroll restoration', () => {
+    // The levers have to stay independent or a device run cannot attribute its
+    // verdict to one of them.
+    window.__webjsDiag = { raf: true, raf2: true, scrolllast: true };
+    enableClientRouter();
+    assert.equal(
+      history.scrollRestoration, 'manual',
+      'only ?scrollauto may move this property',
+    );
   });
 });

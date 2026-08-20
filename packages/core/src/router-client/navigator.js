@@ -7,7 +7,7 @@
  * @module
  */
 import { ANCHOR_SUPPRESS_FLOOR_MS } from './constants.js';
-import { reportFallback, reportPreBootNavigation, setNavigating, shouldFullLoadDuringParse } from './diagnostics.js';
+import { diagFlag, reportFallback, reportPreBootNavigation, setNavigating, shouldFullLoadDuringParse } from './diagnostics.js';
 import { applyOptimisticLoading } from './dom-differ.js';
 import { parseHTML } from './dom-parse.js';
 import { onClick, onPopState, onSubmit } from './events.js';
@@ -109,7 +109,28 @@ export function enableClientRouter() {
   // the SPA's own snapshot-based restore on popstate.
   if (typeof history !== 'undefined' && 'scrollRestoration' in history) {
     prevScrollRestoration = history.scrollRestoration;
-    history.scrollRestoration = 'manual';
+    // #1428 diagnostic, TEMPORARY (default off). The lever the prior-art
+    // measurement points at, and the only property that tracked the symptom
+    // across three frameworks on a real iPhone: WebJs blanks and sets
+    // 'manual', Turbo Drive blanks and sets 'manual', Next's App Router is
+    // clean and leaves 'auto'. Push ORDERING, which is what #1410 changed, ran
+    // the other way (both frameworks that push ahead of the swap blank, and
+    // the one that pushes after does not), so it cannot be the cause.
+    //
+    // The hypothesis this tests: under 'auto' WebKit records a scroll position
+    // per history entry and can compose the gesture preview from it, while
+    // 'manual' hands that to the app and the browser records nothing, leaving
+    // the preview no scroll state to render against. That fits all three
+    // observations plus the two the earlier hypotheses left over, namely why
+    // the symptom depends on the offset at navigation time and why the back
+    // BUTTON is fine (the snapshot cache restore is correct, and is untouched
+    // here).
+    //
+    // This is a MEASUREMENT, not a candidate fix. Leaving 'auto' in place lets
+    // the browser restore on popstate alongside the router's own restore, and
+    // reconciling those two is the design work that follows a positive result
+    // (#1310 / #1313 are the guards). One variable moves: the attribute.
+    if (!diagFlag('scrollauto')) history.scrollRestoration = 'manual';
   }
   // Seed the "current page" tracker so the first navigation can
   // snapshot the page the user is leaving.

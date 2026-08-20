@@ -5239,8 +5239,35 @@ test('diagFlag: false when the app sets nothing, so the nav path is untouched (#
     assert.equal(diagFlag('raf'), false, 'no diag object means no lever');
     assert.equal(diagFlag('raf2'), false);
     assert.equal(diagFlag('scrolllast'), false);
+    assert.equal(diagFlag('scrollauto'), false, 'scroll restoration stays manual by default');
   } finally {
     if (globalThis.window && saved !== undefined) globalThis.window.__webjsDiag = saved;
+  }
+});
+
+test('scrollauto lever: only it suppresses the manual scrollRestoration (#1428)', () => {
+  // The prior-art measurement put `history.scrollRestoration` at the centre of
+  // this bug: on a real iPhone, WebJs and Turbo Drive both set 'manual' and
+  // both blank the back-swipe preview, while Next's App Router leaves 'auto'
+  // and is clean. So the lever must move exactly that one property and must
+  // not be reachable from a sibling lever, or the run cannot attribute a
+  // verdict to it.
+  const saved = globalThis.window ? globalThis.window.__webjsDiag : undefined;
+  try {
+    globalThis.window.__webjsDiag = { raf: true, raf2: true, scrolllast: true };
+    assert.equal(
+      diagFlag('scrollauto'), false,
+      'the paint-timing levers must not switch off manual scroll restoration',
+    );
+    globalThis.window.__webjsDiag = { scrollauto: true };
+    assert.equal(diagFlag('scrollauto'), true, 'the opted-in lever reads true');
+    assert.equal(diagFlag('raf'), false, 'and it does not switch on a sibling');
+    assert.equal(diagFlag('scrolllast'), false);
+  } finally {
+    if (globalThis.window) {
+      if (saved === undefined) delete globalThis.window.__webjsDiag;
+      else globalThis.window.__webjsDiag = saved;
+    }
   }
 });
 
