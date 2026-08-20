@@ -161,13 +161,31 @@ export default async function NotesPage() {
       For a boolean flip where the value itself is the mutation (like, follow, pin), the imperative form is a thin wrapper over the signal primitive. It sets the signal, awaits the action, and restores the previous value on failure.
     </p>
 
-    <code-block>import { signal, optimistic } from '@webjsdev/core';
+    <code-block>import { WebComponent, prop, signal, optimistic, html } from '@webjsdev/core';
 import { likePost } from '#modules/posts/actions/like-post.server.ts';
 
-const liked = signal(false);
-// in an @click handler:
-const result = await optimistic(liked, true, () =&gt; likePost(postId));
-// liked flips to true instantly, and stays on success.</code-block>
+class LikeButton extends WebComponent({ postId: prop(String) }) {
+  // INSTANCE scope: one signal per element. A module-scope signal() is SHARED
+  // across every instance, so a feed of these would all flip on one click.
+  private liked = signal(false);
+
+  private async toggle() {
+    const next = !this.liked.get();
+    // Returns the action's ActionResult; the rollback already happened by then.
+    return optimistic(this.liked, next, () =&gt; likePost(this.postId));
+  }
+
+  render() {
+    return html\`&lt;button @click=\${() =&gt; this.toggle()}&gt;
+      \${this.liked.get() ? 'Liked' : 'Like'}
+    &lt;/button&gt;\`;
+  }
+}
+LikeButton.register('like-button');</code-block>
+
+    <p>
+      Note the scope. A module-scope <code>signal()</code> is shared by every component instance, which is exactly right for state that genuinely is app-wide (a theme, a cart count, a sidebar-open flag) and exactly wrong for a per-item flip, where a list of buttons would all light up on one click. Per-item state goes on the instance, as above. <code>liked</code> is a plain instance field rather than a reactive property declared in the factory, so the class-field rule that protects reactive props does not apply to it.
+    </p>
 
     <p>
       Two failure modes restore the previous value. A <strong>throw</strong> from the action rolls back and then re-throws, so a caller that wants to react still has to catch it. A returned <code>{ success: false }</code> envelope rolls back and is <em>returned</em> rather than thrown, so you read its <code>error</code> or <code>fieldErrors</code> off the result.

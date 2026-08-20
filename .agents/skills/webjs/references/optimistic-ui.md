@@ -130,18 +130,30 @@ The component reads that seeded prop as its `optimistic()` `source`, so `source:
 For a boolean toggle where the value itself is the mutation (like, follow, pin), `optimistic(signal, value, action)` is a thin wrapper over the signal primitive.
 
 ```ts
-import { signal, optimistic } from '@webjsdev/core';
+import { WebComponent, prop, signal, optimistic, html } from '@webjsdev/core';
 import { likePost } from '#modules/posts/actions/like-post.server.ts';
 
-const liked = signal(false);
-// in an @click handler:
-const result = await optimistic(liked, true, () => likePost(postId));
-// `liked` flips to true instantly. If likePost THROWS or returns
-// { success: false }, `liked` rolls back to its prior value: the throw
-// re-throws, and the { success: false } result is returned so you can
-// read its error / fieldErrors. On success the optimistic value stays;
-// reconcile to the authoritative value from `result` if you need it.
+class LikeButton extends WebComponent({ postId: prop(String) }) {
+  // INSTANCE scope: one signal per element. A module-scope `signal()` is SHARED
+  // across every instance (invariant 5), so a feed of these would all flip
+  // together on one click. Scope per-item state to the instance.
+  private liked = signal(false);
+
+  private async toggle() {
+    const next = !this.liked.get();
+    // Returns the action's ActionResult, so a { success: false } is readable
+    // by the caller. The rollback has already happened by then.
+    return optimistic(this.liked, next, () => likePost(this.postId));
+  }
+
+  render() {
+    return html`<button @click=${() => this.toggle()}>${this.liked.get() ? 'Liked' : 'Like'}</button>`;
+  }
+}
+LikeButton.register('like-button');
 ```
+
+Reserve MODULE scope for state that genuinely is app-wide (a theme, a cart count, a sidebar-open flag), which is the case invariant 5's "module-scope signals share state across components" exists to serve. Per-item state goes on the instance, as above. `liked` is a plain instance field, not a reactive property declared in the factory, so the class-field ban does not reach it and `reactive-props-no-class-field` does not flag it. `gallery/modules/optimistic-ui/components/like-button.ts` is the same shape in shipped code.
 
 It rolls back on a thrown error OR an `ActionResult` `{ success: false }` envelope, and never on success. It is client-only (it mutates a signal), so a component importing it is never elided as a display-only component.
 
