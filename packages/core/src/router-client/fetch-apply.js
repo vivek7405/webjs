@@ -335,9 +335,21 @@ export async function fetchAndApply(href, frameId, recordHistory, optimisticStat
     if (painted) await painted;
     // The yield reopens the supersede window the guard above just closed, so
     // re-check rather than swapping in a document a newer navigation has
-    // already moved past. The push has landed by now and is not rolled back:
-    // the newer navigation pushes its own entry over it, and this is a
-    // diagnostic that only runs when a device A/B has opted in.
+    // already moved past.
+    //
+    // The push has landed by now and is NOT rolled back, which leaves a
+    // phantom entry: `pushState` appends rather than overwrites, so the newer
+    // navigation stacks on top and the history becomes [A, B-never-rendered,
+    // C], where Back from C lands on B instead of A. Deliberately left alone.
+    // Undoing it would mean a `back()` or a `replaceState` racing the
+    // navigation that just superseded this one, and moving the push after this
+    // re-check would defeat the lever, whose whole subject is a frame boundary
+    // BETWEEN the push and the swap.
+    //
+    // The consequence is for whoever reads a device run, so it is stated
+    // rather than hidden: a superseded navigation under `?raf` corrupts the
+    // back stack it is trying to measure, and that cell should be discarded
+    // and re-run. Only reachable when a device A/B has opted in.
     if (myToken !== currentNavigationToken) {
       if (streamCtx && streamCtx.reader) { try { streamCtx.reader.cancel(); } catch { /* ignore */ } }
       return { ok: false, status: respStatus, aborted: true, applied: false };
