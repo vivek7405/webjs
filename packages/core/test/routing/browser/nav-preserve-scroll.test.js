@@ -35,10 +35,13 @@
  *   - `scroll-behavior` is forced off: the assertions are about position, and a
  *     smooth scroll would not have landed by the time they run (#601).
  *
- * COUNTERFACTUALS, each RUN and proven to red the cases it names, at commit
- * `9ed0b456`. A counterfactual claim is true of a commit rather than of a
- * branch, so re-run the toggle and restate this list if a later commit touches
- * the scroll block or the resolver:
+ * COUNTERFACTUALS, each RUN and proven to red the cases it names, and every one
+ * of them re-run at commit `b360fb7d`. A counterfactual claim is true of a
+ * commit rather than of a branch, so re-run the toggle and restate this list if
+ * a later commit touches the scroll block or the resolver. That is not a
+ * hypothetical caution: the submitter-to-form fallback silently falsified the
+ * `closest()` bullet below and took the only coverage of the walk with it, so
+ * the two failed together and neither was visible from a green suite.
  *
  *   - delete the `!preserveScroll` guard in `fetch-apply.js`: cases 2, 3, 6, 7, 9
  *   - gate the WHOLE `if (recordHistory && !frameId)` block on `!preserveScroll`
