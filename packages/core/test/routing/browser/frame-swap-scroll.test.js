@@ -101,12 +101,16 @@ const FRAME_RESPONSE =
  * navigation that never applied.
  *
  * It also echoes the LIVE head back, as insurance rather than out of need. The
- * path this fixture actually takes removes nothing: a foreground nav that finds
- * a shared boundary (which this response is built to offer) merges the head
- * ADD-ONLY via `addNewHeadElements`, and a nav with no shared boundary hard-
- * navigates instead of swapping. The removing merge (`mergeHead`, through the
- * full-body swap) belongs to the background snapshot paths, which no case here
- * reaches. It stays because the cost is zero and the failure it guards against
+ * path this fixture takes is `addNewHeadElements` (a foreground nav that finds
+ * a shared boundary, which this response is built to offer); a nav with no
+ * shared boundary hard-navigates instead of swapping, and the wholesale-removing
+ * merge (`mergeHead`, through the full-body swap) belongs to the background
+ * snapshot paths, which no case here reaches. `addNewHeadElements` is add-only
+ * for links and scripts but finishes with a keyed-`<meta>` reconcile that DOES
+ * remove a live meta the incoming head omits, so "add-only" is not the whole
+ * story. It cannot bite here either way: that reconcile early-returns on a head
+ * with no `<meta>` at all (a fragment response), and an echoed head declares
+ * every key the live one does, so the sets match and nothing is touched. It stays because the cost is zero and the failure it guards against
  * is invisible: `mergeHead` drops any live head element the response omits, and
  * losing web-test-runner's session scripts would not fail THIS file, which has
  * already loaded, but would destabilize the Firefox session and surface as
