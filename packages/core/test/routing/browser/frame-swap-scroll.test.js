@@ -58,17 +58,22 @@ function href(kind) {
 }
 
 /**
- * The live page: a tall spacer, then a frame carrying its own filter link, a
- * `_top` breakout link, an unresolvable-id link, and a frame-targeted form. The
+ * The live page: an anchor target, a tall spacer, then a frame carrying its own
+ * filter link, an anchored (`#hash`) filter link, a `_top` breakout link, an
+ * unresolvable-id link, and a frame-targeted form. The
  * boundary comments are what let the page-navigation case swap INSIDE this
  * container rather than replacing the whole body, so the web-test-runner
  * harness DOM is never touched.
  */
 function liveHtml() {
   return '<!--wj:children:/:/frame-scroll-a-->'
+    // Above the spacer, so scrolling to it would move the window UP from
+    // `START_Y` by an unmistakable margin (the hash case asserts that gap).
+    + '<span id="wj-hash-target">anchor</span>'
     + `<div style="height:${SPACER}px">spacer</div>`
     + '<webjs-frame id="wj-scroll-frame">'
       + `<a id="wj-frame-link" href="${href('frame')}">filter</a>`
+      + `<a id="wj-hash-link" href="${href('hash')}#wj-hash-target">filter, anchored</a>`
       + `<a id="wj-top-link" href="${href('top')}" data-webjs-frame="_top">breakout</a>`
       + `<a id="wj-ghost-link" href="${href('ghost')}" data-webjs-frame="wj-no-such-frame">ghost</a>`
       + `<form id="wj-frame-form" method="post" action="${href('form')}">`
@@ -95,14 +100,19 @@ const FRAME_RESPONSE =
  * than swapping, and the case would then assert scroll behaviour on a
  * navigation that never applied.
  *
- * It also echoes the LIVE head back, which is not cosmetic. A page swap merges
- * the incoming head and REMOVES any live head element the response does not
- * carry, so an empty `<head>` here strips web-test-runner's own session scripts
- * out of the page. That does not fail this file, which has already loaded: it
- * destabilizes the Firefox session and shows up as unrelated later files
- * failing to start a test page. Echoing the head makes the merge a no-op (an
- * element already live is neither removed nor re-appended, so nothing runs
- * twice).
+ * It also echoes the LIVE head back, as insurance rather than out of need. The
+ * path this fixture actually takes removes nothing: a foreground nav that finds
+ * a shared boundary (which this response is built to offer) merges the head
+ * ADD-ONLY via `addNewHeadElements`, and a nav with no shared boundary hard-
+ * navigates instead of swapping. The removing merge (`mergeHead`, through the
+ * full-body swap) belongs to the background snapshot paths, which no case here
+ * reaches. It stays because the cost is zero and the failure it guards against
+ * is invisible: `mergeHead` drops any live head element the response omits, and
+ * losing web-test-runner's session scripts would not fail THIS file, which has
+ * already loaded, but would destabilize the Firefox session and surface as
+ * unrelated later files failing to start a test page. The echo cannot itself do
+ * harm, because the merge dedupes on the serialized element, so an element
+ * already live is neither removed nor re-appended and no script runs twice.
  */
 function pageResponse() {
   return '<!doctype html><html><head>' + document.head.innerHTML + '</head><body>'
@@ -191,6 +201,32 @@ suite('Client router: a <webjs-frame> swap leaves the window scroll alone (#1427
         'the frame actually swapped, so the scroll assertion is about a real frame nav');
       assert.equal(window.scrollY, START_Y,
         'a frame swap left the window scroll where the reader put it');
+    } finally { teardown(); }
+  });
+
+  test('a #hash on a frame link does not move the window either', async () => {
+    try {
+      setup();
+      // The hash branch is excluded on purpose, and nothing else in this file
+      // reaches it. Narrowing the guard back to the obvious
+      // `recordHistory && (!frameId || url.hash)` (an anchor reads as explicit
+      // intent, so someone will propose it) leaves every other case here, plus
+      // frame-targeting, frame-missing, and the e2e case, green while restoring
+      // the `scrollIntoView` this one catches.
+      const target = document.getElementById('wj-hash-target');
+      const targetY = Math.round(window.scrollY + target.getBoundingClientRect().top);
+      assert.ok(Math.abs(targetY - START_Y) > 100,
+        `the anchor sits at ${targetY}, which must be clear of ${START_Y}: if the two `
+        + 'coincided, scrolling to the anchor would be indistinguishable from holding '
+        + 'the offset and this case could not fail');
+
+      document.getElementById('wj-hash-link').click();
+      await settle();
+
+      assert.equal(document.getElementById('wj-frame-content').textContent, 'UPDATED',
+        'the anchored link swapped the frame, so this is a real frame nav');
+      assert.equal(window.scrollY, START_Y,
+        'a frame swap ignores the hash and leaves the window where the reader put it');
     } finally { teardown(); }
   });
 
