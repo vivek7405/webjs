@@ -1,14 +1,16 @@
 /**
- * The landing page's intro video is hidden until its frame fires load.
+ * The landing page's intro video is self-hosted, not embedded.
  *
- * A cross-origin iframe paints its own canvas before the embedded stylesheet
- * applies, and on some engines that canvas is opaque white, which no
- * background on the iframe element can cover. Hiding the frame until load
- * removes the question: what it paints early is off screen, and the box under
- * it is already black.
+ * It replaced a YouTube iframe whose every property was a workaround for
+ * being cross-origin: a frame hidden until load (an iframe paints its own
+ * canvas, opaque white on some engines, before the embedded stylesheet
+ * lands), a plain onload attribute to reveal it (this page never hydrates, so
+ * an event hole would be dropped at SSR), and a noscript rule that deleted
+ * the whole section for a JS-off reader (their player needs JS inside the
+ * frame, so revealing it would have shown their own error).
  *
- * Each assertion here is a piece that silently breaks the whole thing if it
- * goes missing, which is why they are pinned rather than left to review.
+ * A native player needs none of that, and the assertions below pin the pieces
+ * that silently break it if they go missing.
  */
 import test from 'node:test';
 import assert from 'node:assert/strict';
@@ -17,26 +19,39 @@ import LandingPage from '#app/page.ts';
 
 const render = () => renderToString(LandingPage());
 
-test('the intro frame ships hidden, over a black box', async () => {
+test('the intro video is a native player pointed at our own host', async () => {
   const out = await render();
-  assert.match(out, /class="intro-video-frame [^"]*\binvisible\b/, 'the frame must start hidden');
-  assert.match(out, /aspect-video[^"]*\bbg-black\b/, 'the box under it must be black');
+  assert.match(out, /<video[^>]*\ssrc="https:\/\/videos\.webjs\.dev\/intro\.mp4"/);
+  assert.match(out, /<video[^>]*\scontrols/, 'the controls are the whole no-JS story');
 });
 
-test('the frame reveals itself with a plain onload attribute', async () => {
+test('the first paint shows a poster rather than a black box', async () => {
   const out = await render();
-  // A plain HTML attribute, not an @event hole: this page never hydrates, so
-  // a template event binding would be dropped at SSR and the frame would stay
-  // hidden forever.
-  assert.match(out, /onload="this\.classList\.remove\('invisible'\)"/);
+  // Without this the box is empty until someone presses play, which is worse
+  // than the embed it replaced.
+  assert.match(out, /<video[^>]*\sposter="https:\/\/videos\.webjs\.dev\/intro-poster\.webp"/);
 });
 
-test('a JS-off reader gets no embed at all', async () => {
+test('the bytes stay off the wire until someone plays it', async () => {
   const out = await render();
-  // Without JS the load handler never runs AND YouTube's player cannot run
-  // inside the frame either, so revealing it would show their own noscript
-  // error rather than a video. Hide the whole section instead. The rule must
-  // live in noscript, which a browser with scripting on parses as inert text.
-  assert.match(out, /<noscript><style>\.intro-video \{ display: none \}<\/style><\/noscript>/);
-  assert.match(out, /<section class="intro-video /, 'the rule needs its hook on the section');
+  // The file is 85 MB. Without preload=metadata a page view fetches it.
+  assert.match(out, /<video[^>]*\spreload="metadata"/);
+  // iOS Safari otherwise takes the video fullscreen the moment it plays.
+  assert.match(out, /<video[^>]*\splaysinline/);
+});
+
+test('none of the cross-origin workarounds survive', async () => {
+  const out = await render();
+  assert.doesNotMatch(out, /<iframe/, 'no embed of any kind');
+  assert.doesNotMatch(out, /youtube/i);
+  assert.doesNotMatch(out, /intro-video-frame/);
+  assert.doesNotMatch(out, /onload="this\.classList\.remove/);
+});
+
+test('a JS-off reader gets the video, not a deleted section', async () => {
+  const out = await render();
+  // The old markup hid the section outright. A native player works with
+  // scripting disabled, so the rule that removed it has to be gone.
+  assert.doesNotMatch(out, /\.intro-video \{ display: none \}/);
+  assert.match(out, /<section class="intro-video /, 'the section still renders');
 });

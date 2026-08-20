@@ -246,6 +246,81 @@ function sourceWindow(title: string, sample: string) {
   `;
 }
 
+/**
+ * The landing page's intro video, self-hosted rather than embedded.
+ *
+ * The player is the browser's own, so it works with scripting disabled. The
+ * YouTube iframe this replaced could not, because its player needs JS inside
+ * the frame, so the section used to hide itself from a JS-off reader rather
+ * than show a broken embed.
+ *
+ * REPLACING THE VIDEO, for whoever does it next.
+ *
+ * The bytes live in the Cloudflare R2 bucket `webjs-videos`, served from
+ * videos.webjs.dev. The key carries no version, so a new cut overwrites
+ * `intro.mp4` in place and nothing in this file changes:
+ *
+ *   env -u CLOUDFLARE_API_TOKEN npx wrangler r2 object put \
+ *     webjs-videos/intro.mp4 --file <new-cut.mp4> \
+ *     --content-type video/mp4 \
+ *     --cache-control "public, max-age=86400, s-maxage=31536000" \
+ *     --remote
+ *
+ * Then purge that URL at the edge (Caching, then Purge Cache, then the custom
+ * single-file purge), or the old bytes keep serving for the `s-maxage` year.
+ *
+ * Three things about this are easy to get wrong.
+ *
+ * 1. R2 object metadata cannot be edited after upload. `Cache-Control` is set
+ *    at write time or not at all, so every upload has to pass it again. There
+ *    is no bucket-level setting, and the dashboard uploader has no field for
+ *    it, which is why an upload made there serves no header of its own.
+ *
+ * 2. The `env -u` is load bearing. A `CLOUDFLARE_API_TOKEN` in the environment
+ *    overrides wrangler's OAuth credentials, and that token carries no R2
+ *    permission, so the upload fails with an authentication error that names
+ *    nothing. Unsetting it for the one call falls back to the OAuth login.
+ *
+ * 3. A purge clears the edge and never a browser. That is why `max-age` is a
+ *    day rather than a year, and why the header is deliberately not
+ *    `immutable`: anyone holding the old file needs a way to pick the new one
+ *    up, and 24 hours is that way. `s-maxage` keeps the edge copy long lived
+ *    regardless, since the edge can be purged and a browser cannot.
+ *
+ * A versioned key (`intro-2026-08-21.mp4`) is the other valid shape. Take it
+ * and the tradeoff inverts: put `immutable` back, raise `max-age` to a year,
+ * and update the src below on every cut.
+ *
+ * The poster is the video's own first frame at 1080p, uploaded the same way
+ * with `--content-type image/webp`.
+ */
+const INTRO_VIDEO = html`
+    <section class="intro-video pb-16">
+      <div class="max-w-3xl mx-auto px-6">
+        <!-- preload="metadata" keeps the file off the wire until someone
+             presses play, so a page view costs the poster plus a metadata
+             range request. playsinline stops iOS Safari taking the video
+             fullscreen, and the intrinsic width and height let the box hold
+             its shape before any metadata arrives. The src is absolute and
+             cross-origin, so it must not be wrapped in asset(), which resolves
+             a public/ path and would mangle it. -->
+        <div class="aspect-video overflow-hidden border border-border-strong shadow-[var(--shadow)] bg-black">
+          <video
+            class="intro-video-player w-full h-full"
+            src="https://videos.webjs.dev/intro.mp4"
+            poster="https://videos.webjs.dev/intro-poster.webp"
+            width="1920"
+            height="1080"
+            preload="metadata"
+            playsinline
+            controls
+          ></video>
+        </div>
+      </div>
+    </section>
+`;
+
+
 export default function LandingPage() {
   return html`
     <style>
@@ -470,45 +545,7 @@ export default function LandingPage() {
       </div>
     </section>
 
-    <section class="intro-video pb-16">
-      <div class="max-w-3xl mx-auto px-6">
-        <!-- The frame is hidden until it fires load, over a black box.
-             A cross-origin iframe paints its OWN canvas, and YouTube's embed
-             sets its black background on body with no color-scheme declared,
-             so the black only lands once that stylesheet applies. Until then
-             some engines paint an opaque white canvas, which no background on
-             the iframe ELEMENT can cover, since the element background sits
-             behind that canvas. Hiding the frame sidesteps the whole question:
-             what it paints early is simply not on screen, and the box under it
-             is already the black the player settles on, so the reveal is
-             invisible. onload is a plain HTML attribute rather than a template
-             hole, because an @event drops at SSR and this page never hydrates. -->
-        <div class="aspect-video overflow-hidden border border-border-strong shadow-[var(--shadow)] bg-black">
-          <iframe
-            class="intro-video-frame w-full h-full invisible"
-            onload="this.classList.remove('invisible')"
-            src="https://www.youtube-nocookie.com/embed/XghCghezod4?rel=0"
-            title="WebJs introduction video"
-            loading="lazy"
-            allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
-            referrerpolicy="strict-origin-when-cross-origin"
-            allowfullscreen
-          ></iframe>
-        </div>
-        <!-- With JS off the whole section goes away. Revealing the frame
-             instead would show YouTube's own noscript error ("An error
-             occurred. Unable to execute JavaScript."), because their player
-             needs JS INSIDE the frame and nothing this page does can supply
-             it. An empty space reads better than a broken player.
-
-             The rule still applies from in here: a style element takes effect
-             wherever it sits, including inside the subtree it hides. And it
-             is safe in a PAGE, which never hydrates, so the client never
-             rebuilds this noscript body as live nodes. The same construct
-             inside a COMPONENT would apply on every JS-enabled visit. -->
-        <noscript><style>.intro-video { display: none }</style></noscript>
-      </div>
-    </section>
+    ${INTRO_VIDEO}
 
     <section class="py-16">
       <div class="max-w-6xl mx-auto px-6">
