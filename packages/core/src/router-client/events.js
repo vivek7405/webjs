@@ -12,7 +12,7 @@ import { enabled } from './state.js';
 import { warnIfActionSubmissionCannotDeliver } from './diagnostics.js';
 import { buildSubmitFormData, encodeSubmitBody, getSubmitAction, getSubmitEnctype, getSubmitMethod } from './form-encoder.js';
 import { resolveTargetFrameId } from './frames.js';
-import { performNavigation, performSubmission, recordFragmentTraversal } from './navigator.js';
+import { absorbSameDocumentTraversal, performNavigation, performSubmission } from './navigator.js';
 
 /** @param {MouseEvent} e */
 export function onClick(e) {
@@ -53,12 +53,14 @@ export function onClick(e) {
 
 /** @param {PopStateEvent} _e */
 export function onPopState(_e) {
-  // A traversal that differs only by fragment is not a navigation: same
-  // document, same server response, and the browser has already jumped. Absorb
-  // it (which also records the new url) rather than re-fetching and re-swapping
-  // the page out from under the reader (#1437). This is the popstate sibling of
-  // the same-page bow-out on the click path above.
-  if (recordFragmentTraversal(location.href)) return;
+  // A popstate that stays on this pathname and search is not a navigation:
+  // same document, same server response, and the browser has already done
+  // whatever the traversal needed. Absorb it (which also records the new url)
+  // rather than re-fetching and re-swapping the page out from under the reader
+  // (#1437). This is the popstate sibling of the same-page bow-out on the click
+  // path above, and it covers the REPEAT click of one anchor, which replaces
+  // rather than pushes and so arrives here with an unchanged href.
+  if (absorbSameDocumentTraversal(location.href)) return;
   // popstate has no DOM anchor, so no frame context: restore via cache or
   // refetch the whole document.
   performNavigation(location.href, true, null);

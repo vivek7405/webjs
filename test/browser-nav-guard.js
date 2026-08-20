@@ -1,6 +1,22 @@
 import { _setHardNavigate } from '../packages/core/src/router-client.js';
 
 /**
+ * Whether this href is a same-document fragment jump, which the guard leaves
+ * alone (see the header note). Mirrors the router's own bow-out predicate in
+ * `packages/core/src/router-client/events.js`.
+ *
+ * @param {string} href Absolute, as `HTMLAnchorElement.href` always is.
+ * @returns {boolean}
+ */
+function isSameDocumentFragment(href) {
+  let url;
+  try { url = new URL(href); } catch { return false; }
+  if (url.origin !== location.origin) return false;
+  if (url.pathname !== location.pathname || url.search !== location.search) return false;
+  return url.href.includes('#');
+}
+
+/**
  * Shared navigation guard for browser tests (#1135). Sibling of
  * `test/browser-assert.js` (#777) and with the same "one source of truth for
  * browser tests" role.
@@ -84,22 +100,6 @@ import { _setHardNavigate } from '../packages/core/src/router-client.js';
  *
  * @returns {{ fallbacks: Array<{cause: string, href: string, willReload: boolean}>, hardNavigations: string[], remove: () => void }}
  */
-/**
- * Whether this href is a same-document fragment jump, which the guard leaves
- * alone (see the header note). Mirrors the router's own bow-out predicate in
- * `packages/core/src/router-client/events.js`.
- *
- * @param {string} href Absolute, as `HTMLAnchorElement.href` always is.
- * @returns {boolean}
- */
-function isSameDocumentFragment(href) {
-  let url;
-  try { url = new URL(href); } catch { return false; }
-  if (url.origin !== location.origin) return false;
-  if (url.pathname !== location.pathname || url.search !== location.search) return false;
-  return url.href.includes('#');
-}
-
 export function installNavGuard() {
   /** @type {Array<{cause: string, href: string, willReload: boolean}>} */
   const fallbacks = [];

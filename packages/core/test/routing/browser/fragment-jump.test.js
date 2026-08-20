@@ -257,6 +257,54 @@ suite('Client router: a same-document fragment jump is the browser\'s (#1437)', 
     } finally { await teardown(); }
   });
 
+  test('clicking the SAME fragment link twice still fetches nothing', async () => {
+    setup();
+    try {
+      // The second click is the one that matters. Navigating to the url the
+      // page is already on REPLACES rather than pushes, and it still fires
+      // popstate, so it reaches the handler with `location.href` unchanged.
+      // A guard that required the two hrefs to differ read that as "not a
+      // fragment traversal" and fell through to a full navigation, which put
+      // the whole defect back on the second click of a back-to-top link.
+      clickIt('wj-named');
+      await settle();
+      assert.deepEqual(fetched, [], 'precondition: the first click is already handled');
+      const entriesAfterFirst = history.length;
+
+      clickIt('wj-named');
+      await settle();
+
+      assert.deepEqual(fetched, [], 'the repeat click must not navigate either');
+      assert.ok(injected.isConnected, 'and must not re-swap the live DOM');
+      assert.equal(injected.wjLive, 'injected-expando');
+      assert.equal(document.getElementById('wj-frag-injected'), injected,
+        'the SAME node object, so nothing was re-rendered');
+      assert.equal(history.length, entriesAfterFirst,
+        'a repeat fragment click replaces rather than pushing');
+      assert.deepEqual(fallbacks, []);
+    } finally { await teardown(); }
+  });
+
+  test('clicking a bare href="#" twice still fetches nothing', async () => {
+    setup();
+    try {
+      // The same shape on the idiom a reader actually clicks repeatedly.
+      window.scrollTo({ top: START_Y, left: 0, behavior: 'instant' });
+      clickIt('wj-bare');
+      await settle();
+      assert.deepEqual(fetched, [], 'precondition');
+
+      window.scrollTo({ top: START_Y, left: 0, behavior: 'instant' });
+      clickIt('wj-bare');
+      await settle();
+
+      assert.deepEqual(fetched, [], 'back to top, twice, is still not a navigation');
+      assert.equal(window.scrollY, 0, 'and it still scrolls to the top');
+      assert.ok(injected.isConnected);
+      assert.deepEqual(fallbacks, []);
+    } finally { await teardown(); }
+  });
+
   test('href="" is NOT a fragment jump and still navigates', async () => {
     setup();
     try {

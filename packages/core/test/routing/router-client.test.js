@@ -2977,12 +2977,27 @@ test('onPopState: a fragment-only popstate does not navigate (#1437)', async () 
   assert.equal(fetched, false, 'a same-document fragment traversal must not re-fetch');
 });
 
-test('onPopState: a same-url popstate still navigates (#1437)', async () => {
-  // The narrowness proof. Two history entries can share a url exactly (a form
-  // POST re-rendering its own page at 422 pushes the url it is already on), and
-  // that is a real traversal the guard must leave alone.
-  const { fetched } = await popTo('http://localhost/p', 'http://localhost/p');
-  assert.equal(fetched, true, 'an identical-url popstate is still a navigation');
+test('onPopState: an identical-url popstate is absorbed too (#1437)', async () => {
+  // The REPEAT click of one in-page anchor. That navigation REPLACES rather
+  // than pushes, and it still fires popstate, so it arrives with `location.href`
+  // equal to what the tracker already holds (measured in Chromium: two clicks of
+  // one `#sec` link give two popstates at the same href, `history.length`
+  // unchanged). An earlier version required the hrefs to DIFFER, which read as
+  // the conservative choice and instead let the second click of a
+  // `<a href="#">Back to top</a>` fall through to a full navigation.
+  const { fetched } = await popTo('http://localhost/p#x', 'http://localhost/p#x');
+  assert.equal(fetched, false, 'nothing changed, so there is nothing to navigate to');
+});
+
+test('onPopState: a changed pathname is still a navigation (#1437)', async () => {
+  // The narrowness proof, and what stops the guard swallowing a real traversal.
+  const { fetched } = await popTo('http://localhost/p', 'http://localhost/other');
+  assert.equal(fetched, true, 'a different document must still be fetched');
+});
+
+test('onPopState: a changed search is still a navigation (#1437)', async () => {
+  const { fetched } = await popTo('http://localhost/p?a=1', 'http://localhost/p?a=2');
+  assert.equal(fetched, true, 'a different query is a different server response');
 });
 
 test('onPopState: an absorbed fragment traversal records the new url (#1437)', async () => {
