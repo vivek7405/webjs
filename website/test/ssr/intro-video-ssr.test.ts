@@ -29,7 +29,7 @@ test('the first paint shows a poster rather than a black box', async () => {
   const out = await render();
   // Without this the box is empty until someone presses play, which is worse
   // than the embed it replaced.
-  assert.match(out, /<video[^>]*\sposter="https:\/\/videos\.webjs\.dev\/intro-poster\.webp"/);
+  assert.match(out, /<video[^>]*\sposter="https:\/\/videos\.webjs\.dev\/intro-thumbnail\.webp"/);
 });
 
 test('the bytes stay off the wire until someone plays it', async () => {

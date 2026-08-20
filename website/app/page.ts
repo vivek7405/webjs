@@ -291,8 +291,10 @@ function sourceWindow(title: string, sample: string) {
  * and the tradeoff inverts: put `immutable` back, raise `max-age` to a year,
  * and update the src below on every cut.
  *
- * The poster is the video's own first frame at 1080p, uploaded the same way
- * with `--content-type image/webp`.
+ * The thumbnail at `intro-thumbnail.webp` is uploaded the same way, with
+ * `--content-type image/webp`. It is 1920 wide because the box is capped at
+ * max-w-3xl (about 718 CSS px), so that already covers a 2x display and a
+ * wider encode buys nothing a viewport can show.
  */
 const INTRO_VIDEO = html`
     <section class="intro-video pb-16">
@@ -308,7 +310,7 @@ const INTRO_VIDEO = html`
           <video
             class="intro-video-player w-full h-full"
             src="https://videos.webjs.dev/intro.mp4"
-            poster="https://videos.webjs.dev/intro-poster.webp"
+            poster="https://videos.webjs.dev/intro-thumbnail.webp"
             width="1920"
             height="1080"
             preload="metadata"
