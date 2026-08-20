@@ -40,13 +40,18 @@
  * branch, so re-run the toggle and restate this list if a later commit touches
  * the scroll block or the resolver:
  *
- *   - delete the `!preserveScroll` guard in `fetch-apply.js`: cases 2, 3, 6, 7
+ *   - delete the `!preserveScroll` guard in `fetch-apply.js`: cases 2, 3, 6, 7, 9
  *   - gate the WHOLE `if (recordHistory && !frameId)` block on `!preserveScroll`
  *     instead: case 5 (the hash carve-out is what that breaks)
- *   - drop the `closest()` walk to a bare `hasAttribute`: cases 3 AND 6. The
- *     form half is not incidental: the mark sits on the `<form>` while the
- *     trigger is its submit BUTTON, so case 6 is what proves the walk is why a
- *     marked form covers its own buttons with no second lookup.
+ *   - drop the `closest()` walk to a bare `hasAttribute`: case 3 ONLY. This
+ *     bullet used to name case 6 as well, on the reasoning that a marked
+ *     `<form>` reaching its own submit BUTTON proved the walk. Adding the
+ *     submitter-to-form fallback made that false: case 6 now resolves through
+ *     the fallback and stays green under this toggle, so there IS a second
+ *     lookup and case 6 no longer distinguishes the walk from it. The
+ *     contained-submitter walk is pinned at the unit layer instead, by the
+ *     marked-`<fieldset>`-inside-an-unmarked-form assertion in
+ *     `../router-client.test.js`, which the fallback cannot rescue.
  *   - drop the `!== 'false'` test so presence alone preserves: case 4
  *   - read the option as `!opts?.scroll` rather than `opts?.scroll === false`:
  *     case 7's optionless half, plus 3 assertions in the unit file

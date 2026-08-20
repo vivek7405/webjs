@@ -545,8 +545,12 @@ test('resolvePreserveScroll: the fallback fills in a MISSING carrier, never over
   );
   try {
     const form = f.get('marked');
+    // NOTE: this one passes whether the walk or the fallback produced the
+    // carrier, so it pins the OUTCOME and not the mechanism. The assertion that
+    // actually pins the walk is the marked-fieldset case below, where the
+    // fallback has nothing to offer.
     assert.equal(_resolvePreserveScroll(f.get('inside'), form), true,
-      'a contained submitter resolves the form through closest()');
+      'a contained submitter preserves, by whichever of the two lookups gets there first');
     assert.equal(_resolvePreserveScroll(f.get('outside'), form), true,
       'a form-associated submitter outside the form still gets the form mark');
     assert.equal(_resolvePreserveScroll(f.get('inside-opted-out'), form), false,
@@ -556,6 +560,33 @@ test('resolvePreserveScroll: the fallback fills in a MISSING carrier, never over
     assert.equal(_resolvePreserveScroll(null, form), true,
       'a submitter-less submission falls back to the form');
     assert.equal(_resolvePreserveScroll(null, null), false);
+  } finally { f.cleanup(); }
+});
+
+test('resolvePreserveScroll: a marked region INSIDE an unmarked form still resolves by walking', () => {
+  // This is what pins the `closest()` walk on the submit path, and it is the
+  // only assertion that does. Dropping the walk to a bare `hasAttribute` leaves
+  // the contained-submitter case in the test above green, because the form
+  // fallback catches the mark and the button never needed the walk. Here the
+  // carrier is a <fieldset> the fallback cannot see, so the walk is the only
+  // way to reach it: with `closest()` gone this returns false.
+  //
+  // It is also a real authoring shape rather than a contrivance. Marking one
+  // section of a long form is exactly the case the feature exists for.
+  const f = frameFixture(
+    '<form id="plain-form">' +
+    '<fieldset id="marked-region" data-preserve-scroll>' +
+    '<button id="in-region">go</button>' +
+    '</fieldset>' +
+    '<button id="out-of-region">go</button>' +
+    '</form>'
+  );
+  try {
+    const form = f.get('plain-form');
+    assert.equal(_resolvePreserveScroll(f.get('in-region'), form), true,
+      'the walk reaches the marked fieldset, which the unmarked form cannot supply');
+    assert.equal(_resolvePreserveScroll(f.get('out-of-region'), form), false,
+      'a sibling button outside the marked region is unaffected, so the mark is scoped');
   } finally { f.cleanup(); }
 });
 
