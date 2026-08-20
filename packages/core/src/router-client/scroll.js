@@ -257,3 +257,32 @@ export function afterTwoFrames(fn) {
 export function bumpRestoreGeneration() {
   restoreGeneration += 1;
 }
+
+/**
+ * Whether this navigation should keep the reader's current scroll offset rather
+ * than scrolling to top (#1436).
+ *
+ * Resolved from `data-preserve-scroll` on the trigger OR the nearest ancestor
+ * carrying it, so one filter bar / tab strip / breadcrumb marks every link in it
+ * at once. That is `resolveTargetFrameId`'s precedent (`frames.js`), not
+ * `data-no-router`'s element-only read: `data-no-router` turns the router OFF
+ * for a link, a big enough hammer that an ancestor doing it silently would
+ * surprise, while this is a soft preference whose natural authoring unit is a
+ * region.
+ *
+ * VALUE-aware, and the only value that means anything is the literal `false`.
+ * That is Remix 3's `rmx-reset-scroll` test (`!== 'false'`) and the value
+ * vocabulary `prefetchMode` already accepts here. Because `closest()` returns
+ * the NEAREST carrier, `data-preserve-scroll="false"` on one link inside a
+ * marked wrapper opts that link back into the default with no extra logic.
+ *
+ * @param {Element | null} trigger  the clicked anchor, or a submitted form's
+ *   submitter (falling back to the form).
+ * @returns {boolean}
+ */
+export function resolvePreserveScroll(trigger) {
+  if (!trigger || !trigger.closest) return false;
+  const carrier = trigger.closest('[data-preserve-scroll]');
+  if (!carrier) return false;
+  return (carrier.getAttribute('data-preserve-scroll') || '').toLowerCase().trim() !== 'false';
+}
