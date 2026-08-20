@@ -267,7 +267,15 @@ export function applyPart(part, value, _prev, allValues, reconcileFormActionsCb)
       const mp = /** @type {{ statics: string[], group: number[] }} */ (/** @type any */ (part));
       let val = mp.statics[0];
       for (let j = 0; j < mp.group.length; j++) {
-        const piece = allValues ? allValues[mp.group[j]] : value;
+        let piece = allValues ? allValues[mp.group[j]] : value;
+        // Unwrap live() PER PIECE (#1443). The top-of-function unwrap only
+        // sees the anchor hole's own value, and every hole inside a QUOTED
+        // attribute lands here (single-hole included, the compiler classifies
+        // them all attr-mixed), so without this a `title="${live(v)}"` the
+        // server now emits correctly would be rewritten to the wrapper's
+        // stringification on the next client commit. Mirrors the reconciler's
+        // effectiveFormAttr, which already unwraps each group piece.
+        if (isLive(piece)) piece = /** @type any */ (piece).value;
         // #1154: same function guard for each piece of a mixed attribute.
         assertNotFunctionActionAttr(piece, part.name, part.el.localName);
         val += String(piece ?? '');

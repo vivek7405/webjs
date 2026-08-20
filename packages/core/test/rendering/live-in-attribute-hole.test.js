@@ -151,3 +151,42 @@ test('the action-leak guards fire through live() (#1443)', async () => {
     }
   }
 });
+
+test('an unquoted action hole behaves identically bare and through live() (#1443)', async () => {
+  // The one shape the unwrap changes MOST: `action=${fn}` on a <form> is the
+  // #1155 bound-form binding, so unwrapping routes `action=${live(fn)}` into
+  // that dispatch instead of stringifying the wrapper into the attribute
+  // (which is what shipped before the fix: `action="[object Object]"`, a form
+  // posting to a garbage url, with the guard silent because a wrapper is not
+  // a function). The pin is PARITY rather than a hardcoded message: whatever
+  // the bound-form path does with the inner function, bare and wrapped must do
+  // the same thing, on both machines. Here the inner function is not a
+  // 'use server' export, so both are refused by the bound-form dispatch; a
+  // real action would bind identically, which the client already models
+  // (reconciler.js resolveHoleValue unwraps before isBoundFormAction).
+  const fn = async function myAction() {};
+  for (const [who, run] of [['buffered', buffered], ['streamed', streamed]]) {
+    /** @type {{ threw: boolean, message?: string, out?: string }[]} */
+    const outcomes = [];
+    for (const mk of [
+      () => html`<form action=${fn}><button>go</button></form>`,
+      () => html`<form action=${live(fn)}><button>go</button></form>`,
+    ]) {
+      try {
+        outcomes.push({ threw: false, out: await run(mk()) });
+      } catch (e) {
+        outcomes.push({ threw: true, message: /** @type Error */ (e).message });
+      }
+    }
+    const [bare, wrapped] = outcomes;
+    assert.equal(wrapped.threw, bare.threw, `${who}: wrapped must throw iff bare throws`);
+    if (bare.threw) {
+      assert.equal(wrapped.message, bare.message, `${who}: identical refusal for bare and wrapped`);
+      // And it is the bound-form refusal, not the stringify guard: the unwrap
+      // routed the function into the #1155 dispatch.
+      assert.match(String(bare.message), /not a server action/, `${who}: the bound-form path judged it`);
+    } else {
+      assert.equal(wrapped.out, bare.out, `${who}: identical emit for bare and wrapped`);
+    }
+  }
+});

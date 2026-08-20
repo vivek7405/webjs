@@ -20,6 +20,7 @@
  * exact interval the flash lives in.
  */
 import { html } from '../../../src/html.js';
+import { render } from '../../../src/render-client.js';
 import { WebComponent, prop } from '../../../src/component.js';
 import { renderToString } from '../../../src/render-server.js';
 import { live } from '../../../src/directives.js';
@@ -126,5 +127,23 @@ suite('live() in an attribute hole hydrates without a flash (#1443)', () => {
       'hello',
       'the live() wrapper must not reach the attribute value',
     );
+  });
+
+  test('a quoted attribute hole unwraps live() on the CLIENT commit too (#1443)', () => {
+    // The client half of the same bug, on the real engine. Every hole inside a
+    // QUOTED attribute is attr-mixed to the client compiler (single-hole
+    // included), and that commit path reads each group piece raw, bypassing
+    // applyPart's top-of-function unwrap. Without the per-piece unwrap, the
+    // SSR bytes the server half of this fix gets right are rewritten to the
+    // wrapper's stringification by the first client render: served correct,
+    // corrupted on upgrade, which no SSR-string assertion can see.
+    const host = document.createElement('div');
+    document.body.appendChild(host);
+    mounted.push(host);
+
+    render(html`<div title="${live('hello')}" class="a ${live('b')} c ${live('d')}"></div>`, host);
+    const el = host.querySelector('div');
+    assert.equal(el.getAttribute('title'), 'hello', 'quoted single-hole live() unwraps on the client');
+    assert.equal(el.getAttribute('class'), 'a b c d', 'every mixed-attribute piece unwraps on the client');
   });
 });

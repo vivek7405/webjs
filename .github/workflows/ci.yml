@@ -139,6 +139,13 @@ jobs:
       # machines, which are independent and must be kept in step by hand.
       - name: WebJs form-action guard parity on Bun
         run: bun test/bun/form-action-guard.mjs
+      # live() in an attribute hole (#1443): the SSR unwrap must produce
+      # byte-identical attribute emission on Bun, across both server machines.
+      # The bug class this guards was a server/client disagreement (a falsy
+      # `?bool=${live(v)}` emitting its attribute anyway), so a per-runtime
+      # flavor of the same divergence is the failure worth pinning.
+      - name: WebJs live()-attribute-hole parity on Bun
+        run: bun test/bun/live-attribute-hole.mjs
       # Form-action dispatch (#1155) on Bun: the 'use server' load hook that
       # registers action identity is installed by a different mechanism on each
       # runtime (module.registerHooks vs Bun.plugin), and the submission path
