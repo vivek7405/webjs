@@ -90,3 +90,61 @@ export let enabled = false;
 export function _setEnabled(v) {
   enabled = v;
 }
+
+/**
+ * The href a bowed-out same-document fragment CLICK is navigating to, pending
+ * the popstate that click is about to produce.
+ *
+ * This exists because URLs alone cannot separate the two ways a popstate can
+ * arrive carrying the url the reader is already on, and the two need opposite
+ * treatment (#1437).
+ *
+ *   - A REPEAT click of one in-page anchor REPLACES its history entry rather
+ *     than pushing, so it fires popstate with `location.href` unchanged. The
+ *     browser has already done the jump and there is nothing to fetch.
+ *   - A Back between two DISTINCT entries that happen to share a url is a real
+ *     traversal that must re-render. The no-JS write path produces that pair: a
+ *     bound `<form action=${fn}>` emits no `action` attribute (invariant 12), so
+ *     `form.action` reflects the node document's URL and the 422 re-render
+ *     pushes a duplicate entry at it.
+ *
+ * An earlier attempt tried to tell them apart by whether the url carried a
+ * fragment, on the reasoning that a repeat anchor click always has one and a
+ * 422 entry never does. The second half is false: `form.action` returns the
+ * document URL WITH its fragment (measured in Chromium, for a missing `action`
+ * attribute and an empty one alike), so a reader who used an in-page anchor
+ * before submitting produces a 422 entry carrying `#sec`, and the Back out of
+ * the validation error was swallowed.
+ *
+ * So the signal is not the url, it is provenance: the router SAW the click it
+ * bowed out of, and it never sees a traversal. `onClick` records the href here
+ * on its way out, the very next popstate consumes it, and anything that starts
+ * a real navigation or submission drops it so it cannot leak across.
+ *
+ * @type {string | null}
+ */
+export let pendingFragmentNav = null;
+
+/**
+ * Record that a bowed-out fragment click is about to fire a popstate.
+ *
+ * @param {string} href The absolute href the click is navigating to.
+ */
+export function markFragmentNav(href) { pendingFragmentNav = href; }
+
+/**
+ * Consume the pending mark if it matches, and clear it either way. Clearing on
+ * a MISS matters as much as on a hit: a mark that outlived its popstate must
+ * not sit around waiting to swallow an unrelated one.
+ *
+ * @param {string} href `location.href` at popstate time.
+ * @returns {boolean} True when this popstate is the one that click produced.
+ */
+export function consumeFragmentNav(href) {
+  const hit = pendingFragmentNav !== null && pendingFragmentNav === href;
+  pendingFragmentNav = null;
+  return hit;
+}
+
+/** Drop the pending mark. Any real navigation or submission invalidates it. */
+export function clearFragmentNav() { pendingFragmentNav = null; }

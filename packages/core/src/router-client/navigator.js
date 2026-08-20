@@ -19,7 +19,7 @@ import { clearPrefetchHover, clearPrefetchRefused, clearPrefetchViewTimers, onPr
 // through bumpRestoreGeneration(), since ESM forbids assigning an import.
 import { afterTwoFrames, bumpRestoreGeneration, releaseHeightReservation, releaseScrollAnchor, reserveRestoredHeight, restoreGeneration, suppressScrollAnchoring } from './scroll.js';
 import { snapshotCache, snapshotCurrent, snapshotGet } from './snapshot-cache.js';
-import { _setEnabled, bumpNavToken, currentNavigationToken, enabled, hardNavigate } from './state.js';
+import { _setEnabled, bumpNavToken, clearFragmentNav, consumeFragmentNav, currentNavigationToken, enabled, hardNavigate } from './state.js';
 import { _swapCommit, applySwap } from './swap.js';
 import { ensureUpgradeObserver } from './upgrade.js';
 import { viewTransitionsEnabled } from './view-transition.js';
@@ -54,45 +54,51 @@ let currentPageUrl = null;
  * Absorb a popstate that is not a navigation, and report that it was one.
  *
  * A popstate whose destination shares this page's pathname AND search cannot
- * need a fetch: only the fragment can differ, the fragment is never sent to the
- * server, so both entries resolve to the same response. Re-navigating one
- * re-fetches the page and re-swaps the DOM, which destroys live node identity
- * and hydrated state outside the anchor and undoes the jump the reader just
- * asked for (#1437). It fires for an ordinary `<a href="#section">` click too,
- * since the spec's "navigate to a fragment" ends by firing popstate.
+ * need a fetch on its own account: only the fragment can differ, the fragment
+ * is never sent to the server, so both entries resolve to the same response.
+ * Re-navigating one re-fetches the page and re-swaps the DOM, which destroys
+ * live node identity and hydrated state outside the anchor and undoes the jump
+ * the reader just asked for (#1437). It fires for an ordinary
+ * `<a href="#section">` click too, since the spec's "navigate to a fragment"
+ * ends by firing popstate.
  *
- * Same pathname and search is necessary but NOT sufficient, and the second
- * clause is where both of the easy answers are wrong.
+ * Same pathname and search is necessary but NOT sufficient, and the gap is the
+ * whole difficulty. Two popstates can arrive carrying the url the reader is
+ * already on, and they need opposite treatment:
  *
- * Requiring the two hrefs to DIFFER, on its own, misses the REPEAT click of one
- * in-page anchor. That navigation REPLACES its history entry rather than
- * pushing, and it still fires popstate, so it arrives with `location.href`
- * identical to what this tracker holds (measured in Chromium: two clicks of one
- * `#sec` link give two popstates at the same href, `history.length` unchanged).
- * The second click of a `<a href="#">Back to top</a>` would then fall through to
- * a full navigation, which is the whole defect.
+ *   - a REPEAT click of one in-page anchor, which REPLACES its entry rather
+ *     than pushing, so `location.href` is unchanged (measured in Chromium: two
+ *     clicks of one `#sec` link give two popstates at the same href, with
+ *     `history.length` unchanged). Nothing to fetch;
+ *   - a Back between two DISTINCT entries that share a url, which is a real
+ *     traversal. The no-JS write path produces that pair, because a bound form
+ *     emits no `action` and its 422 re-render pushes a duplicate entry at the
+ *     page's own url. That Back has to re-render, or the reader is stuck on the
+ *     validation error and has to press Back twice.
  *
- * Dropping that requirement outright is wrong in the other direction, because a
- * FRAGMENTLESS popstate between two DISTINCT entries that share a url is a real
- * traversal. The framework's own no-JS write path produces that pair: a bound
- * `<form action=${fn}>` emits no `action` attribute (invariant 12), so
- * `getSubmitAction` falls back to `location.href` and the 422 re-render pushes a
- * duplicate entry at the page's own url. Back from that validation error has to
- * keep falling through, so the cache branch's background revalidation can swap
- * the fresh render in.
+ * The urls are IDENTICAL in both, so no comparison can separate them, and two
+ * earlier attempts here failed on exactly that. Requiring the hrefs to differ
+ * missed the repeat click. Allowing an identical href when it carried a
+ * fragment missed the 422 Back as soon as the reader had used an in-page anchor
+ * first, because `form.action` reflects the node document's URL and keeps its
+ * fragment (measured, for a missing `action` attribute and an empty one alike).
  *
- * The two are separable, because a repeat anchor click always CARRIES a
- * fragment (that is what it navigated to) and the duplicate 422 entry never
- * does. So: absorb when the hrefs differ, OR when they match and the
- * destination carries a fragment. The fragmentless same-url traversal keeps its
- * pre-#1437 behaviour, which is the conservative side for a case nothing has
- * reported against.
+ * What actually distinguishes them is PROVENANCE, not spelling: the router SAW
+ * the click it bowed out of, and it never sees a traversal. So `onClick` leaves
+ * a mark on its way out and the next popstate consumes it (`consumeFragmentNav`
+ * in `state.js`, which documents the lifetime), and an identical-href popstate
+ * with no mark is left to the normal path.
+ *
+ * A DIFFERING href needs no mark. It is same-document by the pathname and
+ * search test, so there is nothing to fetch whichever way the reader got here,
+ * which is what makes an ordinary Back or Forward between two fragment states
+ * safe to absorb.
  *
  * It RECORDS as well as deciding, and that is load-bearing rather than tidy.
  * `currentPageUrl` is otherwise written only in the `finally` of a completed
  * navigation, so a bow-out that did not record would leave the tracker at the
  * pre-jump url, and the Back OUT of the fragment would then see two matching
- * fragmentless hrefs and re-navigate (measured: it destroyed the live DOM).
+ * hrefs with no mark and re-navigate (measured: it destroyed the live DOM).
  * Turbo's `historyPoppedWithEmptyState` also records the new location and
  * navigates nothing.
  *
@@ -101,6 +107,9 @@ let currentPageUrl = null;
  *   nothing further.
  */
 export function absorbSameDocumentTraversal(href) {
+  // Consume unconditionally, so a mark can never outlive the popstate it was
+  // left for, whatever this one turns out to be.
+  const wasOurFragmentClick = consumeFragmentNav(href);
   if (!currentPageUrl) return false;
   /** @type {URL} */ let prev;
   /** @type {URL} */ let next;
@@ -113,10 +122,8 @@ export function absorbSameDocumentTraversal(href) {
   // Both sides are serializations of this document's own `location.href`, so
   // the origin cannot differ and is not compared.
   if (prev.pathname !== next.pathname || prev.search !== next.search) return false;
-  // `href.includes('#')` rather than `hash`, because the serializer reports a
-  // null fragment and an EMPTY one identically as `''`, and `href="#"` is the
-  // spelling this has to catch.
-  if (prev.href === next.href && !next.href.includes('#')) return false;
+  // Identical url: only the click the router itself bowed out of may be absorbed.
+  if (prev.href === next.href && !wasOurFragmentClick) return false;
   currentPageUrl = next.href;
   return true;
 }
@@ -495,6 +502,9 @@ export async function refreshPage(mode) {
  *   a failure. Every other caller ignores the value.
  */
 export async function performNavigation(href, isPopState, frameId, opts) {
+  // Same reasoning as in performSubmission: a real navigation invalidates any
+  // pending fragment mark (#1437).
+  clearFragmentNav();
   const refresh = (opts && opts.refresh) || undefined;
   // #1008 / #936: a forward, main-document nav fired while the document is
   // still parsing (`readyState === 'loading'`) races the DOM. The leaving
@@ -784,6 +794,10 @@ export async function performNavigation(href, isPopState, frameId, opts) {
  * @param {HTMLFormElement | null} [form]  The submitted form, for busy + events.
  */
 export async function performSubmission(href, method, body, frameId, form) {
+  // A submission is real work, so any pending fragment mark is stale and must
+  // not survive into the popstate a later Back produces. This is exactly the
+  // 422 duplicate-entry path (#1437).
+  clearFragmentNav();
   if (activeAbortController) activeAbortController.abort();
   activeAbortController = new AbortController();
   const signal = activeAbortController.signal;

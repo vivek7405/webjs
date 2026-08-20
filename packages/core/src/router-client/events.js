@@ -8,7 +8,7 @@
  */
 import { findAnchorInPath } from './anchors.js';
 import { NON_HTML_EXTENSIONS } from './constants.js';
-import { enabled } from './state.js';
+import { enabled, markFragmentNav } from './state.js';
 import { warnIfActionSubmissionCannotDeliver } from './diagnostics.js';
 import { buildSubmitFormData, encodeSubmitBody, getSubmitAction, getSubmitEnctype, getSubmitMethod } from './form-encoder.js';
 import { resolveTargetFrameId } from './frames.js';
@@ -39,7 +39,15 @@ export function onClick(e) {
   // spec reloads rather than jumping, so it must stay a router navigation. A
   // `#` cannot appear anywhere else in a serialized url: the parser encodes it
   // in the path and starts the fragment at it in the query (#1437).
-  if (url.pathname === location.pathname && url.search === location.search && url.href.includes('#')) return;
+  if (url.pathname === location.pathname && url.search === location.search && url.href.includes('#')) {
+    // Leave a mark for the popstate this jump is about to fire. A REPEAT click
+    // replaces its history entry rather than pushing, so that popstate arrives
+    // with an unchanged url and is indistinguishable by comparison from a real
+    // Back between two entries that share one. Provenance is the only thing
+    // that separates them, and this is where the router has it (#1437).
+    markFragmentNav(url.href);
+    return;
+  }
   if (NON_HTML_EXTENSIONS.test(url.pathname)) return;
 
   e.preventDefault();

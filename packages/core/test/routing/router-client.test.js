@@ -2939,9 +2939,13 @@ test('onPopState: triggers a router navigation to location.href', async () => {
  *
  * @param {string} trackerUrl  What the router believes is the current page.
  * @param {string} poppedUrl   Where the browser has already moved location to.
+ * @param {{ viaFragmentClick?: string }} [opts] When set, stands in for the
+ *   click the router bowed out of, marking that href the way `onClick` does.
+ *   That mark is the only thing separating a repeat anchor click from a real
+ *   traversal to the same url (#1437).
  * @returns {Promise<{fetched: boolean, tracker: string | null}>}
  */
-async function popTo(trackerUrl, poppedUrl) {
+async function popTo(trackerUrl, poppedUrl, opts) {
   const origLoc = globalThis.location;
   const origFetch = globalThis.fetch;
   const prevPageUrl = _currentPageUrl();
@@ -2960,6 +2964,9 @@ async function popTo(trackerUrl, poppedUrl) {
     );
   };
   _setCurrentPageUrl(trackerUrl);
+  const { clearFragmentNav, markFragmentNav } = await import('../../src/router-client/state.js');
+  clearFragmentNav();
+  if (opts && opts.viaFragmentClick) markFragmentNav(opts.viaFragmentClick);
   try {
     document.body.innerHTML = '<!--wj:children:/:/-->before<!--/wj:children:/-->';
     _onPopState({});
@@ -2989,16 +2996,37 @@ test('onPopState: a FRAGMENTLESS same-url popstate still navigates (#1437)', asy
   assert.equal(fetched, true, 'a fragmentless same-url traversal is still a navigation');
 });
 
-test('onPopState: an identical-url popstate WITH a fragment is absorbed (#1437)', async () => {
-  // The REPEAT click of one in-page anchor. That navigation REPLACES rather
-  // than pushes, and it still fires popstate, so it arrives with `location.href`
-  // equal to what the tracker already holds (measured in Chromium: two clicks of
-  // one `#sec` link give two popstates at the same href, `history.length`
-  // unchanged). An earlier version required the hrefs to DIFFER, which read as
-  // the conservative choice and instead let the second click of a
-  // `<a href="#">Back to top</a>` fall through to a full navigation.
+test('onPopState: the REPEAT click of one anchor is absorbed (#1437)', async () => {
+  // That navigation REPLACES its entry rather than pushing, and it still fires
+  // popstate, so it arrives with `location.href` equal to what the tracker
+  // holds (measured in Chromium: two clicks of one `#sec` link give two
+  // popstates at the same href, `history.length` unchanged). An early version
+  // required the hrefs to DIFFER, which read as the conservative choice and
+  // instead let the second click of a `<a href="#">Back to top</a>` fall
+  // through to a full navigation.
+  const { fetched } = await popTo('http://localhost/p#x', 'http://localhost/p#x',
+    { viaFragmentClick: 'http://localhost/p#x' });
+  assert.equal(fetched, false, 'the router saw this click, so there is nothing to navigate to');
+});
+
+test('onPopState: an identical-url popstate the router did NOT cause navigates (#1437)', async () => {
+  // Same urls as the case above, opposite answer, and the ONLY difference is
+  // provenance. This is the 422 duplicate entry: no click was bowed out of, so
+  // the popstate is a real traversal. A predicate that keyed on the url alone
+  // could not tell these two apart, which is what sank two earlier attempts.
   const { fetched } = await popTo('http://localhost/p#x', 'http://localhost/p#x');
-  assert.equal(fetched, false, 'nothing changed, so there is nothing to navigate to');
+  assert.equal(fetched, true, 'no mark means a real traversal, which must re-render');
+});
+
+test('onPopState: a fragment mark is consumed once, not left armed (#1437)', async () => {
+  // A mark that outlived its own popstate would sit waiting to swallow an
+  // unrelated one, so the consume happens whether or not it matched.
+  const first = await popTo('http://localhost/p#x', 'http://localhost/p#x',
+    { viaFragmentClick: 'http://localhost/p#x' });
+  assert.equal(first.fetched, false, 'precondition: the marked popstate is absorbed');
+  const { markFragmentNav, pendingFragmentNav } = await import('../../src/router-client/state.js');
+  assert.equal(pendingFragmentNav, null, 'the mark must not survive its popstate');
+  assert.equal(typeof markFragmentNav, 'function');
 });
 
 test('onPopState: a changed pathname is still a navigation (#1437)', async () => {

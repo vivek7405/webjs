@@ -347,6 +347,34 @@ suite('Client router: a same-document fragment jump is the browser\'s (#1437)', 
     } finally { await teardown(); }
   });
 
+  test('Back across a DUPLICATE entry at the same url still re-navigates', async () => {
+    setup();
+    try {
+      // The no-JS write path produces two distinct entries sharing one url: a
+      // bound form emits no `action`, so `form.action` reflects the document URL
+      // and a 422 re-render pushes a duplicate entry at it. `form.action` keeps
+      // the FRAGMENT too (measured in Chromium, for a missing `action` attribute
+      // and an empty one alike), which is why the url cannot be what decides
+      // this: it is byte-identical to a repeat anchor click's popstate.
+      //
+      // Modelled by pushing the duplicate entry directly, since the point is the
+      // history shape rather than the submission that produced it. The reader
+      // anchors in FIRST, so the shared url carries a fragment, which is exactly
+      // the shape that defeated the earlier fragment-presence rule.
+      clickIt('wj-named');
+      await settle();
+      assert.deepEqual(fetched, [], 'precondition: the anchor click was absorbed');
+
+      history.pushState(null, '', location.href);
+      await settle();
+
+      await traverse(() => history.back());
+
+      assert.equal(fetched.length, 1, 'a real traversal must re-render, not be swallowed');
+      assert.ok(fetched[0].startsWith('page:'));
+    } finally { await teardown(); }
+  });
+
   test('a genuine cross-document popstate still re-navigates', async () => {
     setup();
     try {
