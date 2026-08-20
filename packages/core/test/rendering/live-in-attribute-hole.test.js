@@ -123,9 +123,16 @@ test('a .prop hole on a custom element serializes the inner value, not the wrapp
   assert.ok(!/_\$webjs/.test(out), `the live() wrapper must not reach the hydration payload, got ${out}`);
 });
 
-test('a child hole nested in an array still resolves live() (#1443)', async () => {
+test('a child hole nested in an array still resolves live() on the SERVER (#1443)', async () => {
   // The hole-level unwrap never sees this one; render()/streamRender() keep
   // their own isLive branch for it. Guards against removing those as dead code.
+  //
+  // SERVER ONLY, as the name says. The matching CLIENT assertions live in
+  // live-in-client-child.test.js, which covers all four consumers of a child
+  // value (fresh array build, in-place array reconcile, streamed renderer, and
+  // a directive wrapping a live()). Keeping the halves in separate files is
+  // why this one names its side explicitly: a test called "resolves live()"
+  // that checks one renderer reads as if both were covered.
   await bothRenderers(() => html`<p>${[live('x'), live('y')]}</p>`, (out, who) => {
     assert.match(out, /<p>xy<\/p>/, `${who}: live() inside an array child must resolve, got ${out}`);
   });

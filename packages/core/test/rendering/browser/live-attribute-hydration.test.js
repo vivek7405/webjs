@@ -34,6 +34,17 @@ class MenuProbe extends WebComponent({ open: prop(Boolean) }) {
 }
 MenuProbe.register('lah-menu');
 
+/**
+ * A QUOTED attribute bound through live(). Every hole inside a quoted attribute
+ * is attr-mixed to the client compiler, which is the path that reads its pieces
+ * raw, so this is the shape that corrupts on upgrade rather than at SSR.
+ */
+class TitleProbe extends WebComponent({ label: prop(String) }) {
+  constructor() { super(); this.label = 'hello'; }
+  render() { return html`<b title="${live(this.label)}" class="a ${live(this.label)} z">x</b>`; }
+}
+TitleProbe.register('lah-title');
+
 /** Same, but open by default, so the guard cannot be met by never emitting. */
 class OpenProbe extends WebComponent({ open: prop(Boolean) }) {
   constructor() { super(); this.open = true; }
@@ -129,14 +140,31 @@ suite('live() in an attribute hole hydrates without a flash (#1443)', () => {
     );
   });
 
-  test('a quoted attribute hole unwraps live() on the CLIENT commit too (#1443)', () => {
-    // The client half of the same bug, on the real engine. Every hole inside a
-    // QUOTED attribute is attr-mixed to the client compiler (single-hole
-    // included), and that commit path reads each group piece raw, bypassing
-    // applyPart's top-of-function unwrap. Without the per-piece unwrap, the
-    // SSR bytes the server half of this fix gets right are rewritten to the
-    // wrapper's stringification by the first client render: served correct,
-    // corrupted on upgrade, which no SSR-string assertion can see.
+  test('a quoted attribute bound through live() survives the SSR-to-upgrade transition (#1443)', async () => {
+    // The client half of the same bug, observed as the TRANSITION rather than
+    // as a bare client render. A quoted attribute hole is attr-mixed to the
+    // client compiler, and that commit path reads each group piece raw; without
+    // the per-piece unwrap the correct SSR bytes are rewritten to the wrapper's
+    // stringification the moment the element upgrades. Serving right and
+    // corrupting on upgrade is invisible to any SSR-string assertion, so the
+    // real SSR bytes are mounted and then upgraded here, exactly as a served
+    // page does it.
+    const ssr = await renderToString(html`<lah-title></lah-title>`);
+    assert.match(ssr, /title="hello"/, `SSR must emit the inner value, got ${ssr}`);
+    assert.ok(!/object Object/.test(ssr), `SSR must not stringify the wrapper, got ${ssr}`);
+
+    const { host } = await hydrate(ssr);
+    mounted.push(host);
+
+    const el = host.querySelector('b');
+    assert.ok(el, 'the element survived hydration');
+    assert.equal(el.getAttribute('title'), 'hello', 'the quoted hole still holds its value after upgrade');
+    assert.equal(el.getAttribute('class'), 'a hello z', 'every mixed-attribute piece survived the upgrade');
+  });
+
+  test('a client-only render unwraps live() in quoted and mixed attributes (#1443)', () => {
+    // The same commit path reached directly, with no SSR involved, which is
+    // what a post-hydration re-render does.
     const host = document.createElement('div');
     document.body.appendChild(host);
     mounted.push(host);

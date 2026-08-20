@@ -495,6 +495,20 @@ export function applyChildInner(part, value, reconcileFormActionsCb) {
 export function applyChildInnerRaw(part, value, reconcileFormActionsCb) {
   const marker = part.marker;
 
+  // live() in a CHILD position (#1443). applyPart's top-of-function unwrap only
+  // sees the hole's own value, so a live() nested inside an ARRAY child arrives
+  // here still wrapped and would stringify to "[object Object]". The server
+  // recurses through isLive in both machines (template-renderer.js render() and
+  // streamRender()), so without this the renderers disagree and an SSR'd list
+  // built with live() per item corrupts on upgrade. A plain unwrap is the whole
+  // job here: live()'s dirty-check is attribute/property-shaped and has no
+  // meaning for a child, which is exactly why the server treats it the same way.
+  // Recursing first (rather than after the unsafeHTML branch) matches the
+  // server's outcome for a nested directive such as live(unsafeHTML(x)).
+  if (isLive(value)) {
+    return applyChildInnerRaw(part, /** @type any */ (value).value, reconcileFormActionsCb);
+  }
+
   // unsafeHTML directive: inject raw HTML string as DOM nodes.
   if (isUnsafeHTML(value)) {
     teardownChild(part);
@@ -1104,6 +1118,9 @@ function removeArrayItem(item) {
  * @returns {{ item: ArrayItem, frag: Node | null }}
  */
 function buildArrayItem(v, reconcileFormActionsCb) {
+  // #1443: unwrap live() per ITEM. applyPart unwraps the hole's own value, so
+  // an array child arrives unwrapped at the top and its ITEMS do not.
+  if (isLive(v)) v = /** @type any */ (v).value;
   if (isTemplate(v)) {
     const { inst, frag } = buildDetached(/** @type any */ (v), reconcileFormActionsCb);
     return { item: { type: 'tpl', inst }, frag };
@@ -1161,7 +1178,11 @@ function reconcileArray(part, value, reconcileFormActionsCb) {
 
   try {
     for (let i = 0; i < value.length; i++) {
-      const v = value[i];
+      // #1443: same per-item unwrap as buildArrayItem, on the in-place update
+      // path. Without it a re-render writes the wrapper's stringification into
+      // the existing text node.
+      const raw = value[i];
+      const v = isLive(raw) ? /** @type any */ (raw).value : raw;
       const o = old[i];
       if (isTemplate(v)) {
         const tr = /** @type any */ (v);
@@ -1963,6 +1984,9 @@ async function consumeAsyncStream(state, part, dir, reconcileFormActionsCb) {
  * @returns {ChildNode[]}
  */
 function renderToNodes(value, reconcileFormActionsCb) {
+  // #1443: the streamed / detached counterpart of the per-item unwrap above.
+  // Recursion covers a nested array, since each level re-enters here.
+  if (isLive(value)) value = /** @type any */ (value).value;
   if (value == null || value === false || value === true) return [];
   if (isTemplate(value)) {
     const tr = /** @type any */ (value);
