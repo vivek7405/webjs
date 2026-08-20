@@ -10,7 +10,7 @@ import { markStale, parseTagHeader } from '../action-cache-client.js';
 import { renderStream } from '../webjs-stream.js';
 import { buildHaveHeader } from './boundaries.js';
 import { STREAM_MIME } from './constants.js';
-import { diagFlag, diagFrameYield, warnIfSmoothScrollOnHtml } from './diagnostics.js';
+import { warnIfSmoothScrollOnHtml } from './diagnostics.js';
 import { restoreOptimistic } from './dom-differ.js';
 import { parseHTML } from './dom-parse.js';
 import { clearFrameBusy, markFrameBusy } from './frames.js';
@@ -312,55 +312,6 @@ export async function fetchAndApply(href, frameId, recordHistory, optimisticStat
     }
     : null;
 
-  // #1428 diagnostic, TEMPORARY (default off, so an app that sets nothing runs
-  // the path above byte for byte). #1410 put the push ahead of the mutation and
-  // the blank SURVIVED on a real iPhone, which leaves exactly one assumption
-  // behind that fix untested: that WebKit binds the gesture snapshot
-  // synchronously, at the `pushState` call. If it instead captures the
-  // compositing surface when the `didSameDocumentNavigation` IPC lands in the
-  // UI process, that happens only after this whole task (push, swap,
-  // scroll-to-top) has run, so reordering WITHIN the task changes nothing the
-  // device can see, and the fix would need a composited frame instead. These
-  // levers test that by handing WebKit a frame to paint the OUTGOING page
-  // between the push and the swap.
-  //
-  // The yield sits HERE rather than at the four commit points inside
-  // `applySwap` because that function is synchronous and cannot await. The
-  // thunk is one-shot, so calling it here fires the push for whichever commit
-  // point the swap goes on to reach and leaves that call a no-op, which is the
-  // same ordering at every one of them rather than at a chosen few. Tied to
-  // `recordHistoryNow` being non-null so the background paths (a revalidation,
-  // a refresh, the popstate restore) are untouched: they record no entry, so
-  // there is no snapshot to compose, and delaying them would move a second
-  // variable in a run that is trying to isolate one.
-  const diagFrames = diagFlag('raf2') ? 2 : diagFlag('raf') ? 1 : 0;
-  if (diagFrames && recordHistoryNow) {
-    recordHistoryNow();
-    const painted = diagFrameYield(diagFrames);
-    if (painted) await painted;
-    // The yield reopens the supersede window the guard above just closed, so
-    // re-check rather than swapping in a document a newer navigation has
-    // already moved past.
-    //
-    // The push has landed by now and is NOT rolled back, which leaves a
-    // phantom entry: `pushState` appends rather than overwrites, so the newer
-    // navigation stacks on top and the history becomes [A, B-never-rendered,
-    // C], where Back from C lands on B instead of A. Deliberately left alone.
-    // Undoing it would mean a `back()` or a `replaceState` racing the
-    // navigation that just superseded this one, and moving the push after this
-    // re-check would defeat the lever, whose whole subject is a frame boundary
-    // BETWEEN the push and the swap.
-    //
-    // The consequence is for whoever reads a device run, so it is stated
-    // rather than hidden: a superseded navigation under `?raf` corrupts the
-    // back stack it is trying to measure, and that cell should be discarded
-    // and re-run. Only reachable when a device A/B has opted in.
-    if (myToken !== currentNavigationToken) {
-      if (streamCtx && streamCtx.reader) { try { streamCtx.reader.cancel(); } catch { /* ignore */ } }
-      return { ok: false, status: respStatus, aborted: true, applied: false };
-    }
-  }
-
   const disposition = applySwap(doc, frameId, !!revalidating, finalUrl, incomingBuild, incomingSrc, refresh, recordHistoryNow);
   // `'none'` means applySwap returned WITHOUT committing anything: the frame the
   // response was for is missing, or it degraded to a hard navigation (an
@@ -395,45 +346,21 @@ export async function fetchAndApply(href, frameId, recordHistory, optimisticStat
   //       restoration themselves before dispatching popstate, so
   //       leaving scroll alone preserves the browser-native UX.
   if (recordHistory) {
-    const applyNavScroll = () => {
-      // Use the final URL (after any server-side redirect) so hash
-      // anchors point at the document we actually rendered.
-      const url = new URL(finalUrl);
-      if (url.hash) {
-        const t = document.getElementById(url.hash.slice(1));
-        // A hash anchor is the one nav scroll we DON'T force instant: a
-        // `#section` link is exactly where an app's `scroll-behavior: smooth`
-        // is wanted, and native browsers animate it too.
-        if (t) t.scrollIntoView();
-        else { warnIfSmoothScrollOnHtml(); window.scrollTo({ left: 0, top: 0, behavior: 'instant' }); }
-      } else {
-        // Scroll-to-top on a forward nav. behavior:'instant' so an app-level
-        // `scroll-behavior: smooth` does not animate it (match native nav).
-        warnIfSmoothScrollOnHtml();
-        window.scrollTo({ left: 0, top: 0, behavior: 'instant' });
-      }
-    };
-    // #1428 diagnostic, TEMPORARY (default off). Isolates the CLAMP from the
-    // swap. The scroll-to-top runs in the same task as the push and the
-    // mutation, so if WebKit composes its snapshot from a later frame it reads
-    // an offset of 0 against the destination, and neither the #1410 ordering
-    // nor a frame yield would change that. Deferring the scroll past the frame
-    // says whether the offset is the part that matters. Extracted to a thunk so
-    // both paths run identical code and the run compares one variable.
-    if (diagFlag('scrolllast')) {
-      const painted = diagFrameYield(1);
-      // Guarded on the nav token, because deferring the scroll puts it outside
-      // this navigation's own task: a newer navigation can start in that frame,
-      // and then this would scroll ITS page. The synchronous path cannot do
-      // that, so an unguarded `.then` would be the lever writing scroll into a
-      // page it has nothing to do with. Worst on the hash branch, where
-      // `scrollIntoView` would hunt this URL's anchor in the new document and
-      // land somewhere arbitrary if the id happens to exist. A diagnostic
-      // measuring scroll behaviour cannot afford to move scroll on its own.
-      if (painted) painted.then(() => { if (myToken === currentNavigationToken) applyNavScroll(); });
-      else applyNavScroll();
+    // Use the final URL (after any server-side redirect) so hash
+    // anchors point at the document we actually rendered.
+    const url = new URL(finalUrl);
+    if (url.hash) {
+      const t = document.getElementById(url.hash.slice(1));
+      // A hash anchor is the one nav scroll we DON'T force instant: a
+      // `#section` link is exactly where an app's `scroll-behavior: smooth`
+      // is wanted, and native browsers animate it too.
+      if (t) t.scrollIntoView();
+      else { warnIfSmoothScrollOnHtml(); window.scrollTo({ left: 0, top: 0, behavior: 'instant' }); }
     } else {
-      applyNavScroll();
+      // Scroll-to-top on a forward nav. behavior:'instant' so an app-level
+      // `scroll-behavior: smooth` does not animate it (match native nav).
+      warnIfSmoothScrollOnHtml();
+      window.scrollTo({ left: 0, top: 0, behavior: 'instant' });
     }
   }
 

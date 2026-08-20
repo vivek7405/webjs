@@ -7,7 +7,7 @@
  * @module
  */
 import { ANCHOR_SUPPRESS_FLOOR_MS } from './constants.js';
-import { diagFlag, reportFallback, reportPreBootNavigation, setNavigating, shouldFullLoadDuringParse } from './diagnostics.js';
+import { reportFallback, reportPreBootNavigation, setNavigating, shouldFullLoadDuringParse } from './diagnostics.js';
 import { applyOptimisticLoading } from './dom-differ.js';
 import { parseHTML } from './dom-parse.js';
 import { onClick, onPopState, onSubmit } from './events.js';
