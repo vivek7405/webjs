@@ -2,18 +2,25 @@
  * Real-browser test for #1406: the client router must record a forward
  * navigation's history entry BEFORE it swaps the DOM.
  *
- * WebKit binds a same-document (`pushState`) entry's back-forward gesture
- * snapshot to the page state at the moment the entry is recorded. The router
- * used to push AFTER `applySwap`, so the entry for the OUTGOING url was
- * finalized against the INCOMING document, at a scroll offset the browser had
- * already clamped to that document's height. On iOS the edge back-swipe then
- * previews a page that never existed and renders blank (measured on
- * `gallery.webjs.dev`: an offset of 1600 clamped to 252 at the push).
+ * The router used to push AFTER `applySwap`, so the entry for the OUTGOING url
+ * was finalized against the INCOMING document, at a scroll offset the browser
+ * had already clamped to that document's height (measured on
+ * `gallery.webjs.dev`: an offset of 1600 clamped to 252 at the push). An entry
+ * should be recorded against the page it belongs to, which is what this pins.
  *
- * The pixels are iOS-only and cannot be asserted here. What CAN be asserted
- * anywhere is the state the browser captures FROM, which is exactly the thing
- * that was wrong: at the `pushState` call, the document must still hold the
- * outgoing page and `window.scrollY` must still hold the outgoing offset.
+ * WHAT THIS TEST DOES NOT PROVE, corrected after #1428: #1406 introduced the
+ * ordering as the fix for the blank iOS back-swipe preview, on the theory that
+ * WebKit binds the gesture snapshot to page state at the moment the entry is
+ * recorded. That theory is false. Turbo Drive has this exact ordering and
+ * previews blank the same way, and the preview was actually fixed by stopping
+ * the router setting `history.scrollRestoration = 'manual'`, which had
+ * suppressed the browser's per-entry scroll recording. Both were verified on a
+ * real iPhone. This guard is kept because the ordering is correct on its own
+ * merits, not because it fixes that bug.
+ *
+ * What CAN be asserted anywhere is the state the browser captures FROM: at the
+ * `pushState` call, the document must still hold the outgoing page and
+ * `window.scrollY` must still hold the outgoing offset.
  *
  * This has to be a real browser: the assertion is about a scroll offset the
  * engine clamps against real layout, and linkedom has neither.

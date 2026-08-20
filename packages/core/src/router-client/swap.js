@@ -51,10 +51,13 @@ export let _swapCommit = Promise.resolve();
  *   DOM mutation, for the same reason `ingestSeeds` is: this function can still
  *   decide to throw the response away after parsing it, and a `pushState`
  *   issued for a swap that never happened is worse than a late one. It runs
- *   BEFORE the incoming document replaces what is on screen, because WebKit
- *   binds a same-document entry's back-forward gesture snapshot to the page
- *   state at the moment the entry is recorded, and a snapshot taken against
- *   the incoming (often shorter) document previews blank.
+ *   BEFORE the incoming document replaces what is on screen, so the entry for
+ *   the page being left is finalized while that page is still the live
+ *   document (#1406, and Turbo Drive's ordering).
+ *
+ *   NOTE: #1406 believed this ordering fixed the blank iOS back-swipe
+ *   preview. It does not, shown on-device in #1428; the cause was
+ *   `history.scrollRestoration = 'manual'`.
  *
  *   "Before the content swap" is the precise claim, NOT "before anything on
  *   the page has changed". The page may already have been mutated by the time

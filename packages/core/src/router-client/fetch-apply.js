@@ -272,13 +272,18 @@ export async function fetchAndApply(href, frameId, recordHistory, optimisticStat
   // recover in place rather than a destructive full reload.
   if (!doc) { restoreOptimistic(optimisticState); handleNavigationError(href, null, new Error('navigation response did not parse as HTML')); return { ok: false, status: respStatus, aborted: false, applied: false }; }
 
-  // #1406: the history entry this navigation records is what the iOS back-swipe
-  // gesture later previews, and WebKit binds a same-document entry's snapshot to
-  // the page state at the moment the entry is recorded. Recording it after the
-  // swap finalizes it against the DESTINATION document at a scroll offset the
-  // browser has already clamped to that document's height (measured on the
-  // gallery: 1600 to 252), so the gesture previews a page that never existed and
-  // renders blank. So the push rides into `applySwap` as a COMMIT-time callback
+  // #1406: recording the push after the swap finalizes the outgoing page's
+  // entry against the DESTINATION document, at a scroll offset the browser has
+  // already clamped to that document's height (measured on the gallery: 1600 to
+  // 252). Ordering it ahead of the mutation keeps the entry tied to the page it
+  // belongs to.
+  //
+  // #1406 also claimed this fixed the blank iOS back-swipe preview, via WebKit
+  // binding the gesture snapshot at the moment the entry is recorded. That is
+  // FALSE (#1428, on-device): Turbo Drive uses this same ordering and previews
+  // blank too, and the cause was `history.scrollRestoration = 'manual'`
+  // suppressing per-entry scroll recording. The ordering is kept on its own
+  // merits. So the push rides into `applySwap` as a COMMIT-time callback
   // and fires ahead of the mutation, which is Turbo Drive's ordering
   // (`PageView.renderPage` calls `visit.changeHistory()` ahead of
   // `this.render(renderer)`).
