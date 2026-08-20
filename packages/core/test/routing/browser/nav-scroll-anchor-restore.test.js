@@ -171,7 +171,9 @@ suite('Client router: a Back restore survives late layout growth (#1310)', () =>
   async function setup(opts) {
     const instant = Boolean(opts && opts.instantRevalidation);
     const restoredY = (opts && opts.restoredY) != null ? opts.restoredY : RESTORED_Y;
-    const outgoingHeight = (opts && opts.tallOutgoing) ? 60000 : 3000;
+    const outgoingHeight = (opts && opts.tallOutgoing) ? 60000
+      : (opts && opts.uaRecords) ? restoredY + 2000
+        : 3000;
     const html = restoredHtml(
       (opts && opts.manualGrowth) ? 'wj-grow-on-command-1310'
         : instant ? 'wj-grow-very-late-1310' : 'wj-grow-late-1310',
@@ -227,6 +229,17 @@ suite('Client router: a Back restore survives late layout growth (#1310)', () =>
     // synthetic popstate event would not exercise the browser's own restore.
     origUrl = location.href;
     history.pushState(null, '', entryUrl('anchor-a'));
+    if (opts && opts.uaRecords) {
+      // Let the BROWSER record a real offset for this entry, by actually
+      // scrolling before pushing the next one. Every other case injects the
+      // offset into the snapshot cache while the page sits at 0, so the UA has
+      // only ever recorded 0 for `anchor-a`, which is fine when the router owns
+      // the restore but makes it impossible to observe what the UA would do on
+      // its own. A single-writer assertion needs the UA's own recording to be
+      // the real thing (#1428).
+      window.scrollTo({ top: restoredY, left: 0, behavior: 'instant' });
+      await new Promise((r) => setTimeout(r, 60));
+    }
     history.pushState(null, '', entryUrl('anchor-b'));
     entriesPushed = true;
     // `scrollHeight` is what the restore RESERVES across the swap (#1428), so
@@ -593,6 +606,28 @@ suite('Client router: a Back restore survives late layout growth (#1310)', () =>
       await new Promise((r) => setTimeout(r, 2400));   // past the 2s ceiling
       assert.equal(document.documentElement.style.getPropertyValue('overflow-anchor'), '',
         'the ceiling releases a window whose revalidation never came back');
+    } finally { await teardown(); }
+  });
+
+  test('a restore the BROWSER recorded lands on the offset through a short swap (#1428)', async () => {
+    // The single-writer case. Unlike every other case here, the UA has recorded
+    // a REAL offset for this entry (`uaRecords` scrolls before pushing the next
+    // one), so the browser's own restoration is a live participant rather than
+    // a source of zeros.
+    //
+    // The snapshot is still SHORT at swap time, which is the shape that used to
+    // clamp. With the height reserved the offset is reachable, so the reader
+    // ends on it whichever writer got there. This is the assertion that would
+    // have to hold for the router to stop writing scroll at all.
+    await setup({ uaRecords: true });
+    try {
+      await goBack();
+      await frame();
+      assert.ok(Math.abs(window.scrollY - RESTORED_Y) < 5,
+        `the reader lands on the recorded offset (got ${window.scrollY})`);
+      await afterGrowth();
+      assert.ok(Math.abs(window.scrollY - RESTORED_Y) < 5,
+        `and stays there once the page fills in (got ${window.scrollY})`);
     } finally { await teardown(); }
   });
 
