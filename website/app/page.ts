@@ -472,9 +472,21 @@ export default function LandingPage() {
 
     <section class="pb-16">
       <div class="max-w-3xl mx-auto px-6">
-        <div class="aspect-video overflow-hidden border border-border-strong shadow-[var(--shadow)]">
+        <!-- The frame is hidden until it fires load, over a black box.
+             A cross-origin iframe paints its OWN canvas, and YouTube's embed
+             sets its black background on body with no color-scheme declared,
+             so the black only lands once that stylesheet applies. Until then
+             some engines paint an opaque white canvas, which no background on
+             the iframe ELEMENT can cover, since the element background sits
+             behind that canvas. Hiding the frame sidesteps the whole question:
+             what it paints early is simply not on screen, and the box under it
+             is already the black the player settles on, so the reveal is
+             invisible. onload is a plain HTML attribute rather than a template
+             hole, because an @event drops at SSR and this page never hydrates. -->
+        <div class="aspect-video overflow-hidden border border-border-strong shadow-[var(--shadow)] bg-black">
           <iframe
-            class="w-full h-full"
+            class="intro-video-frame w-full h-full invisible"
+            onload="this.classList.remove('invisible')"
             src="https://www.youtube-nocookie.com/embed/XghCghezod4?rel=0"
             title="WebJs introduction video"
             loading="lazy"
@@ -483,6 +495,11 @@ export default function LandingPage() {
             allowfullscreen
           ></iframe>
         </div>
+        <!-- With JS off that load handler never runs, so the frame would stay
+             hidden forever. This page never hydrates, so a browser with
+             scripting ON parses the noscript body as raw TEXT and the rule is
+             inert; with scripting off it applies and the player shows. -->
+        <noscript><style>.intro-video-frame { visibility: visible }</style></noscript>
       </div>
     </section>
 
