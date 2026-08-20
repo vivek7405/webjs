@@ -41,8 +41,10 @@ test('the first paint shows a poster rather than a black box', async () => {
 
 test('the bytes stay off the wire until someone plays it', async () => {
   const out = await render();
-  // The file is 85 MB. Without preload=metadata a page view fetches it.
-  assert.match(out, /<video[^>]*\spreload="metadata"/);
+  // The file is 85 MB at 2315 kbps. Under preload=metadata it starved the
+  // poster on a 400 kbps link: 6.2 MB pulled before the thumbnail painted at
+  // 25.8s. "none" is the deliberate deviation from what rubyonrails.org does.
+  assert.match(out, /<video[^>]*\spreload="none"/);
   // iOS Safari otherwise takes the video fullscreen the moment it plays.
   assert.match(out, /<video[^>]*\splaysinline/);
 });

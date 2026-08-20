@@ -299,10 +299,16 @@ function sourceWindow(title: string, sample: string) {
 const INTRO_VIDEO = html`
     <section class="intro-video pb-16">
       <div class="max-w-3xl mx-auto px-6">
-        <!-- preload="metadata" keeps the file off the wire until someone
-             presses play, so a page view costs the poster plus a metadata
-             range request. playsinline stops iOS Safari taking the video
-             fullscreen. The width and height state the intrinsic size, which
+        <!-- preload="none" fetches nothing but the thumbnail until someone
+             presses play. It is deliberately not "metadata", which is the
+             usual choice and what rubyonrails.org uses. Their file is 658
+             kbps and this one is 2315, and at 400 kbps the metadata read
+             starved the poster: the video had pulled 6.2 MB by the time the
+             thumbnail painted, 25.8 seconds in. The cost is that the controls
+             cannot show the duration until the first play.
+
+             playsinline stops iOS Safari taking the video fullscreen. The
+             width and height state the intrinsic size, which
              this layout does not lean on (the wrapper is aspect-video and the
              element is w-full h-full, so CSS fixes the ratio), but which keeps
              the shape right if the stylesheet ever fails. The src is absolute and
@@ -316,7 +322,7 @@ const INTRO_VIDEO = html`
             aria-label="WebJs introduction video"
             width="1920"
             height="1080"
-            preload="metadata"
+            preload="none"
             playsinline
             controls
           ></video>
