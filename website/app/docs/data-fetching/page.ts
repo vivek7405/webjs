@@ -158,6 +158,7 @@ export async function POST(req, { params }) {
       <li><strong>webjs-frame</strong>: a region that loads / refreshes INDEPENDENTLY of a full navigation (self-refresh, lazy below-the-fold, URL-addressable), server-rendered, zero component JS. Turbo Frames.</li>
       <li><strong>webjs-stream</strong>: a SURGICAL single-element update (append / remove / replace one node) or a live-channel push. Turbo Streams.</li>
     </ul>
+    <p>Every primitive above is a READ. The write side has its own default, <a href="/docs/optimistic-ui">Optimistic UI</a>.</p>
 
     <h2>Anti-patterns</h2>
     <ul>
@@ -171,6 +172,6 @@ export async function POST(req, { params }) {
       <li>Do NOT bolt on a needless signal (or <code>static interactive = true</code>) to "force" a bare async leaf to ship. It is correctly elided and progressive-enhancement-safe already. Reach for the override only when the analyser genuinely cannot see a component's interactivity.</li>
     </ul>
 
-    <p>See <a href="/docs/suspense">Streaming &amp; Suspense</a>, <a href="/docs/components">Components</a>, <a href="/docs/lifecycle">Lifecycle Hooks</a>, and <a href="/docs/error-handling">Error Handling</a>.</p>
+    <p>See <a href="/docs/suspense">Streaming &amp; Suspense</a>, <a href="/docs/components">Components</a>, <a href="/docs/lifecycle">Lifecycle Hooks</a>, <a href="/docs/optimistic-ui">Optimistic UI</a>, and <a href="/docs/error-handling">Error Handling</a>.</p>
   `;
 }

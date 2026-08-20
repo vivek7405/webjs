@@ -57,49 +57,7 @@ form.addEventListener('webjs:submit-end', (e) =&gt; {
 });
 /* or purely in CSS, no JS: */
 /* form[aria-busy="true"] button[type="submit"] { opacity: .5; pointer-events: none; } */</code-block>
-    <p>Progressive enhancement is unaffected. With JS off the form is a normal POST. The events and <code>aria-busy</code> are a client-only enhancement.</p>
-
-    <h3>Optimistic mutations (<code>optimistic()</code>)</h3>
-    <p>WebJs ships two signatures for optimistic UI: a <strong>declarative</strong> React 19-style state wrapper (recommended for collections) and a <strong>legacy imperative</strong> signal-based helper (ideal for single-value toggles).</p>
-    <p><strong>Declarative:</strong> <code>optimistic(host, { source, update })</code> manages a queue of pending updates, computes the combined value through a reducer, and auto-releases when a passed promise settles.</p>
-    <code-block>import { WebComponent, prop, optimistic, html } from '@webjsdev/core';
-import { createTodo } from '#actions/create-todo.server.js';
-
-class TodoList extends WebComponent({ todos: prop(Array) }) {
-  constructor() {
-    super();
-    this.todos = [];
-    this.optTodos = optimistic(this, {
-      source: () => this.todos,
-      // Pure: the row is derived from the payload, nothing is minted here.
-      // The .value getter re-folds the queue on EVERY read, so a minted id
-      // would differ per render, and a hardcoded 'tmp' would collide across
-      // two concurrent adds. The temp id is minted once in the handler.
-      update: (state, add) => [...state, { id: add.tempId, title: add.title, pending: true }],
-    });
-  }
-  async handleSubmit(e) {
-    const title = e.target.querySelector('input').value;
-    const tempId = crypto.randomUUID();
-    const promise = createTodo({ title });
-    this.optTodos.add({ tempId, title }, promise);  // auto-releases on settle
-    const result = await promise;
-    if (result.success) this.todos = [...this.todos, result.data];
-  }
-  render() {
-    return html\`&lt;ul&gt;\${this.optTodos.value.map(t =>
-      html\`&lt;li class=\${t.pending ? 'opacity-50' : ''}&gt;\${t.title}&lt;/li&gt;\`)\}&lt;/ul&gt;\`;
-  }
-}</code-block>
-    <p><strong>Imperative:</strong> <code>optimistic(signal, value, action)</code> sets the signal to <code>value</code> immediately, runs <code>action()</code>, and rolls back on a thrown error or <code>{ success: false }</code> envelope.</p>
-    <code-block>import { signal, optimistic } from '@webjsdev/core';
-import { likePost } from '#actions/like-post.server.js';
-
-const liked = signal(false);
-const result = await optimistic(liked, true, () => likePost(postId));
-// liked flips to true instantly. Rolls back on throw or failure envelope.
-On success the optimistic value stays; reconcile from result if needed.</code-block>
-    <p>Both signatures are client-only, so a component importing <code>optimistic</code> is never elided as display-only. See <a href="/docs/data-fetching">Data Fetching</a> for the full reference.</p>
+    <p>Progressive enhancement is unaffected. With JS off the form is a normal POST. The events and <code>aria-busy</code> are a client-only enhancement. To skip the wait rather than style it, see <a href="/docs/optimistic-ui">Optimistic UI</a>.</p>
 
     <h2>Non-2xx HTML responses render in place</h2>
     <p>Any response with a <code>text/html</code> body is applied to the DOM regardless of status code. This makes the standard server-rendered validation pattern work end-to-end:</p>
