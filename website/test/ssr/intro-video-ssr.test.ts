@@ -31,10 +31,12 @@ test('the frame reveals itself with a plain onload attribute', async () => {
   assert.match(out, /onload="this\.classList\.remove\('invisible'\)"/);
 });
 
-test('a JS-off reader still gets the player', async () => {
+test('a JS-off reader gets no embed at all', async () => {
   const out = await render();
-  // Without JS the load handler never runs, so the frame needs the rule that
-  // overrides the hidden class. It must live in noscript, which a browser
-  // with scripting on parses as inert raw text.
-  assert.match(out, /<noscript><style>\.intro-video-frame \{ visibility: visible \}<\/style><\/noscript>/);
+  // Without JS the load handler never runs AND YouTube's player cannot run
+  // inside the frame either, so revealing it would show their own noscript
+  // error rather than a video. Hide the whole section instead. The rule must
+  // live in noscript, which a browser with scripting on parses as inert text.
+  assert.match(out, /<noscript><style>\.intro-video \{ display: none \}<\/style><\/noscript>/);
+  assert.match(out, /<section class="intro-video /, 'the rule needs its hook on the section');
 });

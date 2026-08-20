@@ -470,7 +470,7 @@ export default function LandingPage() {
       </div>
     </section>
 
-    <section class="pb-16">
+    <section class="intro-video pb-16">
       <div class="max-w-3xl mx-auto px-6">
         <!-- The frame is hidden until it fires load, over a black box.
              A cross-origin iframe paints its OWN canvas, and YouTube's embed
@@ -495,11 +495,18 @@ export default function LandingPage() {
             allowfullscreen
           ></iframe>
         </div>
-        <!-- With JS off that load handler never runs, so the frame would stay
-             hidden forever. This page never hydrates, so a browser with
-             scripting ON parses the noscript body as raw TEXT and the rule is
-             inert; with scripting off it applies and the player shows. -->
-        <noscript><style>.intro-video-frame { visibility: visible }</style></noscript>
+        <!-- With JS off the whole section goes away. Revealing the frame
+             instead would show YouTube's own noscript error ("An error
+             occurred. Unable to execute JavaScript."), because their player
+             needs JS INSIDE the frame and nothing this page does can supply
+             it. An empty space reads better than a broken player.
+
+             The rule still applies from in here: a style element takes effect
+             wherever it sits, including inside the subtree it hides. And it
+             is safe in a PAGE, which never hydrates, so the client never
+             rebuilds this noscript body as live nodes. The same construct
+             inside a COMPONENT would apply on every JS-enabled visit. -->
+        <noscript><style>.intro-video { display: none }</style></noscript>
       </div>
     </section>
 
