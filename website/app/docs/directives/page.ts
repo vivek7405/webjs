@@ -34,6 +34,7 @@ import {
     <p>Dirty-checks against the live DOM value instead of the last rendered value. Solves the input desync problem where the user types between renders.</p>
     <code-block>html\`&lt;input .value=\${live(this.query.get())}
        @input=\${(e) =&gt; this.query.set(e.target.value)}&gt;\`;</code-block>
+    <p>Client-only behaviour. The server renders one shot, so there is no prior value to dirty-check against and <code>live()</code> is fully transparent there, resolving to the value it wraps in every hole position (a child, a plain attribute, a <code>?bool</code>, a <code>.prop</code>). A falsy boolean stays absent, so <code>?open=\${live(false)}</code> serves the same bytes as <code>?open=\${false}</code>.</p>
 
     <h2>keyed(key, template)</h2>
     <p>Wrap a template with a key. When the key changes between renders, the renderer discards the prior DOM and creates fresh. Useful for forcing a remount when the logical identity of the rendered content changes.</p>

@@ -382,6 +382,14 @@ Import from `@webjsdev/core/directives`. Everything a `class`/`style`/conditiona
 | `asyncAppend(iter)` / `asyncReplace(iter)` | Stream from an async iterable, appending each value or replacing with the latest. |
 | `templateContent(el)` | Render the content of a `<template>` element. |
 
+Every directive here is CLIENT behaviour. At SSR the server renders one shot, so
+`guard` always invokes its function, `watch` reads its signal once and inlines
+the value, and `live` is fully transparent, resolving to the value it wraps in
+every hole position (a child, a plain attribute, a `?bool`, a `.prop`). So
+`?open=${live(false)}` omits its attribute exactly as `?open=${false}` does. It
+was previously resolved only in a child hole, which served `open=""` and let
+hydration close the element a moment later (#1443).
+
 ## Display-only elision
 
 A component that does no client-side work renders the same SSR'd HTML with or without its JS, so WebJs strips its import from the served source (and any vendor reachable only through it). This is automatic and conservative. A component stays elidable while it has NONE of:

@@ -384,6 +384,18 @@ export async function renderTemplate(tr, ctx) {
       if (val && typeof /** @type any */ (val).then === 'function') {
         val = await val;
       }
+      // Unwrap live() once, here, before the position dispatch, exactly where
+      // the client's applyPart() unwraps it (render-client/parts.js). The
+      // directive's only job is to dirty-check against the LIVE DOM value, a
+      // client-only concern, so on the server it is transparent and every
+      // position must see the inner value. Doing it per-position instead let
+      // the two renderers drift: the wrapper is truthy, so a `?bool=${live(v)}`
+      // emitted its attribute whatever v was, and `attr=${live(v)}` stringified
+      // to `[object Object]` (#1443). render() / streamRender() keep their own
+      // isLive branch below for a live() nested inside an array child, which
+      // this hole-level unwrap never sees. AFTER the await: a hole may hold a
+      // promise that resolves TO a live().
+      if (isLive(val)) val = /** @type any */ (val).value;
       if (state === 'comment') {
         // Holes inside <!-- comments --> are emitted raw (no escaping; comments
         // are inert and not rendered by browsers).
@@ -823,6 +835,9 @@ export async function streamTemplate(tr, ctx, controller) {
       if (val && typeof /** @type any */ (val).then === 'function') {
         val = await val;
       }
+      // Same unwrap as the buffered machine above (#1443). The two machines
+      // must emit identical bytes, so this is not optional here.
+      if (isLive(val)) val = /** @type any */ (val).value;
       if (state === 'comment') {
         buf += String(val ?? '');
         commentDashes = 0;
