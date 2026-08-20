@@ -116,6 +116,50 @@ test('blocks the REMOVE verbs, which delete from the owning checkout', () => {
   } finally { rmSync(root, { recursive: true, force: true }); }
 });
 
+test('judges a COMMAND, never a token that merely appears in the line', () => {
+  // This is the whole design of the matcher. An earlier version matched the
+  // manager token anywhere, which blocked this PR's own commit subject. Every
+  // worktree here is a linked worktree, so that fires on ordinary commands
+  // constantly, and a gate that cries wolf is a gate someone turns off.
+  const { root, worktree } = makeLinkedPair();
+  try {
+    for (const cmd of [
+      'git commit -m "fix: npm install in a linked worktree corrupts node_modules"',
+      'gh pr create --title "fix: npm install in a linked worktree" --body x',
+      'grep -rn "npm ci" AGENTS.md',
+      'git log --grep "npm install"',
+      'echo "the hook blocks npm rm x too"',
+      'rg "bun add" .',
+      'cat README | grep yarn',
+    ]) {
+      assert.equal(runHook(cmd, worktree).status, 0, `expected allow for \`${cmd}\``);
+    }
+  } finally { rmSync(root, { recursive: true, force: true }); }
+});
+
+test('never blocks a GLOBAL install, which writes to the npm prefix not the link', () => {
+  // `npm update -g webjsdev` is this repo's documented post-release step, and a
+  // linked worktree is the mandated working state, so blocking it would refuse a
+  // workflow the repo requires over a corruption that cannot occur.
+  const { root, worktree } = makeLinkedPair();
+  try {
+    for (const cmd of ['npm update -g webjsdev', 'npm uninstall -g webjsdev', 'bun add -g webjsdev', 'npm i --global webjsdev']) {
+      assert.equal(runHook(cmd, worktree).status, 0, `expected allow for \`${cmd}\``);
+    }
+    // ...but the same verb WITHOUT -g still blocks, so the carve-out is narrow.
+    assert.equal(runHook('npm update webjsdev', worktree).status, 2);
+  } finally { rmSync(root, { recursive: true, force: true }); }
+});
+
+test('still sees the install through env assignments and benign wrappers', () => {
+  const { root, worktree } = makeLinkedPair();
+  try {
+    for (const cmd of ['WEBJS_X=1 npm ci', 'sudo npm ci', 'time npm install', 'FOO=a BAR=b bun install']) {
+      assert.equal(runHook(cmd, worktree).status, 2, `expected block for \`${cmd}\``);
+    }
+  } finally { rmSync(root, { recursive: true, force: true }); }
+});
+
 test('bare `yarn` blocks only in COMMAND position, never as a trailing word', () => {
   // The bare-yarn branch first lived inside the generic VERBS pattern, whose
   // prefix any space satisfies, so it matched the token ANYWHERE and blocked

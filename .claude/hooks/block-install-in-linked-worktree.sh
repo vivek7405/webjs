@@ -15,6 +15,16 @@
 # manager starts. `scripts/warn-worktree-install.mjs` covers every other tool by
 # reporting rather than blocking.
 #
+# ## It matches a COMMAND, never a token
+#
+# The command is split on `&&`, `||`, `;`, `|`, `(` and `)`, and each segment is
+# judged only by what it STARTS with. Matching the manager token anywhere in the
+# line instead is the obvious shortcut and it is badly wrong: it blocks
+# `git commit -m "fix: npm install ..."`, `grep -rn "npm ci" AGENTS.md` and
+# `git log --grep "npm install"`. Every worktree here is a linked worktree, so
+# that fires on ordinary commands constantly, and a gate that cries wolf is a
+# gate someone turns off.
+#
 # The predicate runs against the COMMAND's target directory, not just the session
 # cwd: the harness resets cwd to the primary checkout between commands, so a real
 # install in a worktree arrives as `cd /path/to/worktree && npm ci`.
@@ -29,109 +39,105 @@ input=$(cat)
 cmd=$(printf '%s' "$input" | jq -r '.tool_input.command // empty' 2>/dev/null || true)
 if [ -z "$cmd" ]; then exit 0; fi
 
-# Install verbs only. `npm run test`, `npm test`, `npm exec`, `npm ls`, and every
-# `npx ...` must pass, so the verb is matched at a word boundary on both sides.
 # Every manager's documented install ALIASES, not just its canonical spelling.
 # The gate is worthless if `bun i` walks past it, and Bun is the manager that
-# writes THROUGH the symlink into the primary rather than replacing it, so its
-# aliases are the consequential ones. npm's list is long because npm ships a
-# large alias table of its own (`npm help install`), typo aliases included.
+# writes THROUGH the symlink into the primary rather than replacing it.
 #
-# HYPHENATED verbs must be spelled out. The trailing word boundary excludes `-`,
-# so `install-test` is NOT reached by listing `install`; each hyphenated command
-# needs its own entry, and the short aliases (`it`, `cit`, `sit`) do not cover
-# the long spellings.
+# HYPHENATED verbs are spelled out: the trailing word boundary excludes `-`, so
+# `install-test` is NOT reached by listing `install`, and the short aliases
+# (`it`, `cit`, `sit`) do not cover the long spellings.
 #
-# The REMOVE verbs are here too. `npm rm <pkg>` in a linked worktree deletes
-# from the checkout that owns the tree, the same corruption in the other
-# direction.
-#
-# Word boundaries on BOTH sides keep this narrow: `npm init` does not match `in`
-# or `i`, because the next character is alphanumeric, and `npm run install-deps`
-# does not match because `run` is not a verb here.
+# The REMOVE verbs are here too. `npm rm <pkg>` in a linked worktree deletes from
+# the checkout that owns the tree, the same corruption in the other direction.
 NPM_VERBS='install-ci-test|clean-install-test|install-clean|clean-install|install-test|install|isntall|isntal|isnta|isnt|instal|insta|inst|ins|in|i|add|ci|cit|sit|it|ic|update|upgrade|udpate|up|dedupe|ddp|uninstall|unlink|un|remove|rm|r'
 BUN_VERBS='install|i|add|a|update|up|remove|rm'
 PNPM_VERBS='install|i|add|update|upgrade|up|dedupe|remove|rm|uninstall|un'
 YARN_VERBS='install|add|upgrade|up|dedupe|remove'
-# `npm --prefix <dir> install`, flags BEFORE the verb. Only the two flags that
+# `npm --prefix <dir> install` puts flags BEFORE the verb. Only the two flags that
 # themselves name a target directory are admitted, so this stays targeted rather
 # than swallowing a token run and matching `npm run install`.
-VERBS="(npm[[:space:]]+(${NPM_VERBS})|bun[[:space:]]+(${BUN_VERBS})|pnpm[[:space:]]+(${PNPM_VERBS})|yarn[[:space:]]+(${YARN_VERBS})|(npm|pnpm|yarn)[[:space:]]+(--prefix|-C)[[:space:]=]+[^[:space:]&|;]+[[:space:]]+(${NPM_VERBS}))"
+SEG_VERBS="^(npm[[:space:]]+(${NPM_VERBS})|bun[[:space:]]+(${BUN_VERBS})|pnpm[[:space:]]+(${PNPM_VERBS})|yarn[[:space:]]+(${YARN_VERBS})|(npm|pnpm|yarn)[[:space:]]+(--prefix|-C)[[:space:]=]+[^[:space:]]+[[:space:]]+(${NPM_VERBS}))([^[:alnum:]_-]|\$)"
+# Bare `yarn` IS an install in yarn classic, but only when it is the whole
+# command: `yarn test` is not one.
+SEG_BARE_YARN='^yarn([[:space:]]+-[^[:space:]]*)*[[:space:]]*$'
+# A GLOBAL install writes to the npm prefix, never through the local link, and
+# `npm update -g webjsdev` is this repo's documented post-release step.
+GLOBAL='(^|[[:space:]])(-g|--global)([[:space:]]|$)'
 
-# Bare `yarn` IS an install in yarn classic, and it needs its own anchored
-# pattern rather than a branch of VERBS. VERBS is wrapped in a generic
-# non-word-character prefix, which any space satisfies, so a bare-yarn branch
-# inside it matched the token ANYWHERE in the command: `which yarn`,
-# `rm -rf /tmp/yarn` and `git switch -c feat/yarn` all blocked. Here `yarn` must
-# sit in COMMAND position, at the start or straight after a `&&`, `||`, `;` or
-# `|`, and be followed only by flags.
-BARE_YARN='(^|[&|;])[[:space:]]*yarn([[:space:]]+-[^[:space:]]*)*[[:space:]]*($|[&|;])'
-
-if ! printf '%s' "$cmd" | grep -Eq "(^|[^[:alnum:]_-])${VERBS}([^[:alnum:]_-]|\$)" \
-  && ! printf '%s' "$cmd" | grep -Eq "$BARE_YARN"; then
-  exit 0
-fi
-
-# Candidate target directories. An install acts on ONE directory, so the session
-# cwd counts only until the command changes out of it: `cd /tmp && npm install`
-# targets /tmp, not the worktree this shell happens to sit in. So walk the `cd`
-# tokens that appear BEFORE the install verb and let them supersede the cwd, then
-# add any directory a package manager is pointed at explicitly.
-prefix=$(printf '%s' "$cmd" | sed -E "s/(^|[^[:alnum:]_-])${VERBS}([^[:alnum:]_-]|\$).*//")
-prefix=$(printf '%s' "$prefix" | sed -E "s/${BARE_YARN}.*//")
-
+# Walk the segments in order so a `cd` earlier in the line moves the target the
+# way the shell would.
 eff="$PWD"
-resolve_against_eff() {
-  local d="$1"
-  case "$d" in
-    /*) printf '%s' "$d" ;;
-    ~*) printf '%s' '' ;;
-    *) printf '%s' "$eff/$d" ;;
-  esac
-}
-while IFS= read -r d; do
-  [ -n "$d" ] || continue
-  d=$(printf '%s' "$d" | tr -d "\"'")
-  r=$(resolve_against_eff "$d")
-  [ -n "$r" ] && eff="$r"
-done < <(printf '%s\n' "$prefix" \
-  | grep -oE '(^|[^[:alnum:]_./-])cd[[:space:]]+[^[:space:]&|;]+' \
-  | sed -E 's/.*cd[[:space:]]+//')
+target=""
+while IFS= read -r seg; do
+  seg="${seg#"${seg%%[![:space:]]*}"}"
+  [ -z "$seg" ] && continue
 
-cands=("$eff")
-while IFS= read -r d; do
-  [ -n "$d" ] || continue
-  d=$(printf '%s' "$d" | tr -d "\"'")
-  r=$(resolve_against_eff "$d")
-  [ -n "$r" ] && cands+=("$r")
-done < <(printf '%s\n' "$cmd" \
-  | grep -oE '(^|[[:space:]])(-C|--prefix)[[:space:]=]+[^[:space:]&|;]+' \
-  | sed -E 's/.*(-C|--prefix)[[:space:]=]+//')
-
-for cand in "${cands[@]}"; do
-  [ -d "$cand" ] || continue
-  # The install lands at the package root, which for a subdirectory is the
-  # enclosing checkout, so judge the git toplevel too.
-  top=$(git -C "$cand" rev-parse --show-toplevel 2>/dev/null || true)
-  for dir in "$cand" "$top"; do
-    [ -n "$dir" ] || continue
-    [ -L "$dir/node_modules" ] || continue
-    target=$(cd "$(dirname "$dir/node_modules")" 2>/dev/null && readlink "node_modules" || true)
-    owner=$(cd "$dir" 2>/dev/null && cd "$(readlink node_modules)" 2>/dev/null && pwd -P || printf '%s' "${target:-the primary checkout}")
-    {
-      echo "BLOCKED: this command installs into $dir, whose node_modules is a SYMLINK at $owner."
-      echo "An install through that link damages the checkout that OWNS the tree, not this one:"
-      echo "  npm ci       DELETES $owner outright, before any lifecycle script can run"
-      echo "  bun install  writes packages and .bin entries straight into $owner"
-      echo "  npm install  silently REPLACES the link with a real tree, detaching this worktree"
-      echo "Safe alternatives:"
-      echo "  npm run worktree:link          links a fresh worktree; it never installs"
-      echo "  a real install with NO symlink in the way. Run \`rm node_modules\` first (it is"
-      echo "  only a link, nothing else is lost), or install in the PRIMARY checkout."
-      echo "Escape hatch for a deliberate exception: WEBJS_NO_WORKTREE_INSTALL_GATE=1."
-    } >&2
-    exit 2
+  # Strip leading env assignments and benign wrappers, so `FOO=1 npm ci` and
+  # `sudo npm ci` are still judged on the manager that follows them.
+  while :; do
+    case "$seg" in
+      [A-Za-z_]*=*)
+        rest="${seg#* }"; [ "$rest" = "$seg" ] && break
+        seg="${rest#"${rest%%[![:space:]]*}"}" ;;
+      sudo\ *|env\ *|time\ *|nice\ *)
+        rest="${seg#* }"
+        seg="${rest#"${rest%%[![:space:]]*}"}" ;;
+      *) break ;;
+    esac
   done
+
+  case "$seg" in
+    cd|cd\ *)
+      d="${seg#cd}"; d="${d#"${d%%[![:space:]]*}"}"; d="${d%% *}"
+      d=$(printf '%s' "$d" | tr -d "\"'")
+      case "$d" in
+        '') ;;
+        /*) eff="$d" ;;
+        '~'*) ;;
+        *) eff="$eff/$d" ;;
+      esac
+      continue ;;
+  esac
+
+  if printf '%s' "$seg" | grep -Eq "$SEG_VERBS" || printf '%s' "$seg" | grep -Eq "$SEG_BARE_YARN"; then
+    printf '%s' "$seg" | grep -Eq "$GLOBAL" && continue
+    target="$eff"
+    # An explicit --prefix / -C on the install itself wins over the cwd.
+    p=$(printf '%s' "$seg" | grep -oE '(^|[[:space:]])(-C|--prefix)[[:space:]=]+[^[:space:]]+' | sed -E 's/.*(-C|--prefix)[[:space:]=]+//' | tr -d "\"'" | head -1)
+    if [ -n "$p" ]; then
+      case "$p" in /*) target="$p" ;; '~'*) ;; *) target="$eff/$p" ;; esac
+    fi
+    break
+  fi
+done <<EOF
+$(printf '%s' "$cmd" | tr '&|;()' '\n\n\n\n\n')
+EOF
+
+[ -n "$target" ] || exit 0
+[ -d "$target" ] || exit 0
+
+# The install lands at the package root, which for a subdirectory is the
+# enclosing checkout, so judge the git toplevel too.
+top=$(git -C "$target" rev-parse --show-toplevel 2>/dev/null || true)
+for dir in "$target" "$top"; do
+  [ -n "$dir" ] || continue
+  [ -L "$dir/node_modules" ] || continue
+  owner=$(cd "$dir" 2>/dev/null && cd "$(readlink node_modules)" 2>/dev/null && pwd -P) || owner="the checkout it points at"
+  {
+    echo "BLOCKED: this command installs into $dir, whose node_modules is a SYMLINK at $owner."
+    echo "An install through that link damages the checkout that OWNS the tree, not this one:"
+    echo "  npm ci       DELETES $owner outright, before any lifecycle script can run"
+    echo "  bun install  writes packages and .bin entries straight into $owner"
+    echo "  npm install  silently REPLACES the link with a real tree, detaching this worktree"
+    echo "A remove verb (npm rm, bun remove) deletes from that same owning checkout."
+    echo "Safe alternatives:"
+    echo "  npm run worktree:link          links a fresh worktree; it never installs"
+    echo "  a real install with NO symlink in the way. Run \`rm node_modules\` first (it is"
+    echo "  only a link, nothing else is lost), or install in the PRIMARY checkout."
+    echo "A GLOBAL install (-g) is not affected by this and is never blocked."
+    echo "Escape hatch for a deliberate exception: WEBJS_NO_WORKTREE_INSTALL_GATE=1."
+  } >&2
+  exit 2
 done
 
 exit 0
