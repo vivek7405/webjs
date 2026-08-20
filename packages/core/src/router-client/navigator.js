@@ -644,12 +644,21 @@ export async function performNavigation(href, isPopState, frameId, opts) {
     // which is exactly what the comment above that block already says it means.
     // So Back still goes to the previous page and the reader keeps their place.
     const outcome = await fetchAndApply(href, frameId, !isPopState && !refresh, optimisticState, 'GET', null, signal, myToken, /* revalidating */ false, refresh);
-    // The cache-miss re-assert described above. Guarded on still being the
-    // active navigation, so a superseded miss never scrolls the page that
-    // replaced it.
-    if (cacheMiss && outcome && outcome.applied
-      && myToken === currentNavigationToken && typeof window !== 'undefined') {
-      window.scrollTo({ left: 0, top: 0, behavior: 'instant' });
+    // The cache-miss re-assert described above, DEFERRED two frames rather
+    // than written synchronously. A synchronous write here only wins when the
+    // fetch was slower than the UA's replay, which is most fetches but not a
+    // PREFETCH HIT: a warmed entry resolves the whole fetch-and-apply inside
+    // the popstate task, the re-assert would land in that same task, and the
+    // UA's replay a frame later would overwrite it, exactly the ordering this
+    // exists to correct. Two frames is past the replay on every tested engine
+    // whichever path resolved the fetch. Guarded on still being the active
+    // navigation INSIDE the deferred callback, so a superseded miss never
+    // scrolls the page that replaced it.
+    if (cacheMiss && outcome && outcome.applied && typeof window !== 'undefined') {
+      afterTwoFrames(() => {
+        if (myToken !== currentNavigationToken || !enabled) return;
+        window.scrollTo({ left: 0, top: 0, behavior: 'instant' });
+      });
     }
     return outcome;
   } finally {
