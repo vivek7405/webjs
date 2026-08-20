@@ -2906,15 +2906,96 @@ test('onPopState: triggers a router navigation to location.href', async () => {
       { status: 200, headers: { 'content-type': 'text/html' } }
     );
   };
+  const prevPageUrl = _currentPageUrl();
+  // Set the tracker explicitly rather than inheriting whatever a previous test
+  // left behind. The fragment bow-out below reads it, so a test that asserts a
+  // navigation must say which page it is navigating away from.
+  _setCurrentPageUrl('http://localhost/before-pop');
   try {
     document.body.innerHTML = '<!--wj:children:/:/-->before<!--/wj:children:/-->';
     _onPopState({});
     await new Promise((r) => setTimeout(r, 10));
     assert.equal(fetched, 'http://localhost/popped');
   } finally {
+    _setCurrentPageUrl(prevPageUrl);
     globalThis.location = origLoc;
     globalThis.fetch = origFetch;
   }
+});
+
+/* ====================================================================
+ * onPopState: a fragment-only traversal is not a navigation (#1437)
+ *
+ * The DECISION is pure, so it belongs here. The observable half (no swap,
+ * live DOM survives, the viewport lands on the anchor) cannot be asserted
+ * in linkedom, which implements no layout, no scrolling and no history
+ * traversal, and lives in the browser layer at
+ * `packages/core/test/routing/browser/fragment-jump.test.js`.
+ * ==================================================================== */
+
+/**
+ * Drive one popstate against a stubbed location and report whether the router
+ * fetched. Mirrors the stubbing the popstate tests above use.
+ *
+ * @param {string} trackerUrl  What the router believes is the current page.
+ * @param {string} poppedUrl   Where the browser has already moved location to.
+ * @returns {Promise<{fetched: boolean, tracker: string | null}>}
+ */
+async function popTo(trackerUrl, poppedUrl) {
+  const origLoc = globalThis.location;
+  const origFetch = globalThis.fetch;
+  const prevPageUrl = _currentPageUrl();
+  const u = new URL(poppedUrl);
+  let fetched = false;
+  globalThis.location = /** @type {any} */ ({
+    href: u.href, pathname: u.pathname, origin: u.origin, search: u.search, hash: u.hash,
+  });
+  globalThis.fetch = async () => {
+    fetched = true;
+    return new Response(
+      '<!doctype html><html><body>' +
+      '<!--wj:children:/:/-->popped<!--/wj:children:/-->' +
+      '</body></html>',
+      { status: 200, headers: { 'content-type': 'text/html' } }
+    );
+  };
+  _setCurrentPageUrl(trackerUrl);
+  try {
+    document.body.innerHTML = '<!--wj:children:/:/-->before<!--/wj:children:/-->';
+    _onPopState({});
+    await new Promise((r) => setTimeout(r, 10));
+    return { fetched, tracker: _currentPageUrl() };
+  } finally {
+    _setCurrentPageUrl(prevPageUrl);
+    globalThis.location = origLoc;
+    globalThis.fetch = origFetch;
+  }
+}
+
+test('onPopState: a fragment-only popstate does not navigate (#1437)', async () => {
+  const { fetched } = await popTo('http://localhost/p', 'http://localhost/p#x');
+  assert.equal(fetched, false, 'a same-document fragment traversal must not re-fetch');
+});
+
+test('onPopState: a same-url popstate still navigates (#1437)', async () => {
+  // The narrowness proof. Two history entries can share a url exactly (a form
+  // POST re-rendering its own page at 422 pushes the url it is already on), and
+  // that is a real traversal the guard must leave alone.
+  const { fetched } = await popTo('http://localhost/p', 'http://localhost/p');
+  assert.equal(fetched, true, 'an identical-url popstate is still a navigation');
+});
+
+test('onPopState: an absorbed fragment traversal records the new url (#1437)', async () => {
+  // Regression test for the failure the first attempted patch actually showed:
+  // a bow-out that returns without recording leaves the tracker at the pre-jump
+  // url, so the REVERSE traversal compares two equal hrefs and re-navigates.
+  const { tracker } = await popTo('http://localhost/p', 'http://localhost/p#x');
+  assert.equal(tracker, 'http://localhost/p#x');
+});
+
+test('onPopState: the empty fragment is absorbed too (#1437)', async () => {
+  const { fetched } = await popTo('http://localhost/p', 'http://localhost/p#');
+  assert.equal(fetched, false, 'an empty fragment is still a fragment');
 });
 
 /* ====================================================================
@@ -3708,6 +3789,14 @@ test('eligibleAnchorHref: rejects a pure same-page hash jump', async () => {
   await withPrefetchEnv(() => {
     // location is /, so /#foo is a same-page hash and must not prefetch.
     assert.equal(_eligibleAnchorHref(mkAnchor('http://localhost/#foo')), null);
+    // The EMPTY fragment is a fragment too (#1437). It serializes with `hash`
+    // === '' exactly like a url carrying no fragment at all, so testing `hash`
+    // here missed it and the back-to-top idiom stayed prefetch-eligible.
+    assert.equal(_eligibleAnchorHref(mkAnchor('http://localhost/#')), null, 'bare #');
+    // And the pin for the other half: `href=""` resolves to the current url
+    // with the fragment REMOVED, which the spec reloads rather than jumping, so
+    // it is still a navigation and must stay eligible.
+    assert.equal(_eligibleAnchorHref(mkAnchor('http://localhost/')), 'http://localhost/', 'no fragment');
   });
 });
 

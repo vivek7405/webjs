@@ -213,8 +213,9 @@ function relTokens(anchor) {
 
 /**
  * Decide whether an anchor is a same-origin in-app target the router can
- * navigate, returning its absolute href or null. Shared by onClick and
- * the prefetch listeners so eligibility never drifts between them.
+ * navigate, returning its absolute href or null. Used by the prefetch
+ * listeners, and it MIRRORS the filtering `onClick` performs inline rather
+ * than being shared with it, so the two must be changed together.
  *
  * @param {Element | null} anchor
  * @returns {string | null}
@@ -229,8 +230,14 @@ export function eligibleAnchorHref(anchor) {
   let url;
   try { url = new URL(href); } catch { return null; }
   if (url.origin !== location.origin) return null;
-  // A pure same-page hash jump is not a navigation we fetch.
-  if (url.pathname === location.pathname && url.search === location.search && url.hash) return null;
+  // A pure same-page fragment jump is not a navigation we fetch. Tested by
+  // `href` rather than by `hash` for the reason spelled out at the matching
+  // line in `events.js` (a null and an empty fragment both read as `''`). These
+  // two lines must stay in lockstep: `onClick` keeps its own copy rather than
+  // calling this, so drift here means a link the click path ignores becomes
+  // prefetch-eligible. #1106 already refuses the current url in every
+  // dimension, so this is drift prevention, not a change in what is fetched.
+  if (url.pathname === location.pathname && url.search === location.search && url.href.includes('#')) return null;
   if (NON_HTML_EXTENSIONS.test(url.pathname)) return null;
   return href;
 }

@@ -51,6 +51,63 @@ let activeAbortController = null;
 let currentPageUrl = null;
 
 /**
+ * Absorb a popstate that is not a navigation, and report that it was one.
+ *
+ * A traversal whose URL differs from the page's current URL only by FRAGMENT is
+ * same-document by construction: the fragment is never sent to the server, so
+ * both entries resolve to the same response, and the browser has already
+ * performed the jump by the time this runs. Re-navigating it re-fetches the
+ * page and re-swaps the DOM, which destroys live node identity and hydrated
+ * state outside the anchor and undoes the jump the reader just asked for
+ * (#1437). Fires for an ordinary `<a href="#section">` click too, since the
+ * spec's "navigate to a fragment" ends by firing popstate.
+ *
+ * The comparison is pathname plus search EQUAL and `href` DIFFERENT, not
+ * `hash` different, for two separate reasons.
+ *
+ * `href` rather than `hash`, because the URL serializer collapses a NULL
+ * fragment and an EMPTY one to the same `''`, while `href` keeps the `#`. That
+ * is what makes `href="#"` (a real fragment navigation, to the document
+ * element) readable here. Turbo's `getAnchor` falls back to the same
+ * `href.match(/#(.*)$/)` for the same reason.
+ *
+ * DIFFERENT rather than merely same-path, because two history entries can share
+ * a pathname and a search and still be distinct: `fetchAndApply` pushes
+ * whatever url the response settled on, including the one the page is already
+ * on, which is what a form POST re-rendering its own page at 422 produces.
+ * Requiring the hrefs to differ leaves every such popstate on the normal path,
+ * so this can only ever absorb a traversal that provably needs no fetch.
+ *
+ * It RECORDS as well as deciding, and that is load-bearing rather than tidy.
+ * `currentPageUrl` is otherwise written only in the `finally` of a completed
+ * navigation, so a bow-out that did not record would leave the tracker at the
+ * pre-jump url and the REVERSE traversal would then compare two equal hrefs and
+ * re-navigate after all (measured). Turbo's `historyPoppedWithEmptyState` also
+ * records the new location and navigates nothing.
+ *
+ * @param {string} href  The destination, i.e. `location.href` at popstate time.
+ * @returns {boolean} True when the popstate was absorbed and the caller must do
+ *   nothing further.
+ */
+export function recordFragmentTraversal(href) {
+  if (!currentPageUrl) return false;
+  /** @type {URL} */ let prev;
+  /** @type {URL} */ let next;
+  try {
+    prev = new URL(currentPageUrl);
+    next = new URL(href, location.href);
+  } catch {
+    return false;
+  }
+  // Both sides are serializations of this document's own `location.href`, so
+  // the origin cannot differ and is not compared.
+  if (prev.pathname !== next.pathname || prev.search !== next.search) return false;
+  if (prev.href === next.href) return false;
+  currentPageUrl = next.href;
+  return true;
+}
+
+/**
  * The app's own `history.scrollRestoration`, captured at enable so
  * `disableClientRouter()` can put it back.
  *

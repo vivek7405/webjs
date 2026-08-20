@@ -12,7 +12,7 @@ import { enabled } from './state.js';
 import { warnIfActionSubmissionCannotDeliver } from './diagnostics.js';
 import { buildSubmitFormData, encodeSubmitBody, getSubmitAction, getSubmitEnctype, getSubmitMethod } from './form-encoder.js';
 import { resolveTargetFrameId } from './frames.js';
-import { performNavigation, performSubmission } from './navigator.js';
+import { performNavigation, performSubmission, recordFragmentTraversal } from './navigator.js';
 
 /** @param {MouseEvent} e */
 export function onClick(e) {
@@ -31,7 +31,15 @@ export function onClick(e) {
 
   const url = new URL(href);
   if (url.origin !== location.origin) return;
-  if (url.pathname === location.pathname && url.search === location.search && url.hash) return;
+  // `href.includes('#')` rather than `url.hash`, because the URL serializer
+  // reports BOTH a null fragment and an empty one as `''`, and only the second
+  // is a fragment navigation. `href="#"` keeps its `#` in `href` and per the
+  // spec navigates to the document element (the back-to-top idiom), while
+  // `href=""` resolves to the current url with the fragment REMOVED, which the
+  // spec reloads rather than jumping, so it must stay a router navigation. A
+  // `#` cannot appear anywhere else in a serialized url: the parser encodes it
+  // in the path and starts the fragment at it in the query (#1437).
+  if (url.pathname === location.pathname && url.search === location.search && url.href.includes('#')) return;
   if (NON_HTML_EXTENSIONS.test(url.pathname)) return;
 
   e.preventDefault();
@@ -45,6 +53,12 @@ export function onClick(e) {
 
 /** @param {PopStateEvent} _e */
 export function onPopState(_e) {
+  // A traversal that differs only by fragment is not a navigation: same
+  // document, same server response, and the browser has already jumped. Absorb
+  // it (which also records the new url) rather than re-fetching and re-swapping
+  // the page out from under the reader (#1437). This is the popstate sibling of
+  // the same-page bow-out on the click path above.
+  if (recordFragmentTraversal(location.href)) return;
   // popstate has no DOM anchor, so no frame context: restore via cache or
   // refetch the whole document.
   performNavigation(location.href, true, null);
