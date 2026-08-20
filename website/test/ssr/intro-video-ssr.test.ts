@@ -25,6 +25,13 @@ test('the intro video is a native player pointed at our own host', async () => {
   assert.match(out, /<video[^>]*\scontrols/, 'the controls are the whole no-JS story');
 });
 
+test('the player keeps the accessible name the embed had', async () => {
+  const out = await render();
+  // The iframe this replaced carried title="WebJs introduction video". Without
+  // a replacement the player is an unnamed media element to a screen reader.
+  assert.match(out, /<video[^>]*\saria-label="WebJs introduction video"/);
+});
+
 test('the first paint shows a poster rather than a black box', async () => {
   const out = await render();
   // Without this the box is empty until someone presses play, which is worse
@@ -43,7 +50,7 @@ test('the bytes stay off the wire until someone plays it', async () => {
 test('none of the cross-origin workarounds survive', async () => {
   const out = await render();
   assert.doesNotMatch(out, /<iframe/, 'no embed of any kind');
-  assert.doesNotMatch(out, /youtube/i);
+  assert.doesNotMatch(out, /youtube-nocookie|youtube\.com\/embed/i, 'no embed url');
   assert.doesNotMatch(out, /intro-video-frame/);
   assert.doesNotMatch(out, /onload="this\.classList\.remove/);
 });

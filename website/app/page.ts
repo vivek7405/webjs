@@ -302,8 +302,10 @@ const INTRO_VIDEO = html`
         <!-- preload="metadata" keeps the file off the wire until someone
              presses play, so a page view costs the poster plus a metadata
              range request. playsinline stops iOS Safari taking the video
-             fullscreen, and the intrinsic width and height let the box hold
-             its shape before any metadata arrives. The src is absolute and
+             fullscreen. The width and height state the intrinsic size, which
+             this layout does not lean on (the wrapper is aspect-video and the
+             element is w-full h-full, so CSS fixes the ratio), but which keeps
+             the shape right if the stylesheet ever fails. The src is absolute and
              cross-origin, so it must not be wrapped in asset(), which resolves
              a public/ path and would mangle it. -->
         <div class="aspect-video overflow-hidden border border-border-strong shadow-[var(--shadow)] bg-black">
@@ -311,6 +313,7 @@ const INTRO_VIDEO = html`
             class="intro-video-player w-full h-full"
             src="https://videos.webjs.dev/intro.mp4"
             poster="https://videos.webjs.dev/intro-thumbnail.webp"
+            aria-label="WebJs introduction video"
             width="1920"
             height="1080"
             preload="metadata"
