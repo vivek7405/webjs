@@ -5151,10 +5151,14 @@ test('applySwap: a DISCARDED background revalidation never ingests its seeds (#1
 /* --------------------------------------------------------------------------
  * #1406: the history entry is recorded AT THE COMMIT, before the DOM mutation.
  *
- * WebKit binds a same-document `pushState` entry's back-forward gesture
- * snapshot to the page state at the moment the entry is recorded, so an entry
- * recorded after the swap describes the destination document rather than the
- * page it belongs to, and the iOS edge back-swipe previews it blank.
+ * An entry recorded after the swap describes the destination document rather
+ * than the page it belongs to, so the push is ordered ahead of the mutation.
+ *
+ * #1406 introduced that ordering as the fix for the blank iOS back-swipe
+ * preview, on the theory that WebKit binds the gesture snapshot when the entry
+ * is recorded. That theory is false (#1428): Turbo Drive has the same ordering
+ * and previews blank identically, and the preview was fixed by leaving
+ * `history.scrollRestoration` alone. The ordering stands on its own merits.
  *
  * The push therefore rides into `applySwap` as a commit-time callback. These
  * pin the three halves of that contract: it fires before the mutation on a
