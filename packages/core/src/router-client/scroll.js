@@ -97,12 +97,20 @@ export function suppressScrollAnchoring(targetX, targetY) {
   // exists to reconcile is one event, the UA's replay of its own recorded
   // offset, which lands about a frame after the popstate handler. Left armed
   // for the window's life (the revalidation settle, or up to the 2s ceiling)
-  // it would also revert LEGITIMATE programmatic scrolls landing in that span:
-  // a component calling `scrollIntoView()` from `connectedCallback` as the
-  // restored page upgrades, an autofocus on a below-fold control, or
-  // find-in-page driven from the browser chrome, which fires no page `keydown`
-  // and so does not close the window the way a real key press would. Those are
-  // not the restore's to overrule.
+  // it would spend seconds reverting any programmatic scroll, and the longer it
+  // stands the more it claims. 250ms bounds that.
+  //
+  // It does NOT make the write-back harmless, and the honest statement is that
+  // a programmatic scroll inside the arming span still loses to the restore. A
+  // component calling `scrollIntoView()` from `connectedCallback` as the
+  // restored page upgrades, or an autofocus on a below-fold control, runs a
+  // microtask or a frame after the swap, which is INSIDE 250ms, so it is
+  // reverted. That is the deliberate precedence on a Back: the reader asked for
+  // the page they left, not for wherever a component jumped while rehydrating.
+  // What the bound buys is that a scroll a second later, which has nothing to
+  // do with the restore, is left alone; find-in-page from the browser chrome is
+  // the case that matters there, since it fires no page `keydown` and so does
+  // not close the window the way a real key press would.
   //
   // Bounded by TIME rather than by a correction count. A count is the obvious
   // bound and it is wrong: a single-shot can be spent on an unrelated scroll
@@ -181,9 +189,15 @@ export let releaseHeightReservation = null;
  * @returns {() => void} Idempotent release.
  */
 export function reserveRestoredHeight(px) {
-  if (typeof document === 'undefined' || !document.documentElement || !(px > 0)) return () => {};
-  // A second reservation supersedes the first.
+  if (typeof document === 'undefined' || !document.documentElement) return () => {};
+  // A second reservation supersedes the first, and does so BEFORE the height
+  // guard below. Ordering it after would let a restore with no recorded height
+  // (a legacy string snapshot, `scrollHeight: 0`) return early while the
+  // PREVIOUS page's min-height stayed pinned to the root until the ceiling.
+  // Superseding first means every restore clears its predecessor, whether or
+  // not it has a height of its own to hold.
   if (releaseHeightReservation) releaseHeightReservation();
+  if (!(px > 0)) return () => {};
   const root = document.documentElement;
   const prev = root.style.getPropertyValue('min-height');
   root.style.setProperty('min-height', px + 'px');

@@ -3252,33 +3252,34 @@ test('addNewHeadElements: skips incoming importmap (importmap-mismatch reload ha
  * popstate fires).
  * ==================================================================== */
 
-test('the router leaves history.scrollRestoration alone, in both directions (#1428)', () => {
-  // Under 'auto' the browser records a scroll position per history entry, and
-  // WebKit composes the back-swipe gesture preview from that recorded state.
-  // The router used to take 'manual' here (the Turbo Drive pattern), which
-  // stopped the recording and blanked the preview on every scrolled page,
-  // measured on-device in #1428. UA interference with the router's own restore
-  // is settled by the restore window writing back an off-target programmatic
-  // displacement instead, so this module must never write the history-wide
-  // attribute again: not on enable, and nothing to put back on disable.
+test('the router forces scrollRestoration to auto, and puts the app value back (#1428)', () => {
+  // The restore is the BROWSER's now, so 'auto' is load-bearing: under 'manual'
+  // the UA records no per-entry offset, which is both no Back restore at all
+  // and the blank iOS gesture preview this issue is about.
+  //
+  // Seeded with 'manual', NOT 'auto'. Seeded with the value the router writes,
+  // this assertion passes whether the router writes it or writes nothing, which
+  // is how the first version of this test managed to be green with the
+  // deliberate write deleted.
   const origHistory = globalThis.history;
   /** @type {any} */
-  const mockHistory = { scrollRestoration: 'auto', pushState: () => {}, replaceState: () => {} };
+  const mockHistory = { scrollRestoration: 'manual', pushState: () => {}, replaceState: () => {} };
   globalThis.history = mockHistory;
   try {
     disableClientRouter();
     enableClientRouter();
     assert.equal(mockHistory.scrollRestoration, 'auto',
-      'enable must not take manual control: that is what blanked the iOS back-swipe preview');
+      'enable overrides an app that had taken manual control, or the browser '
+      + 'records nothing and Back does not restore at all');
     disableClientRouter();
-    assert.equal(mockHistory.scrollRestoration, 'auto',
-      'disable has nothing to restore and must not write either');
+    assert.equal(mockHistory.scrollRestoration, 'manual',
+      'disable puts the app\'s own value back: the write is an override, and '
+      + 'the documented opt-out must not strand an app on a mode it never chose');
   } finally {
     globalThis.history = origHistory;
     enableClientRouter();
   }
 });
-
 test('currentPageUrl: tracker exists and can be read/written via test helpers', () => {
   const prev = _currentPageUrl();
   _setCurrentPageUrl('http://localhost/sentinel');

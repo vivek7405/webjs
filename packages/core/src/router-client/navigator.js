@@ -50,6 +50,18 @@ let activeAbortController = null;
  */
 let currentPageUrl = null;
 
+/**
+ * The app's own `history.scrollRestoration`, captured at enable so
+ * `disableClientRouter()` can put it back.
+ *
+ * The router writes 'auto' because the restore is the BROWSER's now (#1428)
+ * and 'manual' would mean no restore at all. That write is an override, so it
+ * owes the app its value back when the router steps aside.
+ *
+ * @type {ScrollRestoration | null}
+ */
+let prevScrollRestoration = null;
+
 /** Enable the client router. Idempotent. */
 export function enableClientRouter() {
   if (enabled || typeof document === 'undefined') return;
@@ -114,7 +126,14 @@ export function enableClientRouter() {
   // Per-entry, not global, per the HTML spec: this sets the mode on the
   // current entry, and an entry created by a later `pushState` inherits it,
   // which is exactly the reach the router needs.
+  //
+  // Saved and put back on `disableClientRouter()`, the same contract the
+  // anchoring window and the height reservation keep for the inline styles
+  // they touch. Without it the documented runtime opt-out would silently
+  // strand an app that had its own restoration on 'manual', leaving it
+  // double-restoring with no way to detect why.
   if (typeof history !== 'undefined' && 'scrollRestoration' in history) {
+    prevScrollRestoration = history.scrollRestoration;
     history.scrollRestoration = 'auto';
   }
   // Seed the "current page" tracker so the first navigation can
@@ -142,6 +161,11 @@ export function disableClientRouter() {
   clearPrefetchHover();
   clearPrefetchViewTimers();
   teardownPrefetchViewObserver();
+  // Give the app back the scroll-restoration mode the router overrode.
+  if (typeof history !== 'undefined' && prevScrollRestoration !== null) {
+    history.scrollRestoration = prevScrollRestoration;
+    prevScrollRestoration = null;
+  }
   // Never leave a restore window open on <html>, nor a height reservation
   // held on it, after the router is gone (#1310 / #1428).
   bumpRestoreGeneration();
@@ -431,8 +455,8 @@ export async function performNavigation(href, isPopState, frameId, opts) {
   // would run the whole growth under the previous restore's suppression and
   // freeze its clamp, and a forward nav would carry it onto a different page
   // entirely. Reopening for this navigation, if it earns one, happens below.
-  // The clamped path's catch-up is cancelled for the same reason: it chases an
-  // offset recorded for the page being navigated away from.
+  // The height reservation is released for the same reason: it holds a height
+  // recorded for the page being navigated away from.
   //
   // A FRAME-targeted nav is excluded, for the same reason `loadFrame` is: it
   // swaps one region and leaves the page, and so the restored scroll offset,
@@ -441,8 +465,8 @@ export async function performNavigation(href, isPopState, frameId, opts) {
   // the split this rule exists to avoid.
   //
   // All THREE move together. Exempting only the counter while still closing
-  // the window and aborting the catch-up would leave the split exactly where
-  // it was, one line further down: a form inside a frame, submitted by a
+  // the window and releasing the reservation would leave the split exactly
+  // where it was, one line further down: a form inside a frame, submitted by a
   // component upgrading in the just-restored page, would hand anchoring back
   // mid-restore and bring the whole double-count back.
   if (!frameId) {
@@ -482,6 +506,11 @@ export async function performNavigation(href, isPopState, frameId, opts) {
   // equivalents for the same reason.
   let optimisticState = null;
   if (!isPopState && !refresh) optimisticState = applyOptimisticLoading();
+  // Set when a popstate finds no snapshot, so the tail can re-assert the
+  // fallback scroll after the response commits. Declared HERE rather than in
+  // the branch that sets it, because the reader is outside that block and a
+  // `typeof` probe for a block-scoped binding is a coincidence, not a guard.
+  let cacheMiss = false;
 
   try {
     // popstate: try cache first, then refetch in background. Instant restore.
@@ -578,26 +607,35 @@ export async function performNavigation(href, isPopState, frameId, opts) {
           const revalidated = fetchAndApply(href, frameId, /* recordHistory */ false, optimisticState, 'GET', null, signal, myToken, /* revalidating */ true)
             .catch(() => {});
           const floor = new Promise((r) => setTimeout(r, ANCHOR_SUPPRESS_FLOOR_MS));
-          Promise.all([revalidated, floor]).then(() => afterTwoFrames(() => { releaseAnchor(); releaseHeight(); }));
+          // Staggered, not simultaneous. The revalidation's own swap re-inserts
+          // fresh markup that is SHORT again until its components upgrade,
+          // which is the premise the reservation exists for, so dropping the
+          // height in the same tick as the anchoring window can clamp the
+          // reader down and then let anchoring add the regrowth on top. The
+          // height is released a further two frames out, by which point the
+          // re-applied DOM has laid out, and anchoring is already back on to
+          // absorb whatever is left.
+          Promise.all([revalidated, floor]).then(() => afterTwoFrames(() => {
+            releaseAnchor();
+            afterTwoFrames(releaseHeight);
+          }));
           return null;
         }
       }
-      // Cache-miss popstate. There is no recorded snapshot to restore, so
-      // without explicit handling scroll would just stay where the user was on
-      // the page they popped FROM. Scroll to top as the reasonable default;
-      // fetchAndApply skips its own scroll handling when recordHistory=false
-      // (which is the case here).
+      // Cache-miss popstate. There is no snapshot to restore from, so the
+      // router falls back to top, which is what a reader gets for a page the
+      // cache no longer holds.
       //
-      // The UA also replays its own recorded offset for this entry, a frame
-      // after this handler, and that replay is NOT guarded: there is no
-      // snapshot to reserve a height from and no restore window open on this
-      // path. So the reader can land on the UA's offset rather than at top.
-      // That is usually what they want (it is the position they left), but on
-      // a deep-history Back whose snapshot was evicted from the LRU it can be
-      // an offset measured against the outgoing document, applied to content
-      // swapped in afterwards. Deterministic top is not recoverable here
-      // without taking `manual` back, which costs the gesture preview, so the
-      // trade is stated rather than hidden.
+      // Written TWICE on purpose: once now, and once after the response
+      // commits. The browser also replays its own recorded offset for this
+      // entry, about a frame after this handler, and that replay would
+      // otherwise be the last write. It is measured against the OUTGOING
+      // document and lands before the fetched content arrives, so it puts the
+      // reader at an offset that means nothing in the page they end up
+      // looking at. Under the old `manual` mode the UA replayed nothing and
+      // this path was deterministic; the second write is what keeps it that
+      // way now that the browser owns restoration.
+      cacheMiss = true;
       if (typeof window !== 'undefined') window.scrollTo({ left: 0, top: 0, behavior: 'instant' });
     }
 
@@ -605,7 +643,15 @@ export async function performNavigation(href, isPopState, frameId, opts) {
     // duplicate `history.pushState` and the whole scroll block in one flag,
     // which is exactly what the comment above that block already says it means.
     // So Back still goes to the previous page and the reader keeps their place.
-    return await fetchAndApply(href, frameId, !isPopState && !refresh, optimisticState, 'GET', null, signal, myToken, /* revalidating */ false, refresh);
+    const outcome = await fetchAndApply(href, frameId, !isPopState && !refresh, optimisticState, 'GET', null, signal, myToken, /* revalidating */ false, refresh);
+    // The cache-miss re-assert described above. Guarded on still being the
+    // active navigation, so a superseded miss never scrolls the page that
+    // replaced it.
+    if (cacheMiss && outcome && outcome.applied
+      && myToken === currentNavigationToken && typeof window !== 'undefined') {
+      window.scrollTo({ left: 0, top: 0, behavior: 'instant' });
+    }
+    return outcome;
   } finally {
     if (navigatingFlagTimer) clearTimeout(navigatingFlagTimer);
     // Only clear the navigating flag if WE are still the active nav.
@@ -663,8 +709,8 @@ export async function performSubmission(href, method, body, frameId, form) {
   const signal = activeAbortController.signal;
   const myToken = bumpNavToken();
   // Same reasoning as performNavigation: a submission is a navigation, so it
-  // ends any restore window a recent Back left open (#1310), and cancels a
-  // clamped restore's catch-up. Frame-targeted submissions are excluded on the
+  // ends any restore window a recent Back left open (#1310), and releases its
+  // height reservation. Frame-targeted submissions are excluded on the
   // same reasoning as the frame navs above.
   if (!frameId) {
     bumpRestoreGeneration();

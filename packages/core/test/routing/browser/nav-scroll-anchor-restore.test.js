@@ -827,12 +827,12 @@ suite('Client router: a Back restore survives late layout growth (#1310)', () =>
   });
 
   test('the window writes back a programmatic displacement, so a stale UA restore cannot win (#1428)', async () => {
-    // The router leaves `history.scrollRestoration` at 'auto' so the browser
-    // keeps recording per-entry offsets, which is what WebKit's back-swipe
-    // gesture preview is composed from. The cost is that an engine may still
-    // perform a scroll action of its own after an intercepted traverse (
-    // Firefox does, landing at 0, ignoring the interception's
-    // `scroll: 'manual'`). The open restore window absorbs it.
+    // The router forces `history.scrollRestoration` to 'auto' so the browser
+    // records per-entry offsets and REPLAYS them, which is both the restore
+    // itself and what WebKit's back-swipe gesture preview is composed from.
+    // The cost is that the replay is the browser's, so it can land off-target
+    // for engine reasons the router does not control. The open restore window
+    // absorbs a displacement like that for a short arming span.
     await setup();
     try {
       await goBack();
