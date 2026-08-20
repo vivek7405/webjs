@@ -121,16 +121,21 @@ export function _setEnabled(v) {
  * on its way out, the very next popstate consumes it, and anything that starts
  * a real navigation or submission drops it so it cannot leak across.
  *
+ * Underscore-prefixed because no source module reads the binding (they go
+ * through the three functions below); its only reader is the test suite, and
+ * this file's own convention is that an unprefixed export here reads as public
+ * API.
+ *
  * @type {string | null}
  */
-export let pendingFragmentNav = null;
+export let _pendingFragmentNav = null;
 
 /**
  * Record that a bowed-out fragment click is about to fire a popstate.
  *
  * @param {string} href The absolute href the click is navigating to.
  */
-export function markFragmentNav(href) { pendingFragmentNav = href; }
+export function markFragmentNav(href) { _pendingFragmentNav = href; }
 
 /**
  * Consume the pending mark if it matches, and clear it either way. Clearing on
@@ -141,10 +146,10 @@ export function markFragmentNav(href) { pendingFragmentNav = href; }
  * @returns {boolean} True when this popstate is the one that click produced.
  */
 export function consumeFragmentNav(href) {
-  const hit = pendingFragmentNav !== null && pendingFragmentNav === href;
-  pendingFragmentNav = null;
+  const hit = _pendingFragmentNav !== null && _pendingFragmentNav === href;
+  _pendingFragmentNav = null;
   return hit;
 }
 
 /** Drop the pending mark. Any real navigation or submission invalidates it. */
-export function clearFragmentNav() { pendingFragmentNav = null; }
+export function clearFragmentNav() { _pendingFragmentNav = null; }

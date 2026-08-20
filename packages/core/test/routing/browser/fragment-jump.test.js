@@ -93,6 +93,7 @@ function liveHtml() {
       + `<a id="wj-bare" href="#">back to top</a>`
       + `<a id="wj-empty" href="">empty</a>`
       + `<a id="wj-other" href="${otherHref()}">other page</a>`
+      + `<a id="wj-noroute" href="${fragHref('wj-frag-target')}" data-no-router>named, data-no-router</a>`
       + '<webjs-frame id="wj-frag-frame">'
         + `<a id="wj-in-frame" href="${fragHref('wj-frag-target')}">named, inside a frame</a>`
         + '<span id="wj-frame-content">ORIGINAL</span>'
@@ -372,6 +373,44 @@ suite('Client router: a same-document fragment jump is the browser\'s (#1437)', 
 
       assert.equal(fetched.length, 1, 'a real traversal must re-render, not be swallowed');
       assert.ok(fetched[0].startsWith('page:'));
+    } finally { await teardown(); }
+  });
+
+  test('a data-no-router in-page anchor survives a REPEAT click too', async () => {
+    setup();
+    try {
+      // `data-no-router` opts out of ROUTING, and the fragment bow-out routes
+      // nothing either way, but the browser still performs the native jump and
+      // still fires the popstate. So the click has to be marked even here, or
+      // the repeat click arrives with an unchanged url and no mark and gets
+      // re-navigated destructively.
+      clickIt('wj-noroute');
+      await settle();
+      assert.deepEqual(fetched, [], 'first click: absorbed on the changed-url clause');
+
+      clickIt('wj-noroute');
+      await settle();
+
+      assert.deepEqual(fetched, [], 'repeat click: absorbed on the mark');
+      assert.ok(injected.isConnected, 'and the live DOM is untouched');
+      assert.equal(document.getElementById('wj-frag-injected'), injected);
+      assert.deepEqual(fallbacks, []);
+    } finally { await teardown(); }
+  });
+
+  test('disabling the router drops a pending fragment mark', async () => {
+    setup();
+    try {
+      // A mark left by a click whose popstate has not fired yet must not
+      // survive the router stepping aside, or it absorbs the first same-url
+      // popstate after a re-enable, which is the swallowed-Back failure.
+      const { markFragmentNav, _pendingFragmentNav } = await import('../../../src/router-client/state.js');
+      assert.equal(_pendingFragmentNav, null, 'precondition: nothing pending');
+      markFragmentNav(location.href);
+      disableClientRouter();
+      const state = await import('../../../src/router-client/state.js');
+      assert.equal(state._pendingFragmentNav, null, 'disable must drop the mark');
+      enableClientRouter();
     } finally { await teardown(); }
   });
 

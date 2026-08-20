@@ -23,7 +23,6 @@ export function onClick(e) {
   const anchor = findAnchorInPath(e);
   if (!anchor) return;
   if (anchor.hasAttribute('download')) return;
-  if (anchor.hasAttribute('data-no-router')) return;
   if (anchor.target && anchor.target !== '_self') return;
 
   const href = anchor.href;
@@ -48,6 +47,13 @@ export function onClick(e) {
     markFragmentNav(url.href);
     return;
   }
+  // Checked AFTER the fragment bow-out on purpose. `data-no-router` opts out of
+  // ROUTING, and the bow-out above routes nothing either way, but the browser
+  // still performs the native jump and still fires the popstate that has to be
+  // recognised. Returning here first would leave a repeat click of a
+  // `data-no-router` in-page anchor unmarked, so it would arrive with an
+  // unchanged url and be re-navigated destructively (#1437).
+  if (anchor.hasAttribute('data-no-router')) return;
   if (NON_HTML_EXTENSIONS.test(url.pathname)) return;
 
   e.preventDefault();

@@ -231,6 +231,12 @@ export function disableClientRouter() {
   document.removeEventListener('click', onClick, false);
   document.removeEventListener('submit', onSubmit, false);
   window.removeEventListener('popstate', onPopState);
+  // A mark left by a click whose popstate has not fired yet must not survive
+  // the router stepping aside, or it would absorb the first same-url popstate
+  // after a re-enable, which is the swallowed-Back failure this exists to
+  // prevent (#1437). Every other pending piece of router state is torn down
+  // here too.
+  clearFragmentNav();
   document.removeEventListener('pointerover', onPrefetchIntent, true);
   document.removeEventListener('focusin', onPrefetchIntent, true);
   document.removeEventListener('touchstart', onPrefetchIntent, /** @type any */ ({ capture: true }));

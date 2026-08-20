@@ -3019,14 +3019,66 @@ test('onPopState: an identical-url popstate the router did NOT cause navigates (
 });
 
 test('onPopState: a fragment mark is consumed once, not left armed (#1437)', async () => {
-  // A mark that outlived its own popstate would sit waiting to swallow an
-  // unrelated one, so the consume happens whether or not it matched.
   const first = await popTo('http://localhost/p#x', 'http://localhost/p#x',
     { viaFragmentClick: 'http://localhost/p#x' });
   assert.equal(first.fetched, false, 'precondition: the marked popstate is absorbed');
-  const { markFragmentNav, pendingFragmentNav } = await import('../../src/router-client/state.js');
-  assert.equal(pendingFragmentNav, null, 'the mark must not survive its popstate');
-  assert.equal(typeof markFragmentNav, 'function');
+  const { _pendingFragmentNav } = await import('../../src/router-client/state.js');
+  assert.equal(_pendingFragmentNav, null, 'the mark must not survive its popstate');
+});
+
+test('onPopState: a mark that MISSES is dropped, not left armed (#1437)', async () => {
+  // The clear-on-miss half, which needs a mark whose href is not the one that
+  // pops. Without it a stale mark sits waiting to absorb an unrelated same-url
+  // popstate later, which is the swallowed-Back failure in slow motion.
+  const missed = await popTo('http://localhost/p', 'http://localhost/p#x',
+    { viaFragmentClick: 'http://localhost/p#SOMETHING-ELSE' });
+  assert.equal(missed.fetched, false, 'this one is absorbed on the changed-url clause');
+  const { _pendingFragmentNav } = await import('../../src/router-client/state.js');
+  assert.equal(_pendingFragmentNav, null, 'a mark that did not match must still be dropped');
+
+  // And prove the drop matters: the very next same-url popstate, which the
+  // stale mark would have absorbed, still navigates.
+  const next = await popTo('http://localhost/p#SOMETHING-ELSE', 'http://localhost/p#SOMETHING-ELSE');
+  assert.equal(next.fetched, true, 'a stale mark must not absorb a later real traversal');
+});
+
+test('performNavigation and performSubmission each drop a pending mark (#1437)', async () => {
+  // Both clears guard the same shape: a fragment click leaves a mark, real work
+  // starts, and the popstate a later Back produces must NOT inherit it. The
+  // submission one guards this PR's own headline case, the 422 duplicate entry.
+  const { _pendingFragmentNav, markFragmentNav } = await import('../../src/router-client/state.js');
+  const origLoc = globalThis.location;
+  const origFetch = globalThis.fetch;
+  const prevPageUrl = _currentPageUrl();
+  globalThis.location = /** @type any */ ({
+    href: 'http://localhost/p', pathname: '/p', origin: 'http://localhost', search: '', hash: '',
+  });
+  globalThis.fetch = async () => new Response(
+    '<!doctype html><html><body><!--wj:children:/:/-->x<!--/wj:children:/--></body></html>',
+    { status: 200, headers: { 'content-type': 'text/html' } });
+  try {
+    document.body.innerHTML = '<!--wj:children:/:/-->before<!--/wj:children:/-->';
+
+    markFragmentNav('http://localhost/p#x');
+    await navigate('http://localhost/p?nav=1');
+    const { _pendingFragmentNav: afterNav } = await import('../../src/router-client/state.js');
+    assert.equal(afterNav, null, 'performNavigation must drop a pending mark');
+
+    markFragmentNav('http://localhost/p#x');
+    const form = document.createElement('form');
+    form.setAttribute('method', 'post');
+    form.setAttribute('action', 'http://localhost/p');
+    document.body.appendChild(form);
+    const { performSubmission } = await import('../../src/router-client/navigator.js');
+    await performSubmission('http://localhost/p', 'POST', new URLSearchParams(), null, form);
+    const { _pendingFragmentNav: afterSubmit } = await import('../../src/router-client/state.js');
+    assert.equal(afterSubmit, null, 'performSubmission must drop a pending mark');
+    form.remove();
+  } finally {
+    _setCurrentPageUrl(prevPageUrl);
+    globalThis.location = origLoc;
+    globalThis.fetch = origFetch;
+  }
 });
 
 test('onPopState: a changed pathname is still a navigation (#1437)', async () => {
