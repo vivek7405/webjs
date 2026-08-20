@@ -668,6 +668,7 @@ html\`
     <ul>
       <li><strong>Server rendering</strong>: <code>@event</code> bindings are stripped during SSR. The HTML sent to the browser contains no inline handlers. This is safe, clean, and Content-Security-Policy friendly.</li>
       <li><strong>Client rendering</strong>: on the client, each <code>@event</code> binding creates a <strong>stable dispatcher</strong> function that is registered once with <code>addEventListener</code>. When you re-render with a new handler reference, the dispatcher is updated in place, so no listener is removed and re-added. This eliminates event listener churn that plagues naive re-render strategies.</li>
+      <li><strong>Handlers are invoked unbound</strong>: that dispatcher invokes your handler through its own internal object, so <code>this</code> inside a plain method is that object rather than your component. Note that every example above passes an <em>arrow</em>, which is why. Passing a method directly (<code>@click=\${this.increment}</code>) compiles, typechecks, and server-renders fine, then misbehaves <em>quietly</em>: a property read yields <code>undefined</code> and a property write lands on framework internals, so the eventual <code>TypeError</code> surfaces somewhere other than the cause. Wrap the call, or declare the handler as an arrow class field, which is pre-bound. Lit binds listeners to the host element, so this is a habit worth unlearning when porting a Lit component.</li>
     </ul>
 
     <code-block>// Even though this creates a new arrow function on every render,
