@@ -39,7 +39,7 @@ const tscBin = join(ROOT, 'node_modules', 'typescript', 'bin', 'tsc');
 // `minNames` is the per-package total of CHECKED export names, which catches the
 // failure the entry count cannot see: an entry that still resolves, but to a
 // SMALLER module than intended, quietly shrinking the check. Today's totals are
-// 169 for core (232 runtime names minus the 63 exempt `_` seams) and 146 for
+// 172 for core (236 runtime names minus the 64 exempt `_` seams) and 146 for
 // server; the floors sit just below. Raising an export count only makes both
 // floors stricter, which is the same rationale recorded on the reverse guard.
 const PACKAGES = [
@@ -70,7 +70,7 @@ function entryPairs(pkgDir) {
 /**
  * Runtime export names the overlay is REQUIRED to declare. A leading `_` marks a
  * test-only seam that is deliberately NOT part of the published API (the
- * `Internal exports for unit testing` block in `src/router-client.js` is 63 such
+ * `Internal exports for unit testing` block in `src/router-client.js` is 64 such
  * names), so declaring them would publish a test seam as editor autocomplete.
  *
  * The convention is expressed as a RULE rather than an ignore list, because a
@@ -215,7 +215,7 @@ for (const { name, dir, minEntries, minNames } of PACKAGES) {
       assert.ok(
         exemptTotal >= 1,
         `${name}: no underscore-prefixed export was exempted anywhere, so the ` +
-          `test-only-seam rule in checkedNames() is dead code (63 such names exist today)`,
+          `test-only-seam rule in checkedNames() is dead code (64 such names exist today)`,
       );
     }
   });
