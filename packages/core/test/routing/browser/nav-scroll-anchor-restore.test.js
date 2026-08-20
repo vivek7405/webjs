@@ -172,8 +172,8 @@ suite('Client router: a Back restore survives late layout growth (#1310)', () =>
     const instant = Boolean(opts && opts.instantRevalidation);
     const restoredY = (opts && opts.restoredY) != null ? opts.restoredY : RESTORED_Y;
     const outgoingHeight = (opts && opts.tallOutgoing) ? 60000
-      : (opts && opts.uaRecords) ? restoredY + 2000
-        : 3000;
+      : (opts && opts.injectOffset) ? 3000
+        : restoredY + 2000;
     const html = restoredHtml(
       (opts && opts.manualGrowth) ? 'wj-grow-on-command-1310'
         : instant ? 'wj-grow-very-late-1310' : 'wj-grow-late-1310',
@@ -229,7 +229,7 @@ suite('Client router: a Back restore survives late layout growth (#1310)', () =>
     // synthetic popstate event would not exercise the browser's own restore.
     origUrl = location.href;
     history.pushState(null, '', entryUrl('anchor-a'));
-    if (opts && opts.uaRecords) {
+    if (!(opts && opts.injectOffset)) {
       // Let the BROWSER record a real offset for this entry, by actually
       // scrolling before pushing the next one. Every other case injects the
       // offset into the snapshot cache while the page sits at 0, so the UA has

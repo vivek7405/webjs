@@ -503,40 +503,47 @@ export async function performNavigation(href, isPopState, frameId, opts) {
           // within the reserved space as components render, and anchoring
           // reacts to a shift above the viewport regardless of whether the
           // page grew overall, adding it to the offset just replayed (#1310).
+          // The BROWSER restores the scroll, not the router (#1428).
+          //
+          // Under `scrollRestoration: 'auto'` the UA records an offset per
+          // history entry and replays it a frame after the popstate handler.
+          // The router used to replay its own snapshot offset synchronously
+          // here as well, which made two writers of the same quantity and
+          // forced a whole apparatus to keep them from disagreeing. With the
+          // height reserved above, the UA's replay lands on a document that
+          // can hold the offset, so it is simply correct, and the router's
+          // write is redundant. Deleting it leaves ONE writer, which is what
+          // Next and Remix 3 do (neither scrolls on a traverse; Next's restore
+          // reducer sets `scrollRef: null`). Turbo is single-writer too, but
+          // the other way round: it takes `manual` and replays itself, which is
+          // exactly the choice that costs it the iOS gesture preview.
+          //
+          // The window below still opens, for the half the UA does NOT cover:
+          // content SHIFTS above the viewport as the restored components
+          // render, and anchoring would add that shift to the offset the UA
+          // just replayed. It also carries the cached offset as a write-back
+          // target, so a programmatic write that intrudes on the restore's own
+          // span is corrected rather than left standing.
           let releaseAnchor = () => {};
           if (typeof window !== 'undefined') {
-            const restoreScroll = () => {
-              // Force a layout flush BEFORE the write. The reservation and the
-              // swap both just changed layout, and a scroll is clamped against
-              // the layout in effect when it runs: Chromium and WebKit clamp to
-              // the STALE (short) layout and land at 0, while Firefox flushes
-              // on its own and lands correctly. Reading a layout property is
-              // what makes the three agree.
-              //
-              // The old conditional-suppression code got this flush by
-              // accident, since deciding clamped-or-landed read `scrollY` right
-              // after the write. Suppression is unconditional now, so the read
-              // has to be deliberate or the restore silently regresses on two
-              // engines out of three.
-              void document.documentElement.scrollHeight;
-              window.scrollTo({ left: cached.scrollX, top: cached.scrollY, behavior: 'instant' });
+            const openWindow = () => {
               releaseAnchor = suppressScrollAnchoring(cached.scrollX, cached.scrollY);
             };
             if (viewTransitionsEnabled() && typeof (/** @type any */ (document)).startViewTransition === 'function') {
               // Under a view transition `applySwap` defers its DOM mutation a
-              // frame, so writing now would land against the OUTGOING page.
-              // Guarded on the restore generation, because this is the one path
-              // where the restore outlives the call that scheduled it: a
-              // navigation, submission, or disable arriving inside the deferred
-              // frame closes the window, and this must not reopen it against a
-              // page it was never meant for.
+              // frame, so the window must wait for the commit or it guards the
+              // OUTGOING page. Guarded on the restore generation, because this
+              // is the one path where the restore outlives the call that
+              // scheduled it: a navigation, submission, or disable arriving
+              // inside the deferred frame closes the window, and this must not
+              // reopen it against a page it was never meant for.
               const myRestore = restoreGeneration;
               _swapCommit.then(() => {
                 if (myRestore !== restoreGeneration || !enabled) return;
-                restoreScroll();
+                openWindow();
               }).catch(() => {});
             } else {
-              restoreScroll();
+              openWindow();
             }
           }
           // Fire-and-forget revalidation. Uses a fresh AbortController

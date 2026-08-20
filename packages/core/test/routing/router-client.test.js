@@ -2005,11 +2005,19 @@ test('popstate cache restore clears the importmap-reload flag', async () => {
   }
 });
 
-test('popstate cache restore scrolls instantly, not animated (#601)', async () => {
-  // The restore previously used scrollTo(x, y) (the 2-arg form), which
-  // respects an app's `html { scroll-behavior: smooth }` and so ANIMATES
-  // the Back/Forward scroll instead of jumping the way native nav does.
-  // The fix passes behavior:'instant' to force the jump.
+test('popstate cache restore writes NO scroll: the browser owns it (#1428)', async () => {
+  // The router used to replay the snapshot's offset itself here, with
+  // behavior:'instant' so an app's `html { scroll-behavior: smooth }` could not
+  // animate the Back/Forward jump (#601). It no longer writes scroll on a
+  // restore at all: under `scrollRestoration: 'auto'` the browser replays the
+  // offset it recorded, against a document held at its recorded height, so a
+  // second writer of the same quantity is redundant. One writer, which is what
+  // Next and Remix 3 do.
+  //
+  // #601's guarantee survives the deletion and gets STRONGER: native scroll
+  // restoration is not a scrolling API call, so `scroll-behavior: smooth`
+  // cannot animate it. The forward-nav half of #601 is a separate write and
+  // keeps its own instant-form assertions below.
   const origLoc = globalThis.location;
   const origFetch = globalThis.fetch;
   const prevPageUrl = _currentPageUrl();
@@ -2036,12 +2044,10 @@ test('popstate cache restore scrolls instantly, not animated (#601)', async () =
   document.body.innerHTML = '<!--wj:children:/:/-->before-pop<!--/wj:children:/-->';
   try {
     _onPopState({});
-    assert.ok(arg && typeof arg === 'object',
-      'restore uses the scrollTo options form, not the 2-arg (x, y) form');
-    assert.equal(arg.behavior, 'instant',
-      'behavior:instant keeps an app scroll-behavior:smooth from animating the restore');
-    assert.equal(arg.top, 640, 'saved scrollY restored as top');
-    assert.equal(arg.left, 0, 'saved scrollX restored as left');
+    assert.equal(arg, undefined,
+      'the router performs no scroll on a cache restore; the browser replays '
+      + 'the offset it recorded, so a router write would be a second writer '
+      + 'of the same quantity');
     // Let the background revalidation settle (avoid an unhandled rejection).
     await new Promise((r) => setTimeout(r, 5));
   } finally {
