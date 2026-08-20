@@ -472,9 +472,15 @@ export default function LandingPage() {
 
     <section class="pb-16">
       <div class="max-w-3xl mx-auto px-6">
-        <div class="aspect-video overflow-hidden border border-border-strong shadow-[var(--shadow)]">
+        <!-- The backdrop token is on the IFRAME, not just this wrapper. A frame
+             paints the UA default canvas until the embedded document arrives,
+             and color-scheme on :root does not reach a cross-origin frame, so
+             on a dark phone the box flashed white through lazy-load and through
+             the fetch. The light-dark() in --bg-sunken resolves in THIS
+             document, so the placeholder tracks the reader's theme both ways. -->
+        <div class="aspect-video overflow-hidden border border-border-strong shadow-[var(--shadow)] bg-bg-sunken">
           <iframe
-            class="w-full h-full"
+            class="w-full h-full bg-bg-sunken"
             src="https://www.youtube-nocookie.com/embed/XghCghezod4?rel=0"
             title="WebJs introduction video"
             loading="lazy"
