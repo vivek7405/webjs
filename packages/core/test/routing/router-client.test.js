@@ -2005,11 +2005,19 @@ test('popstate cache restore clears the importmap-reload flag', async () => {
   }
 });
 
-test('popstate cache restore scrolls instantly, not animated (#601)', async () => {
-  // The restore previously used scrollTo(x, y) (the 2-arg form), which
-  // respects an app's `html { scroll-behavior: smooth }` and so ANIMATES
-  // the Back/Forward scroll instead of jumping the way native nav does.
-  // The fix passes behavior:'instant' to force the jump.
+test('popstate cache restore writes NO scroll: the browser owns it (#1428)', async () => {
+  // The router used to replay the snapshot's offset itself here, with
+  // behavior:'instant' so an app's `html { scroll-behavior: smooth }` could not
+  // animate the Back/Forward jump (#601). It no longer writes scroll on a
+  // restore at all: under `scrollRestoration: 'auto'` the browser replays the
+  // offset it recorded, against a document held at its recorded height, so a
+  // second writer of the same quantity is redundant. One writer, which is what
+  // Next and Remix 3 do.
+  //
+  // #601's guarantee survives the deletion and gets STRONGER: native scroll
+  // restoration is not a scrolling API call, so `scroll-behavior: smooth`
+  // cannot animate it. The forward-nav half of #601 is a separate write and
+  // keeps its own instant-form assertions below.
   const origLoc = globalThis.location;
   const origFetch = globalThis.fetch;
   const prevPageUrl = _currentPageUrl();
@@ -2036,12 +2044,10 @@ test('popstate cache restore scrolls instantly, not animated (#601)', async () =
   document.body.innerHTML = '<!--wj:children:/:/-->before-pop<!--/wj:children:/-->';
   try {
     _onPopState({});
-    assert.ok(arg && typeof arg === 'object',
-      'restore uses the scrollTo options form, not the 2-arg (x, y) form');
-    assert.equal(arg.behavior, 'instant',
-      'behavior:instant keeps an app scroll-behavior:smooth from animating the restore');
-    assert.equal(arg.top, 640, 'saved scrollY restored as top');
-    assert.equal(arg.left, 0, 'saved scrollX restored as left');
+    assert.equal(arg, undefined,
+      'the router performs no scroll on a cache restore; the browser replays '
+      + 'the offset it recorded, so a router write would be a second writer '
+      + 'of the same quantity');
     // Let the background revalidation settle (avoid an unhandled rejection).
     await new Promise((r) => setTimeout(r, 5));
   } finally {
@@ -3246,49 +3252,34 @@ test('addNewHeadElements: skips incoming importmap (importmap-mismatch reload ha
  * popstate fires).
  * ==================================================================== */
 
-test('enableClientRouter: sets history.scrollRestoration = "manual"', () => {
-  // Start from a known state. enableClientRouter is idempotent: it
-  // early-returns if `enabled` is already true (which it is, since the
-  // module auto-enables on import). Cycle off-then-on to exercise it.
-  const origScrollRestoration = globalThis.history?.scrollRestoration;
-  const origHistory = globalThis.history;
-  /** @type {{ scrollRestoration: string, pushState: Function, replaceState: Function }} */
-  const mockHistory = { scrollRestoration: 'auto', pushState: () => {}, replaceState: () => {} };
-  globalThis.history = /** @type any */ (mockHistory);
-  try {
-    disableClientRouter();
-    enableClientRouter();
-    assert.equal(mockHistory.scrollRestoration, 'manual',
-      'router takes control of scroll restoration so the browser ' +
-      'doesn\'t race with our snapshot-based scroll restore');
-  } finally {
-    globalThis.history = origHistory;
-    if (origScrollRestoration !== undefined) {
-      globalThis.history.scrollRestoration = origScrollRestoration;
-    }
-    enableClientRouter(); // re-enable for subsequent tests
-  }
-});
-
-test('disableClientRouter: restores the previous history.scrollRestoration value', () => {
+test('the router forces scrollRestoration to auto, and puts the app value back (#1428)', () => {
+  // The restore is the BROWSER's now, so 'auto' is load-bearing: under 'manual'
+  // the UA records no per-entry offset, which is both no Back restore at all
+  // and the blank iOS gesture preview this issue is about.
+  //
+  // Seeded with 'manual', NOT 'auto'. Seeded with the value the router writes,
+  // this assertion passes whether the router writes it or writes nothing, which
+  // is how the first version of this test managed to be green with the
+  // deliberate write deleted.
   const origHistory = globalThis.history;
   /** @type {any} */
-  const mockHistory = { scrollRestoration: 'auto', pushState: () => {}, replaceState: () => {} };
+  const mockHistory = { scrollRestoration: 'manual', pushState: () => {}, replaceState: () => {} };
   globalThis.history = mockHistory;
   try {
     disableClientRouter();
-    enableClientRouter();           // captures 'auto', sets 'manual'
-    assert.equal(mockHistory.scrollRestoration, 'manual');
-    disableClientRouter();           // should restore 'auto'
+    enableClientRouter();
     assert.equal(mockHistory.scrollRestoration, 'auto',
-      'disable restores the value enable captured, so the browser\'s ' +
-      'default scroll-restoration behavior is back in effect');
+      'enable overrides an app that had taken manual control, or the browser '
+      + 'records nothing and Back does not restore at all');
+    disableClientRouter();
+    assert.equal(mockHistory.scrollRestoration, 'manual',
+      'disable puts the app\'s own value back: the write is an override, and '
+      + 'the documented opt-out must not strand an app on a mode it never chose');
   } finally {
     globalThis.history = origHistory;
     enableClientRouter();
   }
 });
-
 test('currentPageUrl: tracker exists and can be read/written via test helpers', () => {
   const prev = _currentPageUrl();
   _setCurrentPageUrl('http://localhost/sentinel');
@@ -5167,10 +5158,14 @@ test('applySwap: a DISCARDED background revalidation never ingests its seeds (#1
 /* --------------------------------------------------------------------------
  * #1406: the history entry is recorded AT THE COMMIT, before the DOM mutation.
  *
- * WebKit binds a same-document `pushState` entry's back-forward gesture
- * snapshot to the page state at the moment the entry is recorded, so an entry
- * recorded after the swap describes the destination document rather than the
- * page it belongs to, and the iOS edge back-swipe previews it blank.
+ * An entry recorded after the swap describes the destination document rather
+ * than the page it belongs to, so the push is ordered ahead of the mutation.
+ *
+ * #1406 introduced that ordering as the fix for the blank iOS back-swipe
+ * preview, on the theory that WebKit binds the gesture snapshot when the entry
+ * is recorded. That theory is false (#1428): Turbo Drive has the same ordering
+ * and previews blank identically, and the preview was fixed by leaving
+ * `history.scrollRestoration` alone. The ordering stands on its own merits.
  *
  * The push therefore rides into `applySwap` as a commit-time callback. These
  * pin the three halves of that contract: it fires before the mutation on a
@@ -5220,6 +5215,14 @@ test('applySwap: the history callback fires BEFORE the DOM mutation (#1406)', ()
   }
 });
 
+/* --------------------------------------------------------------------------
+ * #1406 / #1428: history is recorded at the swap COMMIT, and the restore is
+ * the browser's.
+ *
+ * The cases below pin the commit-time history callback: it fires before the
+ * mutation on a committing swap, does not fire on a swap that commits nothing,
+ * and the caller's fall-through still records history on those paths.
+ * ------------------------------------------------------------------------ */
 test('applySwap: a frame-missing response commits nothing, so it records no history (#1406)', () => {
   const savedBody = globalThis.document.body.innerHTML;
   const savedLocation = globalThis.location;

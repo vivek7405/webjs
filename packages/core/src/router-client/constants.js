@@ -46,12 +46,19 @@ export const STREAM_MIME = 'text/vnd.webjs-stream.html';
  *   5. Commit, in this order: `history.pushState`, then merge head, then apply
  *      the replace/morph from step 3, then re-run scripts and upgrade custom
  *      elements. Only the push moved (#1406); the rest of the sequence is
- *      unchanged. The push leads because
- *      WebKit binds a same-document entry's
- *      back-forward gesture snapshot to the page state when the entry is
- *      recorded, so recording it after the content swap makes an iOS
- *      back-swipe preview the destination instead of the page being returned
- *      to (#1406).
+ *      unchanged. The push leads so the entry for the page being left is
+ *      finalized while that page is still the live document, rather than
+ *      against the content that replaced it. This is Turbo Drive's ordering
+ *      too.
+ *
+ *      #1406 justified the move as the fix for the blank iOS back-swipe
+ *      preview, on the theory that WebKit binds the gesture snapshot to page
+ *      state at the moment the entry is recorded. That theory is FALSE, shown
+ *      on-device in #1428: Turbo Drive has this exact ordering and previews
+ *      blank the same way, and the real cause was
+ *      `history.scrollRestoration = 'manual'` suppressing the browser's
+ *      per-entry scroll recording. The ordering stands on its own merits;
+ *      it just never fixed that bug.
  *
  * Optimizations bundled into the same response cycle:
  *   - `X-Webjs-Have` request header lists `segment:route-key` entries for
@@ -185,3 +192,15 @@ export const META_KEY_CSP_NONCE = 'name=csp-nonce';
 export function _isNonHtmlPath(pathname) {
   return NON_HTML_EXTENSIONS.test(pathname);
 }
+
+/**
+ * How long the restore window's write-back stays armed (#1428).
+ *
+ * It exists to reconcile ONE event, the browser's replay of its own recorded
+ * scroll offset, which lands about a frame after the popstate handler. This is
+ * generous for that (roughly fifteen frames at 60Hz) and far short of the
+ * window's own life, so a legitimate programmatic scroll arriving later, a
+ * component's `scrollIntoView()` during upgrade or a find-in-page jump, is left
+ * alone rather than reverted.
+ */
+export const WRITE_BACK_ARMED_MS = 250;

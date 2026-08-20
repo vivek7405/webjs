@@ -8,7 +8,7 @@
  */
 import { SNAPSHOT_CAP } from './constants.js';
 
-/** @typedef {{ html: string, scrollX: number, scrollY: number }} Snapshot */
+/** @typedef {{ html: string, scrollX: number, scrollY: number, scrollHeight: number }} Snapshot */
 /** @type {Map<string, Snapshot | string>} */
 export const snapshotCache = new Map();
 
@@ -41,6 +41,15 @@ export function snapshotCurrent(url) {
     html: document.documentElement.outerHTML,
     scrollX: typeof window !== 'undefined' ? window.scrollX || 0 : 0,
     scrollY: typeof window !== 'undefined' ? window.scrollY || 0 : 0,
+    // The page's SETTLED height, captured at the same moment as the offset.
+    // A restore re-inserts this snapshot as raw markup, and the document is
+    // SHORTER than this until its components upgrade and re-render, which is
+    // the window every scroll defect in #1310 lived in. The restore reserves
+    // this height across that window (#1428 architecture), so the recorded
+    // offset is reachable from the first frame and the browser's own
+    // restoration lands exactly, with no clamp and nothing to chase.
+    scrollHeight: typeof document !== 'undefined' && document.documentElement
+      ? document.documentElement.scrollHeight || 0 : 0,
   };
   snapshotCache.set(key, snap);
   while (snapshotCache.size > SNAPSHOT_CAP) {
@@ -64,7 +73,14 @@ export function snapshotGet(url) {
   // Move-to-front.
   snapshotCache.delete(key);
   snapshotCache.set(key, v);
-  if (typeof v === 'string') return { html: v, scrollX: 0, scrollY: 0 };
+  // A legacy string entry carries no offsets and no height. `scrollHeight: 0`
+  // is stated rather than left undefined so the returned object satisfies the
+  // `Snapshot` typedef, and because `reserveRestoredHeight` treats a
+  // non-positive height as "nothing to reserve" and no-ops: there is no
+  // recorded height to hold, so reserving is not merely skippable, it is
+  // meaningless. Such an entry restores with no reservation, which is the
+  // pre-#1428 behaviour and correct for a snapshot that never recorded one.
+  if (typeof v === 'string') return { html: v, scrollX: 0, scrollY: 0, scrollHeight: 0 };
   return v;
 }
 
