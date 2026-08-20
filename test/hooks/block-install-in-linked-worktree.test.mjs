@@ -110,7 +110,10 @@ test('blocks the HYPHENATED npm verbs, which the short aliases do not cover', ()
 test('blocks the REMOVE verbs, which delete from the owning checkout', () => {
   const { root, worktree } = makeLinkedPair();
   try {
-    for (const cmd of ['npm uninstall x', 'npm rm x', 'npm r x', 'bun rm x', 'pnpm rm x', 'yarn remove x', 'pnpm upgrade', 'pnpm dedupe', 'yarn dedupe']) {
+    // `npm r` and `npm a` are deliberately NOT in npm's table: they are rare as
+    // commands and common as flag VALUES, and the scan cannot tell the two
+    // apart, so admitting them blocks `npm -w a run build`. A documented gap.
+    for (const cmd of ['npm uninstall x', 'npm rm x', 'npm unlink x', 'bun rm x', 'pnpm rm x', 'yarn remove x', 'pnpm upgrade', 'pnpm dedupe', 'yarn dedupe']) {
       assert.equal(runHook(cmd, worktree).status, 2, `expected block for \`${cmd}\``);
     }
   } finally { rmSync(root, { recursive: true, force: true }); }
@@ -193,7 +196,6 @@ test('an `=` in a FLAG does not disable the gate (fail-open regression)', () => 
       'npm install --workspace=packages/core',
       'bun install --backend=hardlink',
       'yarn add x --registry=https://r',
-      'pnpm add x --dir=/y',
       'npm i -D esbuild --foreground-scripts=true',
     ]) {
       assert.equal(runHook(cmd, worktree).status, 2, `expected block for \`${cmd}\``);
@@ -317,7 +319,7 @@ test('a flag VALUE never hides the verb, and a safe verb still stops the scan', 
   } finally { rmSync(root, { recursive: true, force: true }); }
 });
 
-test('follows every `cd` spelling, including ~, --, and pushd', () => {
+test('follows the `cd --`, `cd -P` and `pushd` spellings', () => {
   const { root, worktree } = makeLinkedPair();
   try {
     for (const cmd of [`cd -- ${worktree} && npm ci`, `pushd ${worktree} && npm ci`, `cd -P ${worktree} && npm ci`]) {
@@ -355,5 +357,93 @@ test('escalates to the git toplevel, so an install from a SUBDIRECTORY blocks', 
     const sub = join(worktree, 'packages', 'core');
     mkdirSync(sub, { recursive: true });
     assert.equal(runHook('npm install', sub).status, 2, 'a subdirectory install still reaches the linked root');
+  } finally { rmSync(root, { recursive: true, force: true }); }
+});
+
+test('a QUOTED directory argument survives the quote handling', () => {
+  // Quoted spans must lose their power to look like a command boundary while
+  // KEEPING their content. Deleting the span instead leaves `cd` with no
+  // argument, so the install is judged against the session cwd (the primary,
+  // whose node_modules is real) and the headline scenario fails open. Quoting a
+  // path is the ordinary defensive spelling.
+  const { root, primary, worktree } = makeLinkedPair();
+  try {
+    for (const cmd of [
+      `cd "${worktree}" && npm ci`,
+      `cd '${worktree}' && npm ci`,
+      `cd "${worktree}" && bun install`,
+      `npm --prefix "${worktree}" install`,
+      `npm install --prefix '${worktree}'`,
+    ]) {
+      assert.equal(runHook(cmd, primary).status, 2, `expected block for \`${cmd}\``);
+    }
+  } finally { rmSync(root, { recursive: true, force: true }); }
+});
+
+test('an apostrophe inside a double-quoted string does not swallow a later install', () => {
+  // Running a single-quote pass before a double-quote pass pairs the apostrophe
+  // in `can't` with the next single quote anywhere in the line and deletes
+  // everything between, taking a real install with it.
+  const { root, worktree } = makeLinkedPair();
+  try {
+    assert.equal(runHook(`echo "can't resolve" && npm i -D esbuild`, worktree).status, 2);
+    assert.equal(runHook(`git commit -m "don't ship" && npm ci && echo "it's done"`, worktree).status, 2);
+  } finally { rmSync(root, { recursive: true, force: true }); }
+});
+
+test('a heredoc BODY is content, not commands', () => {
+  // This repo's docs are full of `npm install` lines.
+  const { root, worktree } = makeLinkedPair();
+  try {
+    assert.equal(runHook("cat > doc.md <<'EOF'\nnpm install\nEOF", worktree).status, 0);
+    assert.equal(runHook('cat > doc.md <<EOF\nnpm ci\nEOF', worktree).status, 0);
+    // ...but a real newline-separated install still blocks.
+    assert.equal(runHook('echo hi\nnpm ci', worktree).status, 2);
+  } finally { rmSync(root, { recursive: true, force: true }); }
+});
+
+test('`npm audit fix` blocks while a bare `npm audit` does not', () => {
+  // `audit fix` installs revised versions straight through the link, which is
+  // the same test `rebuild`, `prune` and `link` pass.
+  const { root, worktree } = makeLinkedPair();
+  try {
+    assert.equal(runHook('npm audit fix', worktree).status, 2);
+    assert.equal(runHook('npm audit fix --force', worktree).status, 2);
+    assert.equal(runHook('npm audit', worktree).status, 0);
+    assert.equal(runHook('npm audit --json', worktree).status, 0);
+  } finally { rmSync(root, { recursive: true, force: true }); }
+});
+
+test('the verb tables are PER MANAGER, so one manager alias cannot fire for another', () => {
+  const { root, worktree } = makeLinkedPair();
+  try {
+    // `a` is a BUN alias for add. As an npm flag VALUE it must mean nothing.
+    assert.equal(runHook('npm --workspace a run build', worktree).status, 0);
+    assert.equal(runHook('npm -w a run build', worktree).status, 0);
+    assert.equal(runHook('bun a nanoid', worktree).status, 2, 'but it IS an install for bun');
+    // `bun upgrade` upgrades the Bun BINARY and never touches node_modules.
+    assert.equal(runHook('bun upgrade', worktree).status, 0);
+    assert.equal(runHook('pnpm upgrade', worktree).status, 2, 'while pnpm upgrade DOES install');
+  } finally { rmSync(root, { recursive: true, force: true }); }
+});
+
+test('an informational flags-only yarn is not read as a bare install', () => {
+  const { root, worktree } = makeLinkedPair();
+  try {
+    for (const cmd of ['yarn --version', 'yarn -v', 'yarnpkg --help', 'yarn -h']) {
+      assert.equal(runHook(cmd, worktree).status, 0, `expected allow for \`${cmd}\``);
+    }
+    assert.equal(runHook('yarn', worktree).status, 2, 'a truly bare yarn still installs');
+    assert.equal(runHook('yarn --frozen-lockfile', worktree).status, 2);
+  } finally { rmSync(root, { recursive: true, force: true }); }
+});
+
+test('mines --cwd and --dir as target directories, not just --prefix', () => {
+  // Bun is the manager that writes THROUGH the link, so `bun --cwd` matters most.
+  const { root, primary, worktree } = makeLinkedPair();
+  try {
+    assert.equal(runHook(`bun --cwd ${worktree} install`, primary).status, 2);
+    assert.equal(runHook(`pnpm --dir ${worktree} install`, primary).status, 2);
+    assert.equal(runHook(`yarn --cwd ${worktree} install`, primary).status, 2);
   } finally { rmSync(root, { recursive: true, force: true }); }
 });

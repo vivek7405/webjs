@@ -53,17 +53,74 @@ if [ -z "$cmd" ]; then exit 0; fi
 # THROUGH the link rather than replacing it. `link`, `rebuild` and `prune` are
 # here for the same reason as the remove verbs: they all mutate the tree that
 # the symlink points at.
-INSTALL_VERBS='install-ci-test|clean-install-test|install-clean|clean-install|install-test|install|isntall|isntal|isnta|isnt|instal|insta|inst|ins|in|i|add|a|ci|cit|sit|it|ic|update|upgrade|udpate|up|dedupe|ddp|uninstall|unlink|un|remove|rm|r|link|ln|rebuild|rb|prune'
+# PER MANAGER, not one merged list. Merging them blocked `npm --workspace a run
+# build`, because `a` is a BUN alias for `add`, and blocked `bun upgrade`, which
+# upgrades the Bun BINARY and never touches node_modules.
+#
+# The one-letter aliases `a` and `r` are deliberately omitted from npm's list.
+# They are rare as commands and common as flag VALUES, and the scan cannot tell
+# the two apart, so admitting them blocks `npm -w a run build`. KNOWN GAP: `npm
+# r <pkg>` and `npm a <pkg>` are therefore not blocked. That is the deliberate
+# trade, because the false positive lands on an ordinary command while the false
+# negative lands on a spelling almost nobody types, and the repair, report and
+# doctor layers still catch the damage after the fact.
+NPM_INSTALL='install-ci-test|clean-install-test|install-clean|clean-install|install-test|install|isntall|isntal|isnta|isnt|instal|insta|inst|ins|in|i|add|ci|cit|sit|it|ic|update|upgrade|udpate|up|dedupe|ddp|uninstall|unlink|un|remove|rm|link|ln|rebuild|rb|prune'
+BUN_INSTALL='install|i|add|a|remove|rm|link|unlink|update|pm'
+PNPM_INSTALL='install|i|add|update|upgrade|up|dedupe|remove|rm|uninstall|un|link|unlink|prune|rebuild'
+YARN_INSTALL='install|add|upgrade|up|dedupe|remove|link|unlink'
 # Verbs that do NOT touch node_modules. Listed explicitly so the scan can STOP:
 # without them, `npm run test -- --grep add` would keep scanning and hit `add`.
 SAFE_VERBS='run|run-script|rum|urn|test|tst|t|start|stop|restart|exec|x|ls|list|la|ll|init|innit|create|publish|pack|version|view|v|info|show|why|ping|config|c|get|set|docs|home|repo|bugs|audit|fund|outdated|prefix|root|bin|whoami|token|team|org|access|star|unstar|search|s|se|find|help|doctor|explain|edit|deprecate|dist-tag|hook|login|logout|adduser|owner|profile|shrinkwrap|unpublish|completion|diff|query|sbom'
+# `npm audit` reports and is safe; `npm audit fix` INSTALLS revised versions
+# straight through the link, so it is matched ahead of the safe-verb scan.
+AUDIT_FIX='(^|[[:space:]])audit([[:space:]]+-[^[:space:]]+)*[[:space:]]+fix([[:space:]]|$)'
 # A GLOBAL install writes to the npm prefix, never through the local link, and
 # `npm update -g webjsdev` is this repo's documented post-release step.
 GLOBAL='(^|[[:space:]])(-g|--global)([[:space:]]|$)'
 
-# STAGE 1: remove quoted spans. See the docblock; this is what keeps a shell
-# metacharacter inside a commit message from being read as a command boundary.
-scrubbed=$(printf '%s' "$cmd" | sed -e "s/'[^']*'/ /g" -e 's/"[^"]*"/ /g')
+# STAGE 1: neutralise quoted spans and drop heredoc bodies.
+#
+# A quoted span must keep its CONTENT (a quoted path is the ordinary defensive
+# spelling of `cd "<worktree>" && npm ci`, which is the arrival shape this hook
+# exists for) while losing its power to look like a command boundary. So the
+# quote characters are removed and only the SEPARATORS inside them are
+# neutralised. Deleting the whole span instead loses the path and fails open.
+#
+# It is a character-by-character state machine rather than a pair of seds
+# because quote nesting has to be tracked: an apostrophe inside a double-quoted
+# string is literal, and a sed pass over `'...'` first would pair it with the
+# next single quote in the line and swallow whatever sat between.
+#
+# A heredoc BODY is not commands. This repo's docs are full of `npm install`
+# lines, and `cat > doc.md <<'EOF'` ... `EOF` must not read as an install.
+scrubbed=$(printf '%s' "$cmd" | awk '
+  function flushline(l) { print l }
+  BEGIN { heredoc = "" }
+  {
+    if (heredoc != "") {
+      line = $0
+      sub(/[[:space:]]+$/, "", line)
+      if (line == heredoc) heredoc = ""
+      next
+    }
+    out = ""; inS = 0; inD = 0
+    n = length($0)
+    for (i = 1; i <= n; i++) {
+      c = substr($0, i, 1)
+      if (!inD && c == "\047") { inS = !inS; continue }
+      if (!inS && c == "\042") { inD = !inD; continue }
+      if ((inS || inD) && (c == "&" || c == "|" || c == ";" || c == "(" || c == ")")) { out = out "\001"; continue }
+      out = out c
+    }
+    if (match(out, /<<-?[[:space:]]*[A-Za-z_][A-Za-z0-9_]*/)) {
+      tag = substr(out, RSTART, RLENGTH)
+      sub(/^<<-?[[:space:]]*/, "", tag)
+      heredoc = tag
+      sub(/<<-?[[:space:]]*[A-Za-z_][A-Za-z0-9_]*.*$/, "", out)
+    }
+    flushline(out)
+  }
+')
 
 eff="$PWD"
 target=""
@@ -133,7 +190,10 @@ while IFS= read -r seg; do
 
   # STAGE 4: only a manager-led segment can be an install.
   case "$head_tok" in
-    npm|bun|pnpm|yarn|yarnpkg) ;;
+    npm) verbs="$NPM_INSTALL" ;;
+    bun) verbs="$BUN_INSTALL" ;;
+    pnpm) verbs="$PNPM_INSTALL" ;;
+    yarn|yarnpkg) verbs="$YARN_INSTALL" ;;
     *) continue ;;
   esac
   shift
@@ -142,13 +202,14 @@ while IFS= read -r seg; do
   printf '%s' "$seg" | grep -Eq "$GLOBAL" && continue
 
   verdict=""
+  if printf '%s' "$seg" | grep -Eq "$AUDIT_FIX"; then verdict="install"; fi
   prefix_dir=""
   pending_prefix=0
   while [ $# -gt 0 ]; do
     tok="$1"; shift
     case "$tok" in
-      --prefix=*|-C=*) prefix_dir="${tok#*=}"; continue ;;
-      --prefix|-C) pending_prefix=1; continue ;;
+      --prefix=*|-C=*|--cwd=*|--dir=*) prefix_dir="${tok#*=}"; continue ;;
+      --prefix|-C|--cwd|--dir) pending_prefix=1; continue ;;
       -*) continue ;;
     esac
     if [ "$pending_prefix" = "1" ]; then prefix_dir="$tok"; pending_prefix=0; continue; fi
@@ -159,13 +220,19 @@ while IFS= read -r seg; do
     # judged against the primary's own real node_modules and allowed. The FIRST
     # verdict wins; later tokens are only mined for the prefix.
     [ -n "$verdict" ] && continue
-    if printf '%s' "$tok" | grep -Eq "^(${INSTALL_VERBS})$"; then verdict="install"; continue; fi
+    if printf '%s' "$tok" | grep -Eq "^(${verbs})$"; then verdict="install"; continue; fi
     if printf '%s' "$tok" | grep -Eq "^(${SAFE_VERBS})$"; then verdict="safe"; continue; fi
   done
 
   # A bare `yarn` (only flags, no verb) IS an install in yarn classic.
+  # A flags-only `yarn` IS an install in yarn classic, but `yarn --version` and
+  # `yarn --help` only print, so they must not be read as one.
   if [ -z "$verdict" ]; then
-    case "$head_tok" in yarn|yarnpkg) verdict="install" ;; esac
+    case "$head_tok" in
+      yarn|yarnpkg)
+        if printf '%s' "$seg" | grep -Eq '(^|[[:space:]])(--version|-v|-V|--help|-h)([[:space:]]|$)'; then :
+        else verdict="install"; fi ;;
+    esac
   fi
   [ "$verdict" = "install" ] || continue
 
