@@ -1,6 +1,7 @@
 import { html } from '@webjsdev/core';
 import '#components/copy-cmd.ts';
 import '#components/like-button.ts';
+import '#components/video-embed.ts';
 import { COMPONENT_SAMPLE, TOGGLE_SAMPLE, ACTION_SAMPLE, PAGE_SAMPLE, USAGE_SAMPLE, CORE_SOURCE_SAMPLE, SERVER_SOURCE_SAMPLE } from '#lib/samples.ts';
 import { DOCS_START_PATH, GALLERY_URL, GH_URL, NEW_TAB, SAME_AS } from '#lib/links.ts';
 // highlight() runs only at SSR (codeWindow renders its output into the served
@@ -472,22 +473,13 @@ export default function LandingPage() {
 
     <section class="pb-16">
       <div class="max-w-3xl mx-auto px-6">
-        <!-- The backdrop token is on the IFRAME, not just this wrapper. A frame
-             paints the UA default canvas until the embedded document arrives,
-             and color-scheme on :root does not reach a cross-origin frame, so
-             on a dark phone the box flashed white through lazy-load and through
-             the fetch. The light-dark() in --bg-sunken resolves in THIS
-             document, so the placeholder tracks the reader's theme both ways. -->
+        <!-- A poster the reader clicks, not a live frame. A cross-origin
+             iframe paints its own canvas before the embedded document's CSS
+             applies, and on a phone that canvas came up white in the middle
+             of a dark page. Nothing the embedder declares reaches inside it,
+             so the frame arrives on click instead. See components/video-embed.ts. -->
         <div class="aspect-video overflow-hidden border border-border-strong shadow-[var(--shadow)] bg-bg-sunken">
-          <iframe
-            class="w-full h-full bg-bg-sunken"
-            src="https://www.youtube-nocookie.com/embed/XghCghezod4?rel=0"
-            title="WebJs introduction video"
-            loading="lazy"
-            allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
-            referrerpolicy="strict-origin-when-cross-origin"
-            allowfullscreen
-          ></iframe>
+          <video-embed videoid="XghCghezod4" label="WebJs introduction video"></video-embed>
         </div>
       </div>
     </section>
