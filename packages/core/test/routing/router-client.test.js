@@ -528,6 +528,37 @@ test('resolvePreserveScroll: null trigger → false (no crash)', () => {
   assert.equal(_resolvePreserveScroll(null), false);
 });
 
+test('resolvePreserveScroll: the fallback fills in a MISSING carrier, never overrides one', () => {
+  // The form is passed as a fallback for a form-associated submitter, which
+  // `form="id"` lets sit outside the form entirely, where `closest()` from the
+  // button never reaches it. Ordering matters: the fallback must not override a
+  // carrier the trigger already resolved, or `="false"` on a button inside a
+  // marked form would stop working.
+  const f = frameFixture(
+    '<form id="marked" data-preserve-scroll>' +
+    '<button id="inside">go</button>' +
+    '<button id="inside-opted-out" data-preserve-scroll="false">go</button>' +
+    '</form>' +
+    '<button id="outside" form="marked">go</button>' +
+    '<form id="unmarked"></form>' +
+    '<button id="outside-unmarked" form="unmarked">go</button>'
+  );
+  try {
+    const form = f.get('marked');
+    assert.equal(_resolvePreserveScroll(f.get('inside'), form), true,
+      'a contained submitter resolves the form through closest()');
+    assert.equal(_resolvePreserveScroll(f.get('outside'), form), true,
+      'a form-associated submitter outside the form still gets the form mark');
+    assert.equal(_resolvePreserveScroll(f.get('inside-opted-out'), form), false,
+      'the trigger wins when it resolves a carrier, so ="false" still opts out');
+    assert.equal(_resolvePreserveScroll(f.get('outside-unmarked'), f.get('unmarked')), false,
+      'an unmarked form contributes nothing');
+    assert.equal(_resolvePreserveScroll(null, form), true,
+      'a submitter-less submission falls back to the form');
+    assert.equal(_resolvePreserveScroll(null, null), false);
+  } finally { f.cleanup(); }
+});
+
 /* ====================================================================
  * keyOf
  * ==================================================================== */

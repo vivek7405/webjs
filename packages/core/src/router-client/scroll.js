@@ -276,13 +276,33 @@ export function bumpRestoreGeneration() {
  * the NEAREST carrier, `data-preserve-scroll="false"` on one link inside a
  * marked wrapper opts that link back into the default with no extra logic.
  *
+ * `fallback` is consulted only when `trigger` resolves NO carrier, which is what
+ * a form submission needs. A submitter is form-associated by `form="id"` rather
+ * than by containment, so `<button form="f">` may sit anywhere in the document
+ * and `closest()` from it would never pass through the form it submits. Falling
+ * back to the form covers that, and ordering it AFTER the trigger is what keeps
+ * `data-preserve-scroll="false"` on the submitter winning over a marked form:
+ * a resolved carrier is never overridden, only a missing one is filled in.
+ *
  * @param {Element | null} trigger  the clicked anchor, or a submitted form's
- *   submitter (falling back to the form).
+ *   submitter (falling back to the form when there is no submitter).
+ * @param {Element | null} [fallback]  the submitted form, consulted only when
+ *   the trigger carries no mark and is not inside one.
  * @returns {boolean}
  */
-export function resolvePreserveScroll(trigger) {
-  if (!trigger || !trigger.closest) return false;
-  const carrier = trigger.closest('[data-preserve-scroll]');
+export function resolvePreserveScroll(trigger, fallback) {
+  const carrier = findScrollCarrier(trigger) || findScrollCarrier(fallback);
   if (!carrier) return false;
   return (carrier.getAttribute('data-preserve-scroll') || '').toLowerCase().trim() !== 'false';
+}
+
+/**
+ * The nearest element at or above `el` carrying `data-preserve-scroll`.
+ *
+ * @param {Element | null | undefined} el
+ * @returns {Element | null}
+ */
+function findScrollCarrier(el) {
+  if (!el || typeof el.closest !== 'function') return null;
+  return el.closest('[data-preserve-scroll]');
 }

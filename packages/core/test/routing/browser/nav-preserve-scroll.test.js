@@ -50,6 +50,10 @@
  *   - drop the `!== 'false'` test so presence alone preserves: case 4
  *   - read the option as `!opts?.scroll` rather than `opts?.scroll === false`:
  *     case 7's optionless half, plus 3 assertions in the unit file
+ *   - delete the `!frameId` half of the `if (recordHistory && !frameId)` guard
+ *     (the #1427 frame rule): case 8's UNMARKED half. Its MARKED half stays
+ *     green, which is why both halves are there; see the note on that case.
+ *   - drop the `|| findScrollCarrier(fallback)` fallback in `scroll.js`: case 9
  */
 import { enableClientRouter, disableClientRouter, navigate } from '../../../src/router-client.js';
 
@@ -104,8 +108,11 @@ function liveHtml() {
     + `<form id="wj-plain-form" method="post" action="${href('plain-form')}">`
       + '<button id="wj-plain-submit" type="submit">go</button>'
     + '</form>'
+    + `<form id="wj-outside-form" method="post" action="${href('outside-form')}" data-preserve-scroll></form>`
+    + '<button id="wj-outside-submit" type="submit" form="wj-outside-form">go</button>'
     + '<webjs-frame id="wj-scroll-frame">'
       + `<a id="wj-frame-link" href="${href('frame')}" data-preserve-scroll>filter</a>`
+      + `<a id="wj-frame-plain" href="${href('frame-plain')}">filter, unmarked</a>`
       + '<span id="wj-frame-content">ORIGINAL</span>'
     + '</webjs-frame>'
     + '<!--/wj:children:/-->';
@@ -349,20 +356,56 @@ suite('Client router: data-preserve-scroll keeps the reader in place (#1436)', (
     } finally { teardown(); }
   });
 
-  test('8. on a FRAME-targeted link the attribute is inert (the #1427 rule holds)', async () => {
+  test('8. inside a frame the offset holds either way, and the UNMARKED link is what proves it', async () => {
+    // Read the pairing before changing this case. The MARKED link cannot fail:
+    // with the #1427 frame guard intact the block never runs, and with it
+    // deleted the block runs but `preserveScroll` suppresses the write, so the
+    // offset is START_Y either way. That is not a flaw in the feature, it IS
+    // the feature ("inert by construction, no branch added"), but it does mean
+    // the marked link alone would be a tautology, which is what an earlier
+    // version of this case was: deleting the frame guard left all eight cases
+    // green. The UNMARKED sibling is the discriminating half, since with the
+    // guard gone it takes the `else if (!preserveScroll)` arm and scrolls to 0.
+    // Keep both, and keep them in this order.
     try {
       setup();
-      // A frame swap already writes no scroll, so the attribute asks for
-      // something already true and no branch was added for it. Marking a <nav>
-      // above a mixed set of links makes an inert hit ordinary rather than
-      // suspicious, which is why there is no warning either.
+      document.getElementById('wj-frame-plain').click();
+      await settle();
+
+      assert.equal(document.getElementById('wj-frame-content').textContent, 'UPDATED',
+        'the unmarked frame link swapped the frame, so this is a real frame nav');
+      assert.equal(window.scrollY, START_Y,
+        'a frame swap writes no scroll even with no attribute in sight (#1427)');
+    } finally { teardown(); }
+
+    try {
+      setup();
       document.getElementById('wj-frame-link').click();
       await settle();
 
       assert.equal(document.getElementById('wj-frame-content').textContent, 'UPDATED',
-        'the frame actually swapped, so this is a real frame nav');
+        'the marked frame link swapped the frame too, so the attribute broke nothing');
       assert.equal(window.scrollY, START_Y,
-        'the frame swap left the window alone, attribute or not');
+        'the attribute changes nothing on a frame link, which is the point');
+    } finally { teardown(); }
+  });
+
+  test('9. a submitter OUTSIDE its marked form still preserves (form-associated, not contained)', async () => {
+    try {
+      setup();
+      // `<button form="id">` is form-associated by attribute, so it may sit
+      // anywhere in the document. `closest()` from it never passes through the
+      // form, so resolving from the submitter alone would silently drop the
+      // form's own mark, while every doc surface promises a marked form covers
+      // its buttons. The form is consulted as a FALLBACK for exactly this.
+      document.getElementById('wj-outside-submit').click();
+      await settle();
+
+      assertPageSwapped();
+      assert.ok(fetched.some((u) => u.startsWith('page:') && u.includes('wj1436=outside-form')),
+        'the router handled the submission from the detached button');
+      assert.equal(window.scrollY, START_Y,
+        'the form\'s mark reached a submitter that is not inside it');
     } finally { teardown(); }
   });
 });
