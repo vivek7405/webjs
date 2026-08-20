@@ -1,7 +1,6 @@
 import { html } from '@webjsdev/core';
 import '#components/copy-cmd.ts';
 import '#components/like-button.ts';
-import '#components/video-embed.ts';
 import { COMPONENT_SAMPLE, TOGGLE_SAMPLE, ACTION_SAMPLE, PAGE_SAMPLE, USAGE_SAMPLE, CORE_SOURCE_SAMPLE, SERVER_SOURCE_SAMPLE } from '#lib/samples.ts';
 import { DOCS_START_PATH, GALLERY_URL, GH_URL, NEW_TAB, SAME_AS } from '#lib/links.ts';
 // highlight() runs only at SSR (codeWindow renders its output into the served
@@ -473,13 +472,16 @@ export default function LandingPage() {
 
     <section class="pb-16">
       <div class="max-w-3xl mx-auto px-6">
-        <!-- A poster the reader clicks, not a live frame. A cross-origin
-             iframe paints its own canvas before the embedded document's CSS
-             applies, and on a phone that canvas came up white in the middle
-             of a dark page. Nothing the embedder declares reaches inside it,
-             so the frame arrives on click instead. See components/video-embed.ts. -->
-        <div class="aspect-video overflow-hidden border border-border-strong shadow-[var(--shadow)] bg-bg-sunken">
-          <video-embed videoid="XghCghezod4" label="WebJs introduction video"></video-embed>
+        <div class="aspect-video overflow-hidden border border-border-strong shadow-[var(--shadow)]">
+          <iframe
+            class="w-full h-full"
+            src="https://www.youtube-nocookie.com/embed/XghCghezod4?rel=0"
+            title="WebJs introduction video"
+            loading="lazy"
+            allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
+            referrerpolicy="strict-origin-when-cross-origin"
+            allowfullscreen
+          ></iframe>
         </div>
       </div>
     </section>
