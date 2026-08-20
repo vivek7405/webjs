@@ -17,7 +17,7 @@ import { clearPrefetchHover, clearPrefetchRefused, clearPrefetchViewTimers, onPr
 // `restoreGeneration` is imported READ-ONLY: the deferred restore captures it
 // and re-compares after the frame, so it must be the live binding. Writes go
 // through bumpRestoreGeneration(), since ESM forbids assigning an import.
-import { afterTwoFrames, bumpRestoreGeneration, cancelScrollCatchUp, catchUpToRestoredScroll, releaseScrollAnchor, restoreGeneration, suppressScrollAnchoring } from './scroll.js';
+import { afterTwoFrames, bumpRestoreGeneration, releaseHeightReservation, releaseScrollAnchor, reserveRestoredHeight, restoreGeneration, suppressScrollAnchoring } from './scroll.js';
 import { snapshotCache, snapshotCurrent, snapshotGet } from './snapshot-cache.js';
 import { _setEnabled, bumpNavToken, currentNavigationToken, enabled, hardNavigate } from './state.js';
 import { _swapCommit, applySwap } from './swap.js';
@@ -140,7 +140,7 @@ export function disableClientRouter() {
   // scroll offset after the router is gone (#1310).
   bumpRestoreGeneration();
   if (releaseScrollAnchor) releaseScrollAnchor();
-  if (cancelScrollCatchUp) cancelScrollCatchUp();
+  if (releaseHeightReservation) releaseHeightReservation();
   currentPageUrl = null;
   // Unpublish the refresh entry (#1398) so the dev reload client's feature
   // detection sees the router is gone and falls back to a full reload.
@@ -442,7 +442,7 @@ export async function performNavigation(href, isPopState, frameId, opts) {
   if (!frameId) {
     bumpRestoreGeneration();
     if (releaseScrollAnchor) releaseScrollAnchor();
-    if (cancelScrollCatchUp) cancelScrollCatchUp();
+    if (releaseHeightReservation) releaseHeightReservation();
   }
 
   // Snapshot the page the user is LEAVING (with its scroll position)
@@ -484,81 +484,58 @@ export async function performNavigation(href, isPopState, frameId, opts) {
       if (cached) {
         const cachedDoc = parseHTML(cached.html);
         if (cachedDoc) {
+          // Reserve the page's SETTLED height BEFORE the swap, so the recorded
+          // offset is reachable from the very first frame (#1428). The snapshot
+          // markup is shorter than the page it came from until its components
+          // upgrade, and every scroll defect this path has had lived in that
+          // window: the offset clamped against a short document, and the
+          // restore had to chase it back afterwards. Reserving removes the
+          // shortness instead of compensating for it, so there is nothing to
+          // clamp and nothing to chase.
+          const releaseHeight = reserveRestoredHeight(cached.scrollHeight);
           applySwap(cachedDoc, frameId, /* revalidating */ true, /* href */ null);
           // Restore window scroll to where the user left it. Use
           // behavior:'instant' so an app-level `scroll-behavior: smooth`
           // stylesheet does not animate the restore (native nav jumps).
           //
-          // `cached.scrollY` was recorded at the page's SETTLED height, and the
-          // DOM just swapped in is still shorter until its components upgrade
-          // and re-render. Suppress scroll anchoring across the restore, or the
-          // browser adds that late growth to the restored offset and the reader
-          // lands below where they left (#1310).
+          // Anchoring is still suppressed across the restore even though the
+          // document no longer changes total HEIGHT: content still SHIFTS
+          // within the reserved space as components render, and anchoring
+          // reacts to a shift above the viewport regardless of whether the
+          // page grew overall, adding it to the offset just replayed (#1310).
           let releaseAnchor = () => {};
           if (typeof window !== 'undefined') {
-            // Restore the scroll, then decide whether to suppress anchoring.
-            //
-            // Suppress ONLY when the recorded offset was actually reached. A
-            // document that has not grown yet can be too SHORT to scroll that
-            // far, and the browser clamps to its current maximum. A reader at
-            // the bottom of the settled page is the clear case: the shortfall is
-            // then exactly the growth still to come, and anchoring ADDING that
-            // growth is what carries them back to the bottom. Suppressing there
-            // freezes the clamp instead and strands them a full page-growth
-            // ABOVE where they left, which is this bug's own mirror image. The
-            // two situations want opposite things and are told apart by the one
-            // question that separates them: did the scroll land.
-            //
-            // Both halves must read the SAME layout, and the scroll must be
-            // written against the page being restored. That is why this is
-            // ordered rather than simply inlined, and why the ordering differs
-            // by path.
             const restoreScroll = () => {
+              // Force a layout flush BEFORE the write. The reservation and the
+              // swap both just changed layout, and a scroll is clamped against
+              // the layout in effect when it runs: Chromium and WebKit clamp to
+              // the STALE (short) layout and land at 0, while Firefox flushes
+              // on its own and lands correctly. Reading a layout property is
+              // what makes the three agree.
+              //
+              // The old conditional-suppression code got this flush by
+              // accident, since deciding clamped-or-landed read `scrollY` right
+              // after the write. Suppression is unconditional now, so the read
+              // has to be deliberate or the restore silently regresses on two
+              // engines out of three.
+              void document.documentElement.scrollHeight;
               window.scrollTo({ left: cached.scrollX, top: cached.scrollY, behavior: 'instant' });
-              if (window.scrollY >= cached.scrollY - 1) {
-                releaseAnchor = suppressScrollAnchoring(cached.scrollX, cached.scrollY);
-              } else {
-                // Clamped. Anchoring is left on, since it is what carries the
-                // reader back down, but it adds the FULL growth regardless of
-                // how far short the clamp fell, so on its own it only lands a
-                // reader who left at the very bottom. Chase the recorded offset
-                // instead, once the page is tall enough to hold it.
-                catchUpToRestoredScroll(cached.scrollY, cached.scrollX);
-              }
+              releaseAnchor = suppressScrollAnchoring(cached.scrollX, cached.scrollY);
             };
             if (viewTransitionsEnabled() && typeof (/** @type any */ (document)).startViewTransition === 'function') {
               // Under a view transition `applySwap` defers its DOM mutation a
-              // frame, so running now would write and measure against the
-              // OUTGOING page. Measured with a 60000px outgoing page and a
-              // 3000px restored one: the scroll "landed" at 20000, suppression
-              // opened, and the restored page then clamped to 2416 with
-              // anchoring held off, which is precisely the stranding the
-              // conditional exists to prevent. Wait for the swap to commit.
-              //
-              // Guarded, because this is the one path where the restore
-              // outlives the call that scheduled it. Every cancel site in this
-              // feature (performNavigation, performSubmission,
-              // disableClientRouter) runs at the START of the next thing, so a
+              // frame, so writing now would land against the OUTGOING page.
+              // Guarded on the restore generation, because this is the one path
+              // where the restore outlives the call that scheduled it: a
               // navigation, submission, or disable arriving inside the deferred
-              // frame would close the window and then have this reopen it,
-              // scrolling a page it was never meant for to an offset recorded
-              // for the previous history entry. The synchronous branch below
-              // cannot outlive anything and so needs no guard.
+              // frame closes the window, and this must not reopen it against a
+              // page it was never meant for.
               const myRestore = restoreGeneration;
               _swapCommit.then(() => {
                 if (myRestore !== restoreGeneration || !enabled) return;
                 restoreScroll();
               }).catch(() => {});
             } else {
-              // The synchronous path, and the read must STAY synchronous here.
-              // Deferring it even by a microtask breaks the fix outright: by
-              // then the restored components' renders have been applied, and
-              // reading `scrollY` forces the layout that flushes them, so
-              // anchoring runs DURING the read and hands back the
-              // already-shifted offset. Measured on /ui/button, the suppression
-              // landed 19ms late with `scrollY` already 800 -> 1563. What makes
-              // it correct is not which document it sees but that it sees the
-              // same layout the scroll just landed in.
               restoreScroll();
             }
           }
@@ -579,7 +556,7 @@ export async function performNavigation(href, isPopState, frameId, opts) {
           const revalidated = fetchAndApply(href, frameId, /* recordHistory */ false, optimisticState, 'GET', null, signal, myToken, /* revalidating */ true)
             .catch(() => {});
           const floor = new Promise((r) => setTimeout(r, ANCHOR_SUPPRESS_FLOOR_MS));
-          Promise.all([revalidated, floor]).then(() => afterTwoFrames(releaseAnchor));
+          Promise.all([revalidated, floor]).then(() => afterTwoFrames(() => { releaseAnchor(); releaseHeight(); }));
           return null;
         }
       }
@@ -661,7 +638,7 @@ export async function performSubmission(href, method, body, frameId, form) {
   if (!frameId) {
     bumpRestoreGeneration();
     if (releaseScrollAnchor) releaseScrollAnchor();
-    if (cancelScrollCatchUp) cancelScrollCatchUp();
+    if (releaseHeightReservation) releaseHeightReservation();
   }
 
   const isSafe = method === 'get' || method === 'head';

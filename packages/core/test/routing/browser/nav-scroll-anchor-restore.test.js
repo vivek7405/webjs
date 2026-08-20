@@ -229,8 +229,18 @@ suite('Client router: a Back restore survives late layout growth (#1310)', () =>
     history.pushState(null, '', entryUrl('anchor-a'));
     history.pushState(null, '', entryUrl('anchor-b'));
     entriesPushed = true;
+    // `scrollHeight` is what the restore RESERVES across the swap (#1428), so
+    // a fixture without it leaves the reservation inert and every assertion
+    // below passes for the wrong reason. A real snapshot's offset is always
+    // reachable within its own recorded height (you cannot scroll past the
+    // document), so the fixture models that: enough height to hold the offset
+    // plus a viewport, unless a case overrides it to test the reservation
+    // itself.
     _snapshotCache.set(entryUrl('anchor-a'), {
       html, scrollX: 0, scrollY: restoredY,
+      scrollHeight: (opts && opts.scrollHeight !== undefined)
+        ? opts.scrollHeight
+        : restoredY + window.innerHeight,
     });
     _setCurrentPageUrl(location.href);
     // Start where the reader was, so the restore is a real scroll rather than
@@ -277,30 +287,6 @@ suite('Client router: a Back restore survives late layout growth (#1310)', () =>
     enableClientRouter();
   }
 
-  test('a CLAMPED restore is left alone, so the reader is not stranded high', async () => {
-    // The mirror image of this bug, and the reason suppression is conditional.
-    //
-    // A document that has not grown yet can be too short to scroll to the
-    // recorded offset at all, so the browser clamps to its current maximum. The
-    // shortfall is then the growth still to come, and anchoring adding that
-    // growth is what carries the reader back down. Suppressing there would
-    // freeze the clamp and strand them a full page-growth ABOVE where they
-    // left, measured at 763px on the reported page: the same error as the bug,
-    // pointing the other way.
-    //
-    // The recorded offset here is far past anything the un-grown document can
-    // reach, so the clamp is certain whatever the runner's viewport height is.
-    await setup({ restoredY: 50000 });
-    try {
-      await goBack();
-      assert.ok(window.scrollY < 50000,
-        'precondition: the restore was clamped, so this is the case under test');
-      assert.equal(document.documentElement.style.getPropertyValue('overflow-anchor'), '',
-        'a clamped restore installs no window while the offset is out of '
-        + 'reach, leaving the browser to heal the clamp as the page grows');
-    } finally { await teardown(); }
-  });
-
   test('a second navigation inside the window closes it', async () => {
     // The window deliberately outlives its own restore (a floor, then a
     // ceiling), so a navigation starting inside that span must end it. Without
@@ -321,42 +307,6 @@ suite('Client router: a Back restore survives late layout growth (#1310)', () =>
       assert.equal(document.documentElement.style.getPropertyValue('overflow-anchor'), '',
         'starting another navigation ends the previous restore\'s window');
     } finally { await teardown(); }
-  });
-
-  test('under a view transition the decision waits for the swap to commit', async () => {
-    // `applySwap` defers its DOM mutation a frame when a transition is running,
-    // so writing and measuring the scroll straight through would act on the
-    // OUTGOING page. Here that page is far taller than the restored one, so a
-    // decision taken against it says "landed" and suppresses anchoring, and the
-    // restored page then clamps with anchoring held off. That is the stranding
-    // the clamped path exists to avoid, arriving by a different route.
-    //
-    // The transition is SIMULATED. A hidden document skips a real one, and the
-    // runner puts test files in concurrent pages, so the deferred path is not
-    // otherwise reachable from this suite on any engine. The stub defers the
-    // callback exactly as the spec does.
-    const origSVT = (/** @type any */ (document)).startViewTransition;
-    let transitions = 0;
-    (/** @type any */ (document)).startViewTransition = (cb) => {
-      transitions += 1;
-      const done = new Promise((resolve) => {
-        requestAnimationFrame(() => { cb(); resolve(); });
-      });
-      return { updateCallbackDone: done, finished: done, ready: done, skipTransition() {} };
-    };
-    await setup({ restoredY: CLAMPED_TARGET, manualGrowth: true, viewTransition: true, tallOutgoing: true });
-    try {
-      await goBack();
-      assert.ok(transitions > 0,
-        'precondition: the swap actually ran through a view transition');
-      for (let i = 0; i < 4; i++) await frame();
-      assert.equal(document.documentElement.style.getPropertyValue('overflow-anchor'), '',
-        'the clamp is judged against the restored page, so a restore that '
-        + 'clamps leaves anchoring alone rather than freezing it');
-    } finally {
-      await teardown();
-      (/** @type any */ (document)).startViewTransition = origSVT;
-    }
   });
 
   test('a navigation during a deferred restore cancels it, not the other way round', async () => {
@@ -587,165 +537,6 @@ suite('Client router: a Back restore survives late layout growth (#1310)', () =>
     }
   });
 
-  test('a clamped restore is CHASED to the exact recorded offset', async () => {
-    // Leaving anchoring on is not enough on its own. It adds the FULL growth
-    // whatever the shortfall was, so it only lands a reader who left at the very
-    // bottom, where those two numbers coincide; anyone above that is carried too
-    // far (1902 came back as 2002 on /ui/button). The catch-up re-asserts the
-    // recorded offset the moment the page is tall enough to hold it.
-    //
-    // The target sits inside the band only the grown page can reach, and the
-    // fixture grows by 3000px so that band does not depend on the runner's
-    // viewport height.
-    await setup({ restoredY: CLAMPED_TARGET, manualGrowth: true });
-    try {
-      await goBack();
-      assert.ok(window.scrollY < CLAMPED_TARGET - 1,
-        `precondition: the restore was clamped (got ${window.scrollY} for ${CLAMPED_TARGET})`);
-      // Now make the offset reachable, which is what the catch-up waits for.
-      document.querySelector('wj-grow-on-command-1310').style.height = COMMANDED_GROWTH + 'px';
-      for (let i = 0; i < 12; i++) await frame();
-      assert.ok(Math.abs(window.scrollY - CLAMPED_TARGET) < 5,
-        'the catch-up lands on the recorded offset once it is reachable '
-        + `(expected ~${CLAMPED_TARGET}, got ${window.scrollY})`);
-    } finally { await teardown(); }
-  });
-
-  test('landing on the offset opens a window, which closes on the chase deadline', async () => {
-    // The landed suppression had no assertion on it at all: every clamped case
-    // reads `scrollY` only, and the one that reads `overflow-anchor` uses an
-    // offset that never becomes reachable, so it never lands. Deleting the
-    // suppression left every suite green apart from the staged-growth case.
-    await setup({ restoredY: CLAMPED_TARGET, manualGrowth: true });
-    try {
-      await goBack();
-      assert.equal(document.documentElement.style.getPropertyValue('overflow-anchor'), '',
-        'precondition: a clamped restore opens no window while the offset is '
-        + 'still out of reach');
-      document.querySelector('wj-grow-on-command-1310').style.height = COMMANDED_GROWTH + 'px';
-      for (let i = 0; i < 6; i++) await frame();
-      assert.ok(Math.abs(window.scrollY - CLAMPED_TARGET) < 5,
-        'precondition: the chase landed');
-      assert.equal(document.documentElement.style.getPropertyValue('overflow-anchor'), 'none',
-        'landing on the recorded offset protects it, since the growth that '
-        + 'made it reachable is rarely all of it');
-      // The window rides the chase's own deadline, measured from the restore.
-      await new Promise((r) => setTimeout(r, 900));
-      assert.equal(document.documentElement.style.getPropertyValue('overflow-anchor'), '',
-        'and it closes on that deadline, leaving no residue');
-    } finally { await teardown(); }
-  });
-
-  test('the landed window ends on the RESTORE deadline, not its own', async () => {
-    // The discriminating case for whose clock the landed window runs on. Both a
-    // shared deadline and a fresh one suppress at landing and are shut by the
-    // time the page has settled, so a case that lands early and looks late
-    // cannot tell them apart, which is what the first attempt at this did.
-    //
-    // Landing LATE separates them. The chase is bounded from the restore, so a
-    // landing at ~380ms leaves roughly 120ms of window; a window starting its
-    // own floor at landing would instead run to ~880ms. Observing in between is
-    // the only place the two differ.
-    await setup({ restoredY: CLAMPED_TARGET, manualGrowth: true });
-    try {
-      await goBack();
-      // Late enough that the two clocks diverge, early enough to keep real
-      // margin on both sides. The chase's deadline is 500ms from the restore,
-      // so growing at ~250ms leaves ~250ms for the tick that lands it, and the
-      // sample below sits ~120ms past the restore deadline and ~135ms short of
-      // where a fresh floor started at landing would expire. An earlier draft
-      // grew at 380ms and left only ~115ms for that tick, which is the shape
-      // that produced the one-in-three Firefox flake recorded above.
-      await new Promise((r) => setTimeout(r, 250));
-      document.querySelector('wj-grow-on-command-1310').style.height = COMMANDED_GROWTH + 'px';
-      for (let i = 0; i < 4; i++) await frame();
-      assert.ok(Math.abs(window.scrollY - CLAMPED_TARGET) < 5,
-        `precondition: the chase landed late but did land (got ${window.scrollY})`);
-      // Past the restore's deadline, well short of landing plus a fresh floor.
-      await new Promise((r) => setTimeout(r, 350));
-      assert.equal(document.documentElement.style.getPropertyValue('overflow-anchor'), '',
-        'the landed window rides the deadline that started at the RESTORE, so '
-        + 'it is shut by now; on its own floor it would still be open');
-    } finally { await teardown(); }
-  });
-
-  test('a clamped restore survives growth that arrives in STAGES', async () => {
-    // The real cause of the growth is components upgrading and rendering one at
-    // a time, so it arrives in pieces. Every other clamped case grows in a
-    // single assignment, which is the easy shape: the catch-up writes the offset
-    // once and the page never moves again. With staged growth the page keeps
-    // growing after that write, and anchoring is deliberately left ON here, so
-    // each later stage is added on top of the offset and carries the reader
-    // below it.
-    await setup({ restoredY: CLAMPED_TARGET, manualGrowth: true });
-    try {
-      await goBack();
-      assert.ok(window.scrollY < CLAMPED_TARGET - 1, 'precondition: clamped');
-      const grower = document.querySelector('wj-grow-on-command-1310');
-      // Stage one makes the offset EXACTLY reachable, computed from the live
-      // viewport so it lands on the threshold rather than near it: the fixture
-      // filler is 3000px, so a grower of `target + innerHeight - 3000` puts the
-      // document's maximum scroll precisely at the target. That is the frame
-      // the catch-up writes and stops on. Stage two then adds more above the
-      // viewport, which is the growth that must not be counted on top.
-      const stageOne = CLAMPED_TARGET + window.innerHeight - 3000;
-      grower.style.height = stageOne + 'px';
-      for (let i = 0; i < 6; i++) await frame();
-      assert.ok(Math.abs(window.scrollY - CLAMPED_TARGET) < 5,
-        `precondition: stage one let the catch-up land (got ${window.scrollY})`);
-      grower.style.height = (stageOne + 1000) + 'px';
-      for (let i = 0; i < 12; i++) await frame();
-      assert.ok(Math.abs(window.scrollY - CLAMPED_TARGET) < 5,
-        'staged growth must still land on the recorded offset '
-        + `(expected ~${CLAMPED_TARGET}, got ${window.scrollY})`);
-    } finally { await teardown(); }
-  });
-
-  test('the catch-up gives up after its window, and does not move a settled reader', async () => {
-    // The bound is a live behaviour constant: past it a clamped restore stops
-    // chasing. The other two catch-up cases grow the fixture immediately, so
-    // they pass at any bound and none of them would notice it being widened
-    // back to the ceiling. This is the case that pins it, and it is the reason
-    // the bound exists: a reader who landed and started READING generates no
-    // input to cancel the chase, so late-arriving growth must not scroll them.
-    await setup({ restoredY: CLAMPED_TARGET, manualGrowth: true });
-    try {
-      await goBack();
-      const clamped = window.scrollY;
-      assert.ok(clamped < CLAMPED_TARGET - 1, 'precondition: the restore was clamped');
-      // Past the window, with no input at any point.
-      await new Promise((r) => setTimeout(r, 900));
-      document.querySelector('wj-grow-on-command-1310').style.height = COMMANDED_GROWTH + 'px';
-      for (let i = 0; i < 12; i++) await frame();
-      assert.ok(Math.abs(window.scrollY - CLAMPED_TARGET) >= 5,
-        'growth arriving after the window must not scroll a reader who never '
-        + `asked (landed on ${CLAMPED_TARGET}, so the chase was still live)`);
-    } finally { await teardown(); }
-  });
-
-  test('a reader taking over cancels the catch-up', async () => {
-    // The catch-up WRITES scroll, unlike suppression, so it is the one part of
-    // this that could yank someone. It stops on the same inputs a suppression
-    // window closes on, before the offset becomes reachable.
-    await setup({ restoredY: CLAMPED_TARGET, manualGrowth: true });
-    try {
-      await goBack();
-      assert.ok(window.scrollY < CLAMPED_TARGET - 1,
-        'precondition: the restore was clamped');
-      // The reader takes over BEFORE the offset becomes reachable.
-      window.dispatchEvent(new WheelEvent('wheel', { bubbles: true }));
-      document.querySelector('wj-grow-on-command-1310').style.height = COMMANDED_GROWTH + 'px';
-      for (let i = 0; i < 12; i++) await frame();
-      // Asserted as "the catch-up never wrote", not as "nothing moved". The
-      // clamped path deliberately leaves anchoring ON, so the browser still
-      // carries the position as the page grows, exactly as it does on main.
-      // What must not happen is this code adding a write of its own on top.
-      assert.ok(Math.abs(window.scrollY - CLAMPED_TARGET) >= 5,
-        'a reader who has taken over is never scrolled onto the recorded '
-        + `offset (landed exactly on ${CLAMPED_TARGET}, so the catch-up wrote)`);
-    } finally { await teardown(); }
-  });
-
   test('anchoring WORKS again once the window has closed', async () => {
     // The inverse of the headline, and the regression that would matter most if
     // this fix were wrong: suppression is temporary, so once the restore is over
@@ -803,6 +594,106 @@ suite('Client router: a Back restore survives late layout growth (#1310)', () =>
       assert.equal(document.documentElement.style.getPropertyValue('overflow-anchor'), '',
         'the ceiling releases a window whose revalidation never came back');
     } finally { await teardown(); }
+  });
+
+  test('the reservation makes the recorded offset reachable on the FIRST frame (#1428)', async () => {
+    // The architecture change. The snapshot markup is far shorter than the page
+    // it was serialized from until its components render, so the recorded
+    // offset used to be unreachable and the browser clamped to whatever the
+    // short document allowed. That clamp is what the old catch-up chase existed
+    // to heal, after the fact.
+    //
+    // Reserving the recorded height across the swap removes the shortness
+    // instead of compensating for it, so the offset is reachable immediately
+    // and the restore lands exactly, once. `manualGrowth` keeps the fixture
+    // short until this test grows it, so nothing but the reservation can be
+    // making the offset reachable here.
+    await setup({ restoredY: CLAMPED_TARGET, manualGrowth: true });
+    try {
+      await goBack();
+      // Frame granularity, the user-visible contract. The UA performs a restore
+      // of its own a beat after the handler, and in THIS harness it writes 0:
+      // the fixture pushes its entries from a page at offset 0 and injects the
+      // recorded offset straight into the snapshot cache, so the browser never
+      // saw a real offset for that entry. The restore window's write-back
+      // corrects it on the next frame, which is what a reader sees.
+      await frame();
+      assert.ok(Math.abs(window.scrollY - CLAMPED_TARGET) < 5,
+        `the offset is reachable with no clamp and no chase (got ${window.scrollY})`);
+      // And it holds once the real content arrives and the reservation is no
+      // longer what is carrying the height.
+      document.querySelector('wj-grow-on-command-1310').style.height = COMMANDED_GROWTH + 'px';
+      for (let i = 0; i < 6; i++) await frame();
+      assert.ok(Math.abs(window.scrollY - CLAMPED_TARGET) < 5,
+        `and the reader stays there as the page fills in (got ${window.scrollY})`);
+    } finally { await teardown(); }
+  });
+
+  test('the reservation leaves no residue once the restore is over (#1428)', async () => {
+    // It is an inline style on the ROOT, so it must be put back exactly like
+    // the anchoring window's `overflow-anchor`, or every restored page would
+    // keep a stale min-height for the life of the document.
+    await setup();
+    try {
+      await goBack();
+      assert.ok(document.documentElement.style.getPropertyValue('min-height') !== '',
+        'precondition: the reservation is held across the restore');
+      releaseFetch();
+      releaseFetch = null;
+      await new Promise((r) => setTimeout(r, 800));
+      assert.equal(document.documentElement.style.getPropertyValue('min-height'), '',
+        'the router leaves no height of its own on the root after the restore');
+    } finally { await teardown(); }
+  });
+
+  test('a second navigation releases the reservation (#1428)', async () => {
+    // Same supersede rule the anchoring window follows: the reservation
+    // outlives its own restore, so a navigation starting inside that span must
+    // end it rather than hold another page tall.
+    await setup();
+    try {
+      await goBack();
+      assert.ok(document.documentElement.style.getPropertyValue('min-height') !== '',
+        'precondition: the reservation is held');
+      navigate(location.origin + entryUrl('second-nav-1428')).catch(() => {});
+      await new Promise((r) => setTimeout(r, 0));
+      assert.equal(document.documentElement.style.getPropertyValue('min-height'), '',
+        'starting another navigation releases the previous restore\'s reservation');
+    } finally { await teardown(); }
+  });
+
+  test('under a view transition the restore still lands on the recorded offset (#1428)', async () => {
+    // `applySwap` defers its DOM mutation a frame under a transition, so the
+    // scroll write must wait for the commit or it acts on the OUTGOING page.
+    // The outgoing page here is far taller than the restored one, which is the
+    // shape that used to produce a wrong decision. The reservation is taken
+    // before the swap either way, so the offset is reachable when the write
+    // finally lands.
+    //
+    // The transition is SIMULATED: a hidden document skips a real one, and the
+    // runner puts test files in concurrent pages, so the deferred path is not
+    // otherwise reachable here. The stub defers the callback as the spec does.
+    const origSVT = (/** @type any */ (document)).startViewTransition;
+    let transitions = 0;
+    (/** @type any */ (document)).startViewTransition = (cb) => {
+      transitions += 1;
+      const done = new Promise((resolve) => {
+        requestAnimationFrame(() => { cb(); resolve(); });
+      });
+      return { updateCallbackDone: done, finished: done, ready: done, skipTransition() {} };
+    };
+    await setup({ restoredY: CLAMPED_TARGET, manualGrowth: true, viewTransition: true, tallOutgoing: true });
+    try {
+      await goBack();
+      assert.ok(transitions > 0,
+        'precondition: the swap actually ran through a view transition');
+      for (let i = 0; i < 4; i++) await frame();
+      assert.ok(Math.abs(window.scrollY - CLAMPED_TARGET) < 5,
+        `the deferred restore lands on the recorded offset (got ${window.scrollY})`);
+    } finally {
+      await teardown();
+      (/** @type any */ (document)).startViewTransition = origSVT;
+    }
   });
 
   test('the restore opens a scroll-anchoring window', async () => {

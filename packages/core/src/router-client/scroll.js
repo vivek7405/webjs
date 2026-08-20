@@ -6,7 +6,7 @@
  *
  * @module
  */
-import { ANCHOR_RELEASE_EVENTS, ANCHOR_SUPPRESS_CEILING_MS, ANCHOR_SUPPRESS_FLOOR_MS } from './constants.js';
+import { ANCHOR_RELEASE_EVENTS, ANCHOR_SUPPRESS_CEILING_MS } from './constants.js';
 
 /**
  * Closes the currently open restore window, or null when none is open.
@@ -116,17 +116,64 @@ export function suppressScrollAnchoring(targetX, targetY) {
 }
 
 /**
- * Cancels an in-flight catch-up, or null when none is running.
+ * Closes the currently held height reservation, or null when none is open.
  * @type {(() => void) | null}
  */
-export let cancelScrollCatchUp = null;
+export let releaseHeightReservation = null;
+
+/**
+ * Reserve the restored page's SETTLED height across a Back/Forward restore
+ * (#1428 architecture).
+ *
+ * A restore re-inserts an outerHTML snapshot, and that markup is SHORTER than
+ * the page it was serialized from until its components upgrade and re-render a
+ * beat later. Every scroll defect in this file's history lived in that window:
+ * the browser clamped the recorded offset against the short document (#1310's
+ * clamped band, formerly healed by a chase), and the UA's own restoration
+ * landed short the same way. Holding the settled height on the ROOT element
+ * makes the recorded offset reachable from the first frame, so a restore lands
+ * exactly, once, and the clamp class cannot occur at all.
+ *
+ * The root and not `<body>`, because the restore REPLACES the whole body, so
+ * an inline style there would leave with the old node. Same
+ * save-and-put-back contract as `overflow-anchor` above.
+ *
+ * Released on the restore's settle, on the ceiling, and on supersede (a new
+ * page navigation, a submission, disabling the router). NEVER on user input:
+ * the window releases early for a reader taking over, but yanking the page's
+ * height out from under a reader mid-scroll is the one harm an early release
+ * here could cause, so this deliberately does not share that trigger.
+ *
+ * @param {number} px the snapshot's recorded `scrollHeight`
+ * @returns {() => void} Idempotent release.
+ */
+export function reserveRestoredHeight(px) {
+  if (typeof document === 'undefined' || !document.documentElement || !(px > 0)) return () => {};
+  // A second reservation supersedes the first.
+  if (releaseHeightReservation) releaseHeightReservation();
+  const root = document.documentElement;
+  const prev = root.style.getPropertyValue('min-height');
+  root.style.setProperty('min-height', px + 'px');
+  /** @type {ReturnType<typeof setTimeout> | null} */
+  let timer = null;
+  const release = () => {
+    if (releaseHeightReservation !== release) return;
+    releaseHeightReservation = null;
+    if (timer) { clearTimeout(timer); timer = null; }
+    if (prev) root.style.setProperty('min-height', prev);
+    else root.style.removeProperty('min-height');
+  };
+  releaseHeightReservation = release;
+  timer = setTimeout(release, ANCHOR_SUPPRESS_CEILING_MS);
+  return release;
+}
 
 /**
  * Bumped wherever a restore is superseded (#1310), and read by the one restore
  * path that outlives the call scheduling it. That means a PAGE navigation, a
  * PAGE-level submission, and disabling the router. A frame-targeted nav or
  * submission swaps one region and leaves the page, so it is excluded, exactly
- * like the `loadFrame` case below.
+ * like the `loadFrame` case.
  *
  * Deliberately NOT `currentNavigationToken`, which is the obvious choice and the
  * wrong one: `loadFrame` bumps that too, and its own contract says a frame
@@ -138,120 +185,6 @@ export let cancelScrollCatchUp = null;
  * do end a restore.
  */
 export let restoreGeneration = 0;
-
-/**
- * Chase a restored scroll offset the document was too SHORT to reach (#1310).
- *
- * The sibling of `suppressScrollAnchoring`, for the case that one deliberately
- * declines. When the recorded offset is past the un-grown document's maximum,
- * the browser clamps, and anchoring then adds the growth back as the page
- * settles. That lands a reader who left at the very bottom back at the bottom,
- * because there the shortfall and the growth are the same number. It is wrong
- * for everyone else: anchoring adds the FULL growth whatever the shortfall was,
- * so a reader who left 100px above the bottom is carried 100px too far.
- *
- * This re-asserts the recorded offset once the document can actually hold it,
- * which is the only moment the number becomes reachable, and then stops.
- *
- * It is deliberately narrow, because #1310 rejected re-asserting the scroll in
- * the general case and that reasoning still holds. The difference is that this
- * knows exactly where it is going and can tell when it has arrived: it runs
- * ONLY on the clamped path, only while the offset is still out of reach, writes
- * once, and stops on the first real input.
- *
- * It does NOT escape the settling-versus-streaming question, and it is worth
- * being exact about that rather than claiming otherwise. It cannot tell the
- * restore settling apart from any other growth, so the guard is its WINDOW: it
- * lives for `ANCHOR_SUPPRESS_FLOOR_MS` from the RESTORE and no longer. That is
- * tighter than the window a landed restore gets, which runs to the later of the
- * floor and the revalidation and is capped by the ceiling, and deliberately so,
- * because this path WRITES scroll. The suppression this path installs once the
- * chase lands is part of the same window, not a second one: it shares this
- * deadline, so the whole clamped path is bounded by one floor measured from the
- * restore however late the landing happens.
- *
- * Be precise about what the bound does and does not buy, since it is easy to
- * overclaim in both directions. WHILE the window is open the reader is
- * protected: until the offset is reachable there is nothing to protect, and
- * from the moment the chase lands on it, suppression holds it against the rest
- * of the growth. AFTER the window closes, both halves stop: the router writes
- * no more scroll, and anchoring is back on, so any growth still arriving is
- * added to `scrollY` and carries the reader down toward the bottom, which is
- * main's behaviour. So the cost of a component that settles later than the
- * window is that the reader drifts below the offset, not that they sit at the
- * clamp.
- *
- * @param {number} targetY  The recorded offset to reach.
- * @param {number} targetX
- */
-export function catchUpToRestoredScroll(targetY, targetX) {
-  if (typeof window === 'undefined' || typeof requestAnimationFrame !== 'function') return;
-  if (cancelScrollCatchUp) cancelScrollCatchUp();
-  let rafId = 0;
-  /** @type {ReturnType<typeof setTimeout> | null} */
-  let timer = null;
-  /** Release for the suppression installed once the offset is reached. */
-  let releaseLanded = null;
-  const stop = () => {
-    if (cancelScrollCatchUp !== stop) return;
-    cancelScrollCatchUp = null;
-    if (rafId) cancelAnimationFrame(rafId);
-    if (timer) { clearTimeout(timer); timer = null; }
-    if (releaseLanded) { releaseLanded(); releaseLanded = null; }
-    for (const ev of ANCHOR_RELEASE_EVENTS) {
-      window.removeEventListener(ev, stop, /** @type {any} */ ({ capture: true }));
-    }
-  };
-  const tick = () => {
-    if (cancelScrollCatchUp !== stop) return;
-    const maxY = document.documentElement.scrollHeight - window.innerHeight;
-    if (maxY >= targetY) {
-      // Reachable at last. Land the reader on the recorded offset.
-      window.scrollTo({ left: targetX, top: targetY, behavior: 'instant' });
-      // And then protect it, because landing is not the end of the story. The
-      // growth that made the offset reachable is rarely all of it: the real
-      // cause is components upgrading one at a time, so more arrives after
-      // this. Anchoring is still on here, deliberately, so every later stage
-      // would be added on top of the offset just written and carry the reader
-      // below it again. Measured on a two-stage fixture, an offset of 4000
-      // ended at 5000.
-      //
-      // Once the reader IS on the recorded offset the situation is identical to
-      // a restore that landed on its first try, so it gets that case's
-      // protection for what remains.
-      //
-      // It shares THIS chase's deadline rather than starting one of its own,
-      // which matters: a fresh floor-length timer here would start at landing
-      // rather than at the restore, so the clamped path could hold anchoring
-      // off for nearly twice the floor and stop being the tighter of the two
-      // windows, which is the whole reason for the bound. `stop` owns the
-      // release, so the existing timer and the input listeners close it.
-      releaseLanded = suppressScrollAnchoring();
-      // Deliberately NOT `stop()`: the window has to outlive the landing, up to
-      // the deadline already running.
-      if (rafId) { cancelAnimationFrame(rafId); rafId = 0; }
-      return;
-    }
-    rafId = requestAnimationFrame(tick);
-  };
-  cancelScrollCatchUp = stop;
-  // Same inputs that close a suppression window: the reader has taken over.
-  for (const ev of ANCHOR_RELEASE_EVENTS) {
-    window.addEventListener(ev, stop, { capture: true, passive: true });
-  }
-  // Bounded by the FLOOR, not the ceiling. The ceiling is a backstop for a hung
-  // fetch; this is a scroll WRITE, so its window is the one thing that decides
-  // whether a reader can be moved without asking. Any growth past the target
-  // fires it, and growth is not exclusively the restore settling: a
-  // <webjs-suspense> boundary resolving, a lazy component entering, or a late
-  // image would all qualify. Holding it open for the full ceiling would mean a
-  // reader who landed and started READING, and so generates no input to cancel
-  // it, could be scrolled up to two seconds after pressing Back. The floor
-  // covers the restore's own settling, which is what it is for, and is measured
-  // in a few hundred milliseconds rather than seconds.
-  timer = setTimeout(stop, ANCHOR_SUPPRESS_FLOOR_MS);
-  rafId = requestAnimationFrame(tick);
-}
 
 /**
  * Run `fn` after two animation frames, so a just-applied DOM has laid out
