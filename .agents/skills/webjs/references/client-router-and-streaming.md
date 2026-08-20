@@ -55,7 +55,7 @@ Per link, opt out with `data-no-router` (auth flows like `/logout`, OAuth redire
 <form method="post" action=${saveDraft} data-preserve-scroll>...</form>
 ```
 
-It resolves through `closest()`, so one mark on a wrapping element covers every link in it (the same walk `data-webjs-frame` uses), and `data-preserve-scroll="false"` on a nearer element opts back out. On a form the lookup starts at the submitter, which passes through the form on its way up, so a marked form covers its own buttons.
+It resolves through `closest()`, so one mark on a wrapping element covers every link in it (the same walk `data-webjs-frame` uses), and `data-preserve-scroll="false"` on a nearer element opts back out. On a form the lookup starts at the submitter and falls back to the form itself, so a marked form covers its own buttons whether they sit inside it or are attached from elsewhere with `form="id"`. The fallback only fills in a missing mark, so `data-preserve-scroll="false"` on a button still opts that button out of a marked form.
 
 Three things it does NOT do. A hash link still scrolls to its anchor, because the reader named a target and a named target beats a blanket preference. It is inert on a frame-targeted link, since a frame swap never writes a scroll to begin with. And it is inert with JS off, where the link is a plain `<a>` and the browser does whatever it does, so nothing about a page's correctness may depend on it.
 

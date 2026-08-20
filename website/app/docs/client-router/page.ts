@@ -214,9 +214,9 @@ revalidate();</code-block>
   &lt;a href="/" data-preserve-scroll="false"&gt;Home&lt;/a&gt;  &lt;!-- opts back out --&gt;
 &lt;/nav&gt;
 
-&lt;!-- forms too: the lookup starts at the submitter and walks up through the form --&gt;
+&lt;!-- forms too: resolved from the submitter, falling back to the form itself --&gt;
 &lt;form method="post" action="${'${saveDraft}'}" data-preserve-scroll&gt;...&lt;/form&gt;</code-block>
-    <p>The attribute resolves through <code>closest()</code>, so one mark on a wrapping element covers every link inside it, and <code>data-preserve-scroll="false"</code> on something nearer opts back out. A hash link still scrolls to its anchor, because the reader named a target and a named target beats a blanket preference. It is inert on a frame-targeted link, since a frame swap never writes a scroll to begin with, and inert with JS off, where the link is a plain <code>&lt;a&gt;</code>, so nothing about a page's correctness may depend on it.</p>
+    <p>The attribute resolves through <code>closest()</code>, so one mark on a wrapping element covers every link inside it, and <code>data-preserve-scroll="false"</code> on something nearer opts back out. On a form the lookup starts at the submitter and falls back to the form, so a marked form covers its buttons even when one is attached from elsewhere with <code>form="id"</code> rather than nested inside it. A hash link still scrolls to its anchor, because the reader named a target and a named target beats a blanket preference. It is inert on a frame-targeted link, since a frame swap never writes a scroll to begin with, and inert with JS off, where the link is a plain <code>&lt;a&gt;</code>, so nothing about a page's correctness may depend on it.</p>
     <p>It carries the reader's <em>current</em> offset onto the destination. It does not restore the offset they once had there, which is a different feature and not one WebJs ships, so this is the wrong tool for a "back to the list" link.</p>
 
     <h2>Link prefetch (on by default)</h2>
