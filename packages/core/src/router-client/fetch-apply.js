@@ -345,7 +345,26 @@ export async function fetchAndApply(href, frameId, recordHistory, optimisticStat
   //   (b) a cache-miss popstate: modern browsers fire scroll-
   //       restoration themselves before dispatching popstate, so
   //       leaving scroll alone preserves the browser-native UX.
-  if (recordHistory) {
+  //
+  // And never for a FRAME-scoped response (#1427). `recordHistory` means "a
+  // foreground navigation the reader initiated", which a frame click is (it
+  // advances the URL, deliberately), so a frame swap used to fall into the
+  // page-navigation scroll by omission rather than by decision. A frame swaps
+  // ONE region and leaves the rest of the document standing, the scroll offset
+  // included, so the router writes no scroll for it: on a page whose frame sits
+  // below the fold, scrolling to top throws the region the reader just clicked
+  // in off screen. Turbo, which `<webjs-frame>` is modelled on, likewise never
+  // scrolls on a frame navigation (its `autoscroll` opt-in is a separate
+  // feature WebJs does not have). This is the same rule `restoreGeneration` in
+  // `scroll.js` already applies when deciding what ends a scroll-restore
+  // window, so the two now agree on what a frame nav is.
+  //
+  // The hash branch is excluded too. A `#anchor` on a frame link is no more a
+  // request to move the document viewport than the frame swap itself is, and
+  // one rule ("a frame swap never moves the window") beats two. `_top` and an
+  // unresolvable `data-webjs-frame` id both resolve to a null `frameId` in
+  // `resolveTargetFrameId`, so they stay page navigations and still scroll.
+  if (recordHistory && !frameId) {
     // Use the final URL (after any server-side redirect) so hash
     // anchors point at the document we actually rendered.
     const url = new URL(finalUrl);
