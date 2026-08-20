@@ -96,12 +96,53 @@ test('blocks every manager\'s install ALIAS, not just the canonical spelling', (
   } finally { rmSync(root, { recursive: true, force: true }); }
 });
 
+test('blocks the HYPHENATED npm verbs, which the short aliases do not cover', () => {
+  // The trailing word boundary excludes `-`, so listing `install` does not reach
+  // `install-test`. Each hyphenated command needs its own entry.
+  const { root, worktree } = makeLinkedPair();
+  try {
+    for (const cmd of ['npm install-test', 'npm install-ci-test', 'npm clean-install-test', 'npm clean-install', 'npm install-clean']) {
+      assert.equal(runHook(cmd, worktree).status, 2, `expected block for \`${cmd}\``);
+    }
+  } finally { rmSync(root, { recursive: true, force: true }); }
+});
+
+test('blocks the REMOVE verbs, which delete from the owning checkout', () => {
+  const { root, worktree } = makeLinkedPair();
+  try {
+    for (const cmd of ['npm uninstall x', 'npm rm x', 'npm r x', 'bun rm x', 'pnpm rm x', 'yarn remove x', 'pnpm upgrade', 'pnpm dedupe', 'yarn dedupe']) {
+      assert.equal(runHook(cmd, worktree).status, 2, `expected block for \`${cmd}\``);
+    }
+  } finally { rmSync(root, { recursive: true, force: true }); }
+});
+
+test('bare `yarn` blocks only in COMMAND position, never as a trailing word', () => {
+  // The bare-yarn branch first lived inside the generic VERBS pattern, whose
+  // prefix any space satisfies, so it matched the token ANYWHERE and blocked
+  // `which yarn`, `rm -rf /tmp/yarn` and `git switch -c feat/yarn`. That fires
+  // on ordinary commands in a linked worktree, which is the mandated state here,
+  // and a gate that cries wolf gets turned off.
+  const { root, worktree } = makeLinkedPair();
+  try {
+    for (const cmd of ['yarn', 'yarn --frozen-lockfile', 'cd . && yarn']) {
+      assert.equal(runHook(cmd, worktree).status, 2, `expected block for \`${cmd}\``);
+    }
+    for (const cmd of [
+      'which yarn', 'command -v yarn', 'ls -la ~/.yarn', 'rm -rf /tmp/yarn',
+      'git switch -c feat/yarn', 'cat README | grep yarn', 'echo yarn',
+      'npm run build --workspace yarn',
+    ]) {
+      assert.equal(runHook(cmd, worktree).status, 0, `expected allow for \`${cmd}\``);
+    }
+  } finally { rmSync(root, { recursive: true, force: true }); }
+});
+
 test('the broadened alias table does not swallow non-install commands', () => {
   const { root, worktree } = makeLinkedPair();
   try {
     // `npm init` must not match `in` or `i`, and a bare `yarn test` must not
     // match the bare-yarn install branch.
-    for (const cmd of ['npm init', 'npm init -y', 'yarn test', 'yarn run build', 'bun run dev', 'bun test', 'pnpm run build']) {
+    for (const cmd of ['npm init', 'npm init -y', 'yarn test', 'yarn run build', 'bun run dev', 'bun test', 'pnpm run build', 'git rm x', 'rm -rf node_modules', 'npm run rm']) {
       assert.equal(runHook(cmd, worktree).status, 0, `expected allow for \`${cmd}\``);
     }
   } finally { rmSync(root, { recursive: true, force: true }); }

@@ -562,22 +562,32 @@ describe('framework-link repair (#1442)', () => {
     } finally { rmSync(primary, { recursive: true, force: true }); }
   });
 
-  test('--check stays read-only even with WEBJS_NO_WORKTREE_REPAIR=1 set', () => {
-    // The exit for `--check` used to live INSIDE the repair `else`, so this one
-    // combination fell through to the linking loop and the seed step. The flag
-    // pair AGENTS.md documents as changing nothing was the pair that wrote.
+  test('--check with WEBJS_NO_WORKTREE_REPAIR=1 still INSPECTS, and still writes nothing', () => {
+    // Two separate bugs met here. The exit for `--check` used to live INSIDE the
+    // repair `else`, so this pair fell through to the linking loop and the seed
+    // step, and the flag pair documented as changing nothing was the pair that
+    // wrote. Moving the exit out fixed the write but left `touched` at its
+    // initializer, so the run then exited 0 reporting a clean tree it had never
+    // looked at. The hatch suppresses the repair WRITE; `--check` never writes,
+    // so it must still inspect.
     const primary = makeRepairPrimary();
     const wt = makeWorktree();
     try {
+      plant(primary, 'core', '/nonexistent/gone-worktree/packages/core');
       const r = spawnSync(process.execPath, [SCRIPT, primary, '--check'], {
         cwd: wt,
         encoding: 'utf8',
         env: cleanEnv({ WEBJS_NO_WORKTREE_REPAIR: '1' }),
       });
-      assert.equal(r.status, 0);
-      assert.match(r.stdout, /repair skipped/);
+      assert.equal(r.status, 1, 'a broken link is still reported as work to do');
+      assert.match(r.stdout, /would repoint/, 'it actually inspected');
       assert.doesNotMatch(r.stdout, /linked node_modules/, '--check must never link');
       assert.ok(!existsSync(join(wt, 'node_modules')), '--check must not create the symlink');
+      assert.equal(
+        readlinkSync(join(scopeOf(primary), 'core')),
+        '/nonexistent/gone-worktree/packages/core',
+        '--check must not repair either',
+      );
     } finally { rmSync(primary, { recursive: true, force: true }); rmSync(wt, { recursive: true, force: true }); }
   });
 

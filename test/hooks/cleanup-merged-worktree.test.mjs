@@ -13,7 +13,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { execFileSync, spawnSync } from 'node:child_process';
-import { mkdtempSync, mkdirSync, writeFileSync, existsSync, chmodSync, symlinkSync, readlinkSync, lstatSync } from 'node:fs';
+import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, existsSync, chmodSync, symlinkSync, readlinkSync, lstatSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, dirname, resolve, delimiter } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -281,4 +281,20 @@ test('leaves the primary links untouched when the worktree is KEPT', () => {
 
   assert.ok(existsSync(wt), 'a dirty worktree is kept');
   assert.equal(readlinkSync(entry), target, 'so its links are left pointing at it');
+});
+
+test('repoint_primary_links never shadows the script-global `base` merge ref', () => {
+  // `base` holds the merge base ref resolved once at the top and read by
+  // `is_merged()`. bash `local` is dynamically scoped, so declaring `base` local
+  // inside this function blanks the ref for anything the function calls. Nothing
+  // calls a helper from there TODAY, which is why this is a source assertion
+  // rather than a behavioural one: the defect is unreachable until someone adds
+  // that call, and then it silently leaks the worktree this hook exists to remove.
+  const src = readFileSync(HOOK, 'utf8');
+  const fn = src.slice(src.indexOf('repoint_primary_links() {'));
+  const locals = fn.slice(0, fn.indexOf('\n}')).match(/^\s*local .*$/gm) || [];
+  assert.ok(locals.length > 0, 'the function still declares locals');
+  for (const line of locals) {
+    assert.doesNotMatch(line, /\blocal\b[^\n]*\bbase\b/, `shadows the global merge ref: ${line.trim()}`);
+  }
 });

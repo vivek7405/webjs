@@ -37,21 +37,38 @@ if [ -z "$cmd" ]; then exit 0; fi
 # aliases are the consequential ones. npm's list is long because npm ships a
 # large alias table of its own (`npm help install`), typo aliases included.
 #
+# HYPHENATED verbs must be spelled out. The trailing word boundary excludes `-`,
+# so `install-test` is NOT reached by listing `install`; each hyphenated command
+# needs its own entry, and the short aliases (`it`, `cit`, `sit`) do not cover
+# the long spellings.
+#
+# The REMOVE verbs are here too. `npm rm <pkg>` in a linked worktree deletes
+# from the checkout that owns the tree, the same corruption in the other
+# direction.
+#
 # Word boundaries on BOTH sides keep this narrow: `npm init` does not match `in`
 # or `i`, because the next character is alphanumeric, and `npm run install-deps`
 # does not match because `run` is not a verb here.
-NPM_VERBS='install|i|in|ins|inst|insta|instal|isnt|isnta|isntal|isntall|add|ci|clean-install|ic|install-clean|sit|it|cit|update|up|upgrade|udpate|dedupe|ddp'
-BUN_VERBS='install|i|add|a|update|up'
-PNPM_VERBS='install|i|add|update|up'
-YARN_VERBS='install|add|up|upgrade'
-# The last two branches are the two shapes a plain verb regex cannot see:
-#   * `npm --prefix <dir> install`, flags BEFORE the verb. Only the two flags
-#     that themselves name a target directory are admitted, so this stays
-#     targeted rather than swallowing a token run and matching `npm run install`.
-#   * bare `yarn`, which IS an install in yarn classic. Matched only when it ends
-#     the command or is followed by a flag, so `yarn test` stays allowed.
-VERBS="(npm[[:space:]]+(${NPM_VERBS})|bun[[:space:]]+(${BUN_VERBS})|pnpm[[:space:]]+(${PNPM_VERBS})|yarn[[:space:]]+(${YARN_VERBS})|(npm|pnpm|yarn)[[:space:]]+(--prefix|-C)[[:space:]=]+[^[:space:]&|;]+[[:space:]]+(${NPM_VERBS})|yarn([[:space:]]+-[^[:space:]]*)*[[:space:]]*(\$|[&|;]))"
-if ! printf '%s' "$cmd" | grep -Eq "(^|[^[:alnum:]_-])${VERBS}([^[:alnum:]_-]|\$)"; then
+NPM_VERBS='install-ci-test|clean-install-test|install-clean|clean-install|install-test|install|isntall|isntal|isnta|isnt|instal|insta|inst|ins|in|i|add|ci|cit|sit|it|ic|update|upgrade|udpate|up|dedupe|ddp|uninstall|unlink|un|remove|rm|r'
+BUN_VERBS='install|i|add|a|update|up|remove|rm'
+PNPM_VERBS='install|i|add|update|upgrade|up|dedupe|remove|rm|uninstall|un'
+YARN_VERBS='install|add|upgrade|up|dedupe|remove'
+# `npm --prefix <dir> install`, flags BEFORE the verb. Only the two flags that
+# themselves name a target directory are admitted, so this stays targeted rather
+# than swallowing a token run and matching `npm run install`.
+VERBS="(npm[[:space:]]+(${NPM_VERBS})|bun[[:space:]]+(${BUN_VERBS})|pnpm[[:space:]]+(${PNPM_VERBS})|yarn[[:space:]]+(${YARN_VERBS})|(npm|pnpm|yarn)[[:space:]]+(--prefix|-C)[[:space:]=]+[^[:space:]&|;]+[[:space:]]+(${NPM_VERBS}))"
+
+# Bare `yarn` IS an install in yarn classic, and it needs its own anchored
+# pattern rather than a branch of VERBS. VERBS is wrapped in a generic
+# non-word-character prefix, which any space satisfies, so a bare-yarn branch
+# inside it matched the token ANYWHERE in the command: `which yarn`,
+# `rm -rf /tmp/yarn` and `git switch -c feat/yarn` all blocked. Here `yarn` must
+# sit in COMMAND position, at the start or straight after a `&&`, `||`, `;` or
+# `|`, and be followed only by flags.
+BARE_YARN='(^|[&|;])[[:space:]]*yarn([[:space:]]+-[^[:space:]]*)*[[:space:]]*($|[&|;])'
+
+if ! printf '%s' "$cmd" | grep -Eq "(^|[^[:alnum:]_-])${VERBS}([^[:alnum:]_-]|\$)" \
+  && ! printf '%s' "$cmd" | grep -Eq "$BARE_YARN"; then
   exit 0
 fi
 
@@ -61,6 +78,7 @@ fi
 # tokens that appear BEFORE the install verb and let them supersede the cwd, then
 # add any directory a package manager is pointed at explicitly.
 prefix=$(printf '%s' "$cmd" | sed -E "s/(^|[^[:alnum:]_-])${VERBS}([^[:alnum:]_-]|\$).*//")
+prefix=$(printf '%s' "$prefix" | sed -E "s/${BARE_YARN}.*//")
 
 eff="$PWD"
 resolve_against_eff() {

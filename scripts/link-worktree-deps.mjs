@@ -409,7 +409,10 @@ if (!existsSync(join(primary, 'package.json'))) {
 // is why the `defaultPrimary()` test can run this against the real checkout
 // without mutating it, exactly as `WEBJS_NO_WORKTREE_SEED=1` does for seeding.
 let touched = 0;
-if (process.env.WEBJS_NO_WORKTREE_REPAIR === '1') {
+// The hatch suppresses the repair WRITE. `--check` never writes, so there is
+// nothing for it to suppress there, and skipping the inspection too would make
+// `check:worktree-links` exit 0 reporting a clean tree it never looked at.
+if (process.env.WEBJS_NO_WORKTREE_REPAIR === '1' && !CHECK) {
   console.log('[link-worktree-deps] framework-link repair skipped (WEBJS_NO_WORKTREE_REPAIR=1).');
 } else {
   const repair = repairPrimaryFrameworkLinks(primary, { check: CHECK });
