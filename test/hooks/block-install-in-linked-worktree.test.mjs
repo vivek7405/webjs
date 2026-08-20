@@ -154,9 +154,52 @@ test('never blocks a GLOBAL install, which writes to the npm prefix not the link
 test('still sees the install through env assignments and benign wrappers', () => {
   const { root, worktree } = makeLinkedPair();
   try {
-    for (const cmd of ['WEBJS_X=1 npm ci', 'sudo npm ci', 'time npm install', 'FOO=a BAR=b bun install']) {
+    for (const cmd of [
+      'WEBJS_X=1 npm ci', 'sudo npm ci', 'time npm install', 'FOO=a BAR=b bun install',
+      // A wrapper carrying its OWN flags, which the strip must walk past.
+      'sudo -u foo npm ci', 'nice -n 10 npm install',
+    ]) {
       assert.equal(runHook(cmd, worktree).status, 2, `expected block for \`${cmd}\``);
     }
+    // `command`, `exec`, `bash` and `sh` are deliberately NOT wrappers. Walking
+    // into a nested shell command re-creates the token-anywhere class one level
+    // in, where `bash -c "echo yarn"` reaches the bare-yarn branch. So a lookup
+    // stays allowed, and `bash -c "npm ci"` is a known accepted gap.
+    assert.equal(runHook('command -v yarn', worktree).status, 0);
+    assert.equal(runHook('bash -c "echo yarn"', worktree).status, 0);
+  } finally { rmSync(root, { recursive: true, force: true }); }
+});
+
+test('an `=` in a FLAG does not disable the gate (fail-open regression)', () => {
+  // The env-assignment strip is anchored to the FIRST token. An unanchored
+  // `[A-Za-z_]*=*` case glob matches the WHOLE segment whenever any LATER token
+  // carries an `=`, so it ate the leading words and every one of these was
+  // ALLOWED, which is the one direction that actually matters: the gate exists
+  // to stop a write, and `npm install --workspace=packages/core` is an ordinary
+  // command in this monorepo that corrupts the primary.
+  const { root, worktree } = makeLinkedPair();
+  try {
+    for (const cmd of [
+      'npm install --omit=dev',
+      'npm ci --loglevel=error',
+      'npm install --workspace=packages/core',
+      'bun install --backend=hardlink',
+      'yarn add x --registry=https://r',
+      'pnpm add x --dir=/y',
+      'npm i -D esbuild --foreground-scripts=true',
+    ]) {
+      assert.equal(runHook(cmd, worktree).status, 2, `expected block for \`${cmd}\``);
+    }
+  } finally { rmSync(root, { recursive: true, force: true }); }
+});
+
+test('the --prefix= EQUALS form is reachable, not just the space form', () => {
+  // The regexes carry `[[:space:]=]+` deliberately, and the pre-existing prefix
+  // test used only the space form, so the equals branch was dead while green.
+  const { root, primary, worktree } = makeLinkedPair();
+  try {
+    assert.equal(runHook(`npm --prefix=${worktree} install`, primary).status, 2);
+    assert.equal(runHook(`npm install --prefix=${worktree}`, primary).status, 2);
   } finally { rmSync(root, { recursive: true, force: true }); }
 });
 

@@ -69,22 +69,58 @@ GLOBAL='(^|[[:space:]])(-g|--global)([[:space:]]|$)'
 eff="$PWD"
 target=""
 while IFS= read -r seg; do
+  # Quotes are dropped so a quoted command body tokenizes (`bash -c "npm ci"`).
+  # This is safe: what keeps `git commit -m "npm ci"` out is the command-position
+  # rule below, never the quoting.
+  seg=$(printf '%s' "$seg" | tr -d '"'"'"'')
   seg="${seg#"${seg%%[![:space:]]*}"}"
   [ -z "$seg" ] && continue
 
-  # Strip leading env assignments and benign wrappers, so `FOO=1 npm ci` and
-  # `sudo npm ci` are still judged on the manager that follows them.
-  while :; do
-    case "$seg" in
-      [A-Za-z_]*=*)
-        rest="${seg#* }"; [ "$rest" = "$seg" ] && break
-        seg="${rest#"${rest%%[![:space:]]*}"}" ;;
-      sudo\ *|env\ *|time\ *|nice\ *)
-        rest="${seg#* }"
-        seg="${rest#"${rest%%[![:space:]]*}"}" ;;
-      *) break ;;
+  # Strip leading env assignments and benign wrappers, so `FOO=1 npm ci`,
+  # `sudo npm ci` and `bash -c "npm ci"` are still judged on the manager that
+  # follows them.
+  #
+  # This is done TOKEN BY TOKEN, and the env-assignment test is anchored to the
+  # first token alone. An unanchored `[A-Za-z_]*=*` case glob matches the WHOLE
+  # segment whenever any LATER token contains `=`, so it ate leading words and
+  # `npm install --omit=dev`, `npm ci --loglevel=error` and
+  # `npm install --workspace=packages/core` all failed OPEN. Failing open is the
+  # one direction that matters here, since the whole point is to stop a write.
+  wrapper_seen=0
+  prev_flag=0
+  for _ in 1 2 3 4 5 6 7 8 9 10; do
+    first="${seg%%[[:space:]]*}"
+    [ -n "$first" ] || break
+    strip=0
+    case "$first" in
+      *=*)
+        # A real env assignment: NAME=..., NAME being a valid shell identifier.
+        name="${first%%=*}"
+        case "$name" in
+          ''|*[!A-Za-z0-9_]*|[0-9]*) ;;
+          *) strip=1 ;;
+        esac ;;
+      sudo|env|time|nice) wrapper_seen=1; prev_flag=0; strip=1 ;;
+      npm|bun|pnpm|yarn|yarnpkg) ;;
+      -*)
+        # A wrapper's OWN flag, e.g. `sudo -u foo npm ci`.
+        [ "$wrapper_seen" = "1" ] && { prev_flag=1; strip=1; } ;;
+      *)
+        # The VALUE of the wrapper flag just stripped, e.g. the `foo` in `-u foo`
+        # or the `10` in `nice -n 10`. Deliberately narrow: walking past ARBITRARY
+        # tokens after a wrapper re-creates the token-anywhere class one level in,
+        # where `bash -c "echo yarn"` would reach the bare-yarn branch and block.
+        # `command`, `exec`, `bash` and `sh` are NOT wrappers here for that reason,
+        # so `command -v yarn` stays allowed and `bash -c "npm ci"` is a known,
+        # accepted gap rather than a parser for nested shells.
+        if [ "$wrapper_seen" = "1" ] && [ "$prev_flag" = "1" ]; then prev_flag=0; strip=1; fi ;;
     esac
+    [ "$strip" = "1" ] || break
+    rest="${seg#*[[:space:]]}"
+    [ "$rest" = "$seg" ] && { seg=""; break; }
+    seg="${rest#"${rest%%[![:space:]]*}"}"
   done
+  [ -n "$seg" ] || continue
 
   case "$seg" in
     cd|cd\ *)
