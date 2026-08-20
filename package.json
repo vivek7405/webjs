@@ -18,9 +18,11 @@
     "node": ">=24.0.0"
   },
   "scripts": {
+    "preinstall": "node scripts/warn-worktree-install.mjs || true",
     "prepare": "node scripts/git-worktree-safe.mjs 2>/dev/null || true",
     "fix:git": "node scripts/git-worktree-safe.mjs",
     "check:git": "node scripts/git-worktree-safe.mjs --check",
+    "check:worktree-links": "node scripts/link-worktree-deps.mjs --check",
     "worktree:link": "node scripts/link-worktree-deps.mjs",
     "dev": "node scripts/dev-all.js",
     "dev:gallery": "npm run dev --workspace=@webjsdev/gallery",
