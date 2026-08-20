@@ -860,7 +860,22 @@ suite('Client router: a Back restore survives late layout growth (#1310)', () =>
     await setup();
     try {
       await goBack();
-      await frame();
+      // WAIT FOR THE RESTORE TO LAND before interrupting it. The browser is the
+      // restore's writer now, and its replay arrives a frame or so after the
+      // popstate handler rather than synchronously, so a reader modelled as
+      // "input on the very next frame" can outrun the restore itself. That
+      // races a different question than this case is asking. What the property
+      // is actually about, and what a real reader can actually do, is take over
+      // AFTER the page has come back.
+      //
+      // Polled rather than fixed at N frames, so the case does not encode one
+      // engine's replay latency. This assertion caught a genuine ordering
+      // difference: written against the old synchronous router write, it
+      // reproduced only on CI's Chromium and never locally.
+      for (let i = 0; i < 20 && Math.abs(window.scrollY - RESTORED_Y) > 5; i++) await frame();
+      assert.ok(Math.abs(window.scrollY - RESTORED_Y) < 5,
+        `precondition: the restore landed before the reader takes over (got ${window.scrollY})`);
+
       window.dispatchEvent(new WheelEvent('wheel', { bubbles: true }));
       assert.equal(document.documentElement.style.getPropertyValue('overflow-anchor'), '',
         'precondition: the input event closed the window');
