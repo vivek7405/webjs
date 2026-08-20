@@ -16,7 +16,7 @@
 import { test, after } from 'node:test';
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
-import { mkdtempSync, writeFileSync, mkdirSync, rmSync, utimesSync } from 'node:fs';
+import { mkdtempSync, writeFileSync, mkdirSync, rmSync, utimesSync, symlinkSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { resolve, dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -1796,4 +1796,117 @@ test('asset-link advisory is not confused by balanced CSS comments in a style bl
   const r = byName(await runDoctorChecks(dir, baseOpts()), ASSET_LINK_CHECK);
   assert.equal(r.status, 'warn');
   assert.match(r.message, /after\.css/);
+});
+
+// ---------------------------------------------------------------------------
+// framework LINK integrity (#1442): an install run inside a linked worktree
+// corrupts the primary's `@webjsdev/*` links. The framework-resolve check above
+// cannot see it, because a link into a live FOREIGN checkout resolves fine.
+// ---------------------------------------------------------------------------
+const { inspectFrameworkLink, checkFrameworkLinks } = await import(
+  resolve(CLI_LIB_DIR, 'doctor.js')
+);
+
+/** An app dir with `node_modules/@webjsdev/core` planted as `plant` describes. */
+function linkFixture(plant) {
+  const dir = tmpDir();
+  write(dir, 'package.json', JSON.stringify({ name: 'x' }));
+  mkdirSync(join(dir, 'node_modules', '@webjsdev'), { recursive: true });
+  mkdirSync(join(dir, 'packages', 'core'), { recursive: true });
+  write(dir, 'packages/core/package.json', '{"name":"@webjsdev/core"}');
+  plant(dir);
+  return dir;
+}
+
+test('framework-links PASSES when @webjsdev/core is a real directory', () => {
+  const dir = linkFixture((d) => {
+    mkdirSync(join(d, 'node_modules', '@webjsdev', 'core'), { recursive: true });
+  });
+  assert.equal(inspectFrameworkLink(dir).state, 'real');
+  assert.equal(checkFrameworkLinks(dir).status, 'pass');
+});
+
+test('framework-links PASSES when the link resolves inside the tree that owns node_modules', () => {
+  const dir = linkFixture((d) => {
+    symlinkSync('../../packages/core', join(d, 'node_modules', '@webjsdev', 'core'));
+  });
+  assert.equal(inspectFrameworkLink(dir).state, 'ok');
+  assert.equal(checkFrameworkLinks(dir).status, 'pass');
+});
+
+test('framework-links PASSES through a SYMLINKED node_modules, the linked-worktree shape', () => {
+  // The no-false-positive case, and the one that caught a real bug: through a
+  // symlinked node_modules the link's LEXICAL directory is under the worktree
+  // while the link physically lives in the primary, so resolving `../../` the
+  // lexical way reports every healthy linked worktree as `foreign`.
+  const primary = linkFixture((d) => {
+    symlinkSync('../../packages/core', join(d, 'node_modules', '@webjsdev', 'core'));
+  });
+  const worktree = tmpDir();
+  write(worktree, 'package.json', JSON.stringify({ name: 'wt' }));
+  mkdirSync(join(worktree, 'packages', 'core'), { recursive: true });
+  symlinkSync(join(primary, 'node_modules'), join(worktree, 'node_modules'));
+
+  assert.equal(inspectFrameworkLink(worktree).state, 'ok');
+  assert.equal(checkFrameworkLinks(worktree).status, 'pass');
+});
+
+test('framework-links WARNS when the link DANGLES', () => {
+  const dir = linkFixture((d) => {
+    symlinkSync('/nonexistent/removed-worktree/packages/core', join(d, 'node_modules', '@webjsdev', 'core'));
+  });
+  assert.equal(inspectFrameworkLink(dir).state, 'dangling');
+  const r = checkFrameworkLinks(dir);
+  assert.equal(r.status, 'warn');
+  assert.match(r.fix, /worktree:link/);
+  assert.doesNotMatch(r.fix, /Run `npm install`/);
+});
+
+test('framework-links WARNS when the link resolves OUTSIDE the owning tree', () => {
+  const foreign = tmpDir();
+  mkdirSync(join(foreign, 'packages', 'core'), { recursive: true });
+  // A RESOLVABLE package, so the assertion below can show that
+  // `frameworkResolves` is perfectly happy with a link into a foreign checkout.
+  writeFileSync(join(foreign, 'packages', 'core', 'package.json'), '{"name":"@webjsdev/core","main":"index.js"}');
+  writeFileSync(join(foreign, 'packages', 'core', 'index.js'), 'export {};');
+  const dir = linkFixture((d) => {
+    symlinkSync(join(foreign, 'packages', 'core'), join(d, 'node_modules', '@webjsdev', 'core'));
+  });
+  assert.equal(inspectFrameworkLink(dir).state, 'foreign');
+  const r = checkFrameworkLinks(dir);
+  assert.equal(r.status, 'warn');
+  // It resolves fine, so the resolve check cannot see it. That is the point.
+  assert.equal(frameworkResolves(dir), true);
+  assert.match(r.message, /resolves OUTSIDE/);
+});
+
+test('framework-links PASSES when there is no @webjsdev entry at all', () => {
+  const dir = tmpDir();
+  write(dir, 'package.json', JSON.stringify({ name: 'x' }));
+  assert.equal(checkFrameworkLinks(dir).status, 'pass');
+});
+
+test('framework-resolve stops recommending a bare npm install through a symlink', () => {
+  // node_modules exists as a SYMLINK but carries no @webjsdev/core, so the
+  // resolve check falls into its corrupted-install branch. Recommending
+  // `npm install` there is what caused #1442 in the first place.
+  const target = tmpDir();
+  mkdirSync(join(target, 'node_modules'), { recursive: true });
+  const dir = tmpDir();
+  write(dir, 'package.json', JSON.stringify({ name: 'x' }));
+  symlinkSync(join(target, 'node_modules'), join(dir, 'node_modules'));
+
+  const r = checkFrameworkResolves(dir);
+  assert.equal(r.status, 'warn');
+  assert.match(r.fix, /do NOT run `npm install`/);
+  assert.match(r.fix, /worktree:link/);
+});
+
+test('framework-links is wired into the runner and carries its declared code', async () => {
+  const dir = tmpDir();
+  write(dir, 'package.json', JSON.stringify({ name: 'x' }));
+  const results = await runDoctorChecks(dir, baseOpts({ nodeVersion: '24.0.0' }));
+  const r = results.find((x) => x.name === 'framework-links');
+  assert.ok(r, 'the check runs');
+  assert.equal(r.code, 'FRAMEWORK_LINKS');
 });
