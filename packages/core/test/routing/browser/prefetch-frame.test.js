@@ -316,11 +316,13 @@ suite('Client router: frame-dimensioned link prefetch (#1407)', () => {
   test('a full-document answer to a framed prefetch is not stored, but the refusal is memoed', async () => {
     // The server's frame branch has two fall-throughs (a streamed render, an
     // absent frame id) that answer with a whole document and no marker. Storing
-    // one under a frame key risks a click that changes the url and scrolls to
-    // top while the panel stays put: the swap looks for `webjs-frame#<id>` in the
-    // body and may not find it (an absent id was never rendered, and a streamed
-    // page's content sits in a template the swap does not descend into), so it
-    // leaves the region unchanged while the navigation around it completes.
+    // one under a frame key risks a click that changes the url while the panel
+    // stays put: the swap looks for `webjs-frame#<id>` in the body and may not
+    // find it (an absent id was never rendered, and a streamed page's content
+    // sits in a template the swap does not descend into), so it leaves the
+    // region unchanged while the navigation around it completes. The scroll
+    // offset survives that (#1427 holds it for anything frame-scoped, this path
+    // included), so what the reader loses is the panel, not their place.
     setup('/tasks?status=streamed');
     try {
       window.fetch = async (url, init) => {

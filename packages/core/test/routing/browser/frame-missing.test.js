@@ -153,7 +153,7 @@ suite('Client router: <webjs-frame> frame-missing contract (#251)', () => {
   // pipeline. A click-driven frame nav records history, so an implementation
   // that returned early on the sentinel would stop advancing the URL here,
   // which nothing else in the suite would notice.
-  test('a frameless response still advances the URL, because the sentinel only reports', async () => {
+  test('a frameless response advances the URL and holds the scroll offset', async () => {
     setup();
     // Observe the history CALL rather than reading `location` afterwards.
     //
@@ -171,16 +171,35 @@ suite('Client router: <webjs-frame> frame-missing contract (#251)', () => {
     const pushed = [];
     const origPush = history.pushState;
     history.pushState = function (...args) { pushed.push(String(args[2])); };
+    // The SCROLL half of the same contract (#1427). This path keeps a truthy
+    // `frameId` all the way through, so the guard holds the offset even though
+    // nothing was applied: the reader gets a changed address over an unchanged
+    // panel, still in their place. The docs say so on both surfaces and nothing
+    // pinned it, which is how the claim it replaced went stale in the first
+    // place. The spacer is what gives the assertion teeth, since a document
+    // that cannot hold an offset reports 0 either way.
+    const spacer = document.createElement('div');
+    spacer.style.height = '3000px';
+    document.body.appendChild(spacer);
     try {
       window.fetch = () => htmlResponse(
         '<!doctype html><html><head></head><body><h1 id="login">Login</h1></body></html>'
       );
+      window.scrollTo({ left: 0, top: 400, behavior: 'instant' });
+      assert.equal(window.scrollY, 400,
+        'precondition: the page holds an offset, so a 0 below is the router moving it');
+
       document.getElementById('frame-link').click();
       await settle();
       assert.equal(pushed.length, 1, 'the frame-missing return still records history');
       assert.match(pushed[0], /\/no-frame-here$/, 'and it advanced to the navigation target');
+      assert.equal(window.scrollY, 400,
+        'a frame-missing response leaves the window where the reader put it');
     } finally {
       history.pushState = origPush;
+      // Reset before the next case: nothing else in this file expects an offset.
+      window.scrollTo({ left: 0, top: 0, behavior: 'instant' });
+      spacer.remove();
       teardown();
     }
   });
