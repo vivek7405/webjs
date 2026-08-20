@@ -470,12 +470,24 @@ export default function LandingPage() {
       </div>
     </section>
 
-    <section class="pb-16">
+    <section class="intro-video pb-16">
       <div class="max-w-3xl mx-auto px-6">
-        <div class="aspect-video overflow-hidden border border-border-strong shadow-[var(--shadow)]">
+        <!-- The frame is hidden until it fires load, over a black box.
+             A cross-origin iframe paints its OWN canvas, and YouTube's embed
+             sets its black background on body with no color-scheme declared,
+             so the black only lands once that stylesheet applies. Until then
+             some engines paint an opaque white canvas, which no background on
+             the iframe ELEMENT can cover, since the element background sits
+             behind that canvas. Hiding the frame sidesteps the whole question:
+             what it paints early is simply not on screen, and the box under it
+             is already the black the player settles on, so the reveal is
+             invisible. onload is a plain HTML attribute rather than a template
+             hole, because an @event drops at SSR and this page never hydrates. -->
+        <div class="aspect-video overflow-hidden border border-border-strong shadow-[var(--shadow)] bg-black">
           <iframe
-            class="w-full h-full"
-            src="https://www.youtube-nocookie.com/embed/iz23lVMvlVY?rel=0"
+            class="intro-video-frame w-full h-full invisible"
+            onload="this.classList.remove('invisible')"
+            src="https://www.youtube-nocookie.com/embed/XghCghezod4?rel=0"
             title="WebJs introduction video"
             loading="lazy"
             allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
@@ -483,6 +495,18 @@ export default function LandingPage() {
             allowfullscreen
           ></iframe>
         </div>
+        <!-- With JS off the whole section goes away. Revealing the frame
+             instead would show YouTube's own noscript error ("An error
+             occurred. Unable to execute JavaScript."), because their player
+             needs JS INSIDE the frame and nothing this page does can supply
+             it. An empty space reads better than a broken player.
+
+             The rule still applies from in here: a style element takes effect
+             wherever it sits, including inside the subtree it hides. And it
+             is safe in a PAGE, which never hydrates, so the client never
+             rebuilds this noscript body as live nodes. The same construct
+             inside a COMPONENT would apply on every JS-enabled visit. -->
+        <noscript><style>.intro-video { display: none }</style></noscript>
       </div>
     </section>
 
