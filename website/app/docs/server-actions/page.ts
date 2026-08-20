@@ -337,6 +337,10 @@ export async function createPost(input: CreatePostInput): Promise&lt;ActionResul
 
     <p>This pattern makes error handling explicit on the client side without relying on try/catch. The caller checks <code>result.success</code> and branches accordingly. It also works naturally over a <code>route.ts</code> REST endpoint, where the caller receives the same JSON shape.</p>
 
+    <p>The envelope is additive, so beyond the two fields above a failure may also carry <code>fieldErrors</code> (per-field messages), <code>values</code> (what the user typed, so a re-render can repopulate the form), and a success may carry <code>redirect</code> (a same-site local path). The framework reads all three on the no-JS form path, which is why the validation example further down returns <code>fieldErrors</code> and <code>values</code> alongside <code>success: false</code>.</p>
+
+    <p>Because of those extras, the framework treats a result as a FAILURE when <code>result.success === false</code>, OR <code>result.fieldErrors</code> is present, OR <code>result.error</code> is present and <code>result.success</code> is not <code>true</code>. Return an explicit <code>success: false</code> regardless. Not every consumer applies the full rule, <code>optimistic()</code> being the notable one that tests <code>success === false</code> alone, so an envelope carrying only <code>fieldErrors</code> would not register as a failure there.</p>
+
     <h2>Error Sanitisation in Production</h2>
     <p>When a server action throws (rather than returning an error envelope), WebJs catches the exception and returns a JSON error response:</p>
     <ul>
