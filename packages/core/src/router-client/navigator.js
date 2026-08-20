@@ -93,24 +93,30 @@ export function enableClientRouter() {
   ensureUpgradeObserver();
   // Apply render/viewport prefetch modes to the initial document.
   refreshPrefetchObservers();
-  // `history.scrollRestoration` is deliberately LEFT ALONE ('auto', the
-  // default). Under 'auto' the browser records a scroll position per history
-  // entry, and WebKit composes the back-swipe gesture preview from that
-  // recorded state; under 'manual' it records nothing and the preview renders
-  // BLANK for the whole gesture on a scrolled page (#1428, measured on-device:
-  // WebJs and Turbo Drive both set 'manual' and both blank, Next leaves 'auto'
-  // and is clean, and the same page here flips from blank to correct with this
-  // one property).
+  // Scroll restoration is the BROWSER's, and this states that rather than
+  // assuming it. Under 'auto' the browser records a scroll position per
+  // history entry, replays it on a traverse, and WebKit composes the iOS
+  // back-swipe gesture preview from that same recorded state. Under 'manual'
+  // it records nothing, so the preview renders BLANK for the whole gesture on
+  // any scrolled page (#1428, measured on-device: WebJs and Turbo Drive both
+  // took 'manual' and both blank; Next leaves 'auto' and is clean).
   //
-  // The router previously took 'manual' (the Turbo Drive
-  // `assumeControlOfScrollRestoration` pattern) to stop the UA's own popstate
-  // restore racing the snapshot restore below: that UA write lands a frame
-  // AFTER the popstate handler, so it always won, against a document whose
-  // height was still settling. The race is now settled where it happens
-  // instead: the restore window WRITES BACK an off-target programmatic
-  // displacement for its duration (see `suppressScrollAnchoring`), so a late
-  // UA write inside the restore's span is corrected rather than pre-empted by
-  // a session-wide mode that costs the gesture preview.
+  // Written EXPLICITLY, not left to the default, because the restore now has
+  // no writer of its own. The router reserves the recorded height and lets the
+  // UA replay the offset, so an app that had set 'manual' (the first line of
+  // most ported scroll-restoration recipes, and what this router itself did
+  // until #1428) would get NO Back restore at all: the UA replays nothing, the
+  // reservation prevents the clamp that would otherwise fire a `scroll` event,
+  // and the window's write-back is scroll-event-driven so it never runs. The
+  // reader would simply stay at the outgoing page's offset. Prose in the docs
+  // cannot prevent that; this line can.
+  //
+  // Per-entry, not global, per the HTML spec: this sets the mode on the
+  // current entry, and an entry created by a later `pushState` inherits it,
+  // which is exactly the reach the router needs.
+  if (typeof history !== 'undefined' && 'scrollRestoration' in history) {
+    history.scrollRestoration = 'auto';
+  }
   // Seed the "current page" tracker so the first navigation can
   // snapshot the page the user is leaving.
   if (typeof location !== 'undefined') currentPageUrl = location.href;
@@ -136,8 +142,8 @@ export function disableClientRouter() {
   clearPrefetchHover();
   clearPrefetchViewTimers();
   teardownPrefetchViewObserver();
-  // Never leave a restore window open on <html>, nor a catch-up chasing a
-  // scroll offset after the router is gone (#1310).
+  // Never leave a restore window open on <html>, nor a height reservation
+  // held on it, after the router is gone (#1310 / #1428).
   bumpRestoreGeneration();
   if (releaseScrollAnchor) releaseScrollAnchor();
   if (releaseHeightReservation) releaseHeightReservation();
@@ -492,6 +498,15 @@ export async function performNavigation(href, isPopState, frameId, opts) {
           // restore had to chase it back afterwards. Reserving removes the
           // shortness instead of compensating for it, so there is nothing to
           // clamp and nothing to chase.
+          // Taken BEFORE the swap, so the height is already in place when the
+          // incoming (shorter) markup lands and the offset is never
+          // unreachable. One consequence worth knowing: under a view
+          // transition `applySwap` defers its mutation a frame, so the
+          // OUTGOING page is captured by the transition with this height
+          // already applied. On a page short enough that the reservation adds
+          // a scrollbar, that appears in the transition's old-state snapshot.
+          // Accepted rather than deferred, because deferring the reservation
+          // to the commit would reopen the window it exists to close.
           const releaseHeight = reserveRestoredHeight(cached.scrollHeight);
           applySwap(cachedDoc, frameId, /* revalidating */ true, /* href */ null);
           // Restore window scroll to where the user left it. Use
@@ -571,9 +586,18 @@ export async function performNavigation(href, isPopState, frameId, opts) {
       // without explicit handling scroll would just stay where the user was on
       // the page they popped FROM. Scroll to top as the reasonable default;
       // fetchAndApply skips its own scroll handling when recordHistory=false
-      // (which is the case here). Under `scrollRestoration: 'auto'` the UA may
-      // then land its own recorded offset over this, which is strictly better
-      // than top, and no restore window is open here to write back against it.
+      // (which is the case here).
+      //
+      // The UA also replays its own recorded offset for this entry, a frame
+      // after this handler, and that replay is NOT guarded: there is no
+      // snapshot to reserve a height from and no restore window open on this
+      // path. So the reader can land on the UA's offset rather than at top.
+      // That is usually what they want (it is the position they left), but on
+      // a deep-history Back whose snapshot was evicted from the LRU it can be
+      // an offset measured against the outgoing document, applied to content
+      // swapped in afterwards. Deterministic top is not recoverable here
+      // without taking `manual` back, which costs the gesture preview, so the
+      // trade is stated rather than hidden.
       if (typeof window !== 'undefined') window.scrollTo({ left: 0, top: 0, behavior: 'instant' });
     }
 

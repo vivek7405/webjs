@@ -192,3 +192,15 @@ export const META_KEY_CSP_NONCE = 'name=csp-nonce';
 export function _isNonHtmlPath(pathname) {
   return NON_HTML_EXTENSIONS.test(pathname);
 }
+
+/**
+ * How long the restore window's write-back stays armed (#1428).
+ *
+ * It exists to reconcile ONE event, the browser's replay of its own recorded
+ * scroll offset, which lands about a frame after the popstate handler. This is
+ * generous for that (roughly fifteen frames at 60Hz) and far short of the
+ * window's own life, so a legitimate programmatic scroll arriving later, a
+ * component's `scrollIntoView()` during upgrade or a find-in-page jump, is left
+ * alone rather than reverted.
+ */
+export const WRITE_BACK_ARMED_MS = 250;

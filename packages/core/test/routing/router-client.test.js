@@ -5215,16 +5215,13 @@ test('applySwap: the history callback fires BEFORE the DOM mutation (#1406)', ()
 });
 
 /* --------------------------------------------------------------------------
- * #1428: the on-device A/B levers for the back-swipe blank.
+ * #1406 / #1428: history is recorded at the swap COMMIT, and the restore is
+ * the browser's.
  *
- * #1410 shipped the ordering fix with its iOS acceptance criterion openly
- * unmet, and the blank survived on a real iPhone, so one assumption behind it
- * is still untested: that WebKit binds the gesture snapshot synchronously at
- * the `pushState` call rather than from a later composited frame. The levers
- * exist to let a device decide, and the thing to pin here is that they are
- * INERT unless an app opts in, since they sit on the live navigation path.
+ * The cases below pin the commit-time history callback: it fires before the
+ * mutation on a committing swap, does not fire on a swap that commits nothing,
+ * and the caller's fall-through still records history on those paths.
  * ------------------------------------------------------------------------ */
-
 test('applySwap: a frame-missing response commits nothing, so it records no history (#1406)', () => {
   const savedBody = globalThis.document.body.innerHTML;
   const savedLocation = globalThis.location;

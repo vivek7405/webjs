@@ -6,7 +6,7 @@
  *
  * @module
  */
-import { ANCHOR_RELEASE_EVENTS, ANCHOR_SUPPRESS_CEILING_MS } from './constants.js';
+import { ANCHOR_RELEASE_EVENTS, ANCHOR_SUPPRESS_CEILING_MS, WRITE_BACK_ARMED_MS } from './constants.js';
 
 /**
  * Closes the currently open restore window, or null when none is open.
@@ -58,6 +58,12 @@ export let releaseScrollAnchor = null;
  * for the life of the page after their first Back. That is a far worse trade
  * than one repaint, so the root it is.
  *
+ * @param {number} [targetX] the restore's recorded horizontal offset. Together
+ *   with `targetY` this arms the write-back below; omit BOTH to open a
+ *   suppression-only window with no scroll enforcement.
+ * @param {number} [targetY] the restore's recorded vertical offset. The
+ *   write-back is armed only when this is a number, so a caller that passes
+ *   nothing gets the pre-#1428 behaviour.
  * @returns {() => void} Idempotent release. Safe to call after the window has
  *   already closed on user input or the ceiling.
  */
@@ -73,10 +79,12 @@ export function suppressScrollAnchoring(targetX, targetY) {
   /** @type {ReturnType<typeof setTimeout> | null} */
   let timer = null;
   // With a target, the window also WRITES BACK a programmatic displacement
-  // (#1428). Under `scrollRestoration: 'auto'` Firefox performs a scroll
-  // action of its own after an intercepted traverse's handler settles,
-  // ignoring the interception's `scroll: 'manual'`, and it lands at 0,
-  // clobbering the restore this window is holding. A user can never trigger
+  // (#1428). The browser owns the restore now, and its replay is the offset IT
+  // recorded for the entry, which can DISAGREE with the snapshot: an entry the
+  // router snapshotted without the reader having scrolled there under the UA's
+  // observation carries a stale 0. This write-back is what reconciles the two,
+  // and it is the only thing that does, so it is not redundant with the UA
+  // being correct in the common case. A user can never trigger
   // this listener first: every release event is a CAPTURE-phase input
   // listener (wheel / touchmove / keydown / pointerdown), and each of those
   // fires BEFORE the scroll event that follows it, so by the time a
@@ -84,8 +92,31 @@ export function suppressScrollAnchoring(targetX, targetY) {
   // is exactly a programmatic non-user write inside the restore's own span,
   // which is the one thing the restore may overrule. Re-entry is benign: the
   // write-back's own scroll event arrives on-target and returns.
+  //
+  // It is armed only BRIEFLY, not for the window's full life. The thing it
+  // exists to reconcile is one event, the UA's replay of its own recorded
+  // offset, which lands about a frame after the popstate handler. Left armed
+  // for the window's life (the revalidation settle, or up to the 2s ceiling)
+  // it would also revert LEGITIMATE programmatic scrolls landing in that span:
+  // a component calling `scrollIntoView()` from `connectedCallback` as the
+  // restored page upgrades, an autofocus on a below-fold control, or
+  // find-in-page driven from the browser chrome, which fires no page `keydown`
+  // and so does not close the window the way a real key press would. Those are
+  // not the restore's to overrule.
+  //
+  // Bounded by TIME rather than by a correction count. A count is the obvious
+  // bound and it is wrong: a single-shot can be spent on an unrelated scroll
+  // event that happens to arrive before the UA's replay, after which the stale
+  // replay stands uncorrected. That reproduced on Firefox as an intermittent,
+  // roughly one run in three. A short arming span covers the replay whenever it
+  // lands, however many events precede it.
+  let armed = typeof targetY === 'number';
+  const disarm = () => { armed = false; };
+  const armTimer = armed && typeof setTimeout === 'function'
+    ? setTimeout(disarm, WRITE_BACK_ARMED_MS) : null;
   const onScroll = (typeof targetY === 'number' && typeof window !== 'undefined')
     ? () => {
+      if (!armed) return;
       if (Math.abs(window.scrollY - targetY) <= 1 && Math.abs(window.scrollX - (targetX || 0)) <= 1) return;
       window.scrollTo({ left: targetX || 0, top: targetY, behavior: 'instant' });
     }
@@ -95,6 +126,8 @@ export function suppressScrollAnchoring(targetX, targetY) {
     if (releaseScrollAnchor !== release) return;
     releaseScrollAnchor = null;
     if (timer) { clearTimeout(timer); timer = null; }
+    if (armTimer) clearTimeout(armTimer);
+    armed = false;
     if (typeof window !== 'undefined') {
       for (const ev of ANCHOR_RELEASE_EVENTS) {
         window.removeEventListener(ev, release, /** @type {any} */ ({ capture: true }));

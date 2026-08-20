@@ -340,11 +340,14 @@ export async function fetchAndApply(href, frameId, recordHistory, optimisticStat
   // Scroll only for foreground (history-recording) navigations. When
   // `recordHistory` is false we're either:
   //   (a) the background revalidation after a cached popstate restore
-  //       - performNavigation already set scroll from the cached
-  //       position; we must NOT clobber it here.
-  //   (b) a cache-miss popstate: modern browsers fire scroll-
-  //       restoration themselves before dispatching popstate, so
-  //       leaving scroll alone preserves the browser-native UX.
+  //       - the restore is already settled (the browser replayed the
+  //       offset and the restore window is guarding it); a write here
+  //       would land on top of it.
+  //   (b) a cache-miss popstate: the browser performs its own restore
+  //       for the entry, so leaving scroll alone preserves the
+  //       browser-native UX. Note the UA's replay lands a frame AFTER
+  //       the popstate handler, not before it (#1428, measured), which
+  //       is the ordering the restore window is built around.
   //
   // And never for a FRAME-scoped response (#1427). `recordHistory` means "a
   // foreground navigation the reader initiated", which a frame click is (it

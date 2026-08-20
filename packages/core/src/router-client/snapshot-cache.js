@@ -73,7 +73,14 @@ export function snapshotGet(url) {
   // Move-to-front.
   snapshotCache.delete(key);
   snapshotCache.set(key, v);
-  if (typeof v === 'string') return { html: v, scrollX: 0, scrollY: 0 };
+  // A legacy string entry carries no offsets and no height. `scrollHeight: 0`
+  // is stated rather than left undefined so the returned object satisfies the
+  // `Snapshot` typedef, and because `reserveRestoredHeight` treats a
+  // non-positive height as "nothing to reserve" and no-ops: there is no
+  // recorded height to hold, so reserving is not merely skippable, it is
+  // meaningless. Such an entry restores with no reservation, which is the
+  // pre-#1428 behaviour and correct for a snapshot that never recorded one.
+  if (typeof v === 'string') return { html: v, scrollX: 0, scrollY: 0, scrollHeight: 0 };
   return v;
 }
 

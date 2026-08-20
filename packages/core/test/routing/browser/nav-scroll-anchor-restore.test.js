@@ -171,9 +171,7 @@ suite('Client router: a Back restore survives late layout growth (#1310)', () =>
   async function setup(opts) {
     const instant = Boolean(opts && opts.instantRevalidation);
     const restoredY = (opts && opts.restoredY) != null ? opts.restoredY : RESTORED_Y;
-    const outgoingHeight = (opts && opts.tallOutgoing) ? 60000
-      : (opts && opts.injectOffset) ? 3000
-        : restoredY + 2000;
+    const outgoingHeight = (opts && opts.tallOutgoing) ? 60000 : restoredY + 2000;
     const html = restoredHtml(
       (opts && opts.manualGrowth) ? 'wj-grow-on-command-1310'
         : instant ? 'wj-grow-very-late-1310' : 'wj-grow-late-1310',
@@ -229,7 +227,7 @@ suite('Client router: a Back restore survives late layout growth (#1310)', () =>
     // synthetic popstate event would not exercise the browser's own restore.
     origUrl = location.href;
     history.pushState(null, '', entryUrl('anchor-a'));
-    if (!(opts && opts.injectOffset)) {
+    {
       // Let the BROWSER record a real offset for this entry, by actually
       // scrolling before pushing the next one. Every other case injects the
       // offset into the snapshot cache while the page sits at 0, so the UA has
@@ -617,16 +615,16 @@ suite('Client router: a Back restore survives late layout growth (#1310)', () =>
   });
 
   test('a restore the BROWSER recorded lands on the offset through a short swap (#1428)', async () => {
-    // The single-writer case. Unlike every other case here, the UA has recorded
-    // a REAL offset for this entry (`uaRecords` scrolls before pushing the next
-    // one), so the browser's own restoration is a live participant rather than
-    // a source of zeros.
+    // The single-writer case, and the DEFAULT fixture shape: `setup` scrolls to
+    // the recorded offset before pushing the next entry, so the browser has a
+    // real per-entry offset to replay rather than the 0 an injected fixture
+    // leaves it with.
     //
     // The snapshot is still SHORT at swap time, which is the shape that used to
-    // clamp. With the height reserved the offset is reachable, so the reader
-    // ends on it whichever writer got there. This is the assertion that would
-    // have to hold for the router to stop writing scroll at all.
-    await setup({ uaRecords: true });
+    // clamp. With the height reserved the offset is reachable, so the UA's
+    // replay lands on it and the router writes nothing. This is the assertion
+    // that had to hold for the router to stop writing scroll at all.
+    await setup();
     try {
       await goBack();
       await frame();
