@@ -5,7 +5,7 @@
 // (`npm test`, `npm run <script>`, `npx ...`) have to pass.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { spawnSync } from 'node:child_process';
+import { spawnSync, execSync } from 'node:child_process';
 import { mkdtempSync, mkdirSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
 import { join, dirname, resolve } from 'node:path';
 import { tmpdir } from 'node:os';
@@ -131,6 +131,14 @@ test('judges a COMMAND, never a token that merely appears in the line', () => {
       'echo "the hook blocks npm rm x too"',
       'rg "bun add" .',
       'cat README | grep yarn',
+      // A shell metacharacter INSIDE the quoted text. Splitting the raw command
+      // makes the tail look like its own command, so each of these read as an
+      // install. Quoted spans are removed before the split for exactly this.
+      'git commit -m "fix: guard the link; npm install now blocks"',
+      'git commit -m "fix: cd wt && npm ci corrupts the primary"',
+      'gh pr create --body "| npm install | replaces the symlink |"',
+      'echo "run (npm ci) to reproduce"',
+      "git log --grep 'npm install'",
     ]) {
       assert.equal(runHook(cmd, worktree).status, 0, `expected allow for \`${cmd}\``);
     }
@@ -277,5 +285,75 @@ test('honours WEBJS_NO_WORKTREE_INSTALL_GATE=1', () => {
   try {
     const r = runHook('npm ci', worktree, { WEBJS_NO_WORKTREE_INSTALL_GATE: '1' });
     assert.equal(r.status, 0, `expected allow, got ${r.status}: ${r.stderr}`);
+  } finally { rmSync(root, { recursive: true, force: true }); }
+});
+
+test('sees the verb through flags that sit BEFORE it', () => {
+  // `npm --silent install` and `npm -w packages/core install` are ordinary
+  // spellings. Only `--prefix` / `-C` used to be admitted in the pre-verb
+  // position, so every other flag hid the verb and the gate failed open.
+  const { root, worktree } = makeLinkedPair();
+  try {
+    for (const cmd of [
+      'npm --silent install', 'npm -s ci', 'npm --ignore-scripts ci',
+      'npm -w packages/core install', 'npm --workspace packages/core install',
+      'npm --no-audit install', 'npm --prefer-offline ci',
+      'pnpm -r install', 'pnpm --filter core install', 'bun --cwd . install',
+    ]) {
+      assert.equal(runHook(cmd, worktree).status, 2, `expected block for \`${cmd}\``);
+    }
+  } finally { rmSync(root, { recursive: true, force: true }); }
+});
+
+test('a flag VALUE never hides the verb, and a safe verb still stops the scan', () => {
+  const { root, worktree } = makeLinkedPair();
+  try {
+    // `packages/core` is neither an install verb nor a safe one, so the scan
+    // continues and finds `install`.
+    assert.equal(runHook('npm -w packages/core install', worktree).status, 2);
+    // ...but `run` IS a safe verb, so the scan stops there and never reaches
+    // the `add` further along.
+    assert.equal(runHook('npm run test -- --grep add', worktree).status, 0);
+  } finally { rmSync(root, { recursive: true, force: true }); }
+});
+
+test('follows every `cd` spelling, including ~, --, and pushd', () => {
+  const { root, worktree } = makeLinkedPair();
+  try {
+    for (const cmd of [`cd -- ${worktree} && npm ci`, `pushd ${worktree} && npm ci`, `cd -P ${worktree} && npm ci`]) {
+      assert.equal(runHook(cmd, root).status, 2, `expected block for \`${cmd}\``);
+    }
+  } finally { rmSync(root, { recursive: true, force: true }); }
+});
+
+test('treats `yarnpkg` as yarn, since it is declared a manager token', () => {
+  const { root, worktree } = makeLinkedPair();
+  try {
+    for (const cmd of ['yarnpkg install', 'yarnpkg add x', 'yarnpkg']) {
+      assert.equal(runHook(cmd, worktree).status, 2, `expected block for \`${cmd}\``);
+    }
+  } finally { rmSync(root, { recursive: true, force: true }); }
+});
+
+test('the manager carve-out in the strip loop is load-bearing', () => {
+  // A BOOLEAN wrapper flag followed directly by the manager. Without the
+  // `npm|bun|pnpm|yarn|yarnpkg)` case in the strip loop, `npm` is taken for the
+  // value of `-E` and stripped, leaving `ci` as the head token and no block.
+  const { root, worktree } = makeLinkedPair();
+  try {
+    assert.equal(runHook('sudo -E npm ci', worktree).status, 2);
+    assert.equal(runHook('sudo -n npm install', worktree).status, 2);
+  } finally { rmSync(root, { recursive: true, force: true }); }
+});
+
+test('escalates to the git toplevel, so an install from a SUBDIRECTORY blocks', () => {
+  // The install lands at the package root. `makeLinkedPair` builds no git repo,
+  // so the toplevel term was never exercised by any other test here.
+  const { root, worktree } = makeLinkedPair();
+  try {
+    execSync('git init -q -b main', { cwd: worktree, stdio: 'pipe' });
+    const sub = join(worktree, 'packages', 'core');
+    mkdirSync(sub, { recursive: true });
+    assert.equal(runHook('npm install', sub).status, 2, 'a subdirectory install still reaches the linked root');
   } finally { rmSync(root, { recursive: true, force: true }); }
 });

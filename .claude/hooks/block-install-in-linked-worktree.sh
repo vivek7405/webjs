@@ -15,19 +15,28 @@
 # manager starts. `scripts/warn-worktree-install.mjs` covers every other tool by
 # reporting rather than blocking.
 #
-# ## It matches a COMMAND, never a token
+# ## How the matching works, and why it is shaped this way
 #
-# The command is split on `&&`, `||`, `;`, `|`, `(` and `)`, and each segment is
-# judged only by what it STARTS with. Matching the manager token anywhere in the
-# line instead is the obvious shortcut and it is badly wrong: it blocks
-# `git commit -m "fix: npm install ..."`, `grep -rn "npm ci" AGENTS.md` and
-# `git log --grep "npm install"`. Every worktree here is a linked worktree, so
-# that fires on ordinary commands constantly, and a gate that cries wolf is a
-# gate someone turns off.
+# Recognising a package-manager invocation inside an arbitrary shell command is
+# the hard part of this hook, and getting it wrong in either direction is
+# expensive: a false NEGATIVE lets the corruption through, and a false POSITIVE
+# fires on ordinary commands in a linked worktree, which is the mandated working
+# state here, until someone turns the gate off. Four passes of review found a
+# defect in each direction, so the matcher is built in explicit stages:
 #
-# The predicate runs against the COMMAND's target directory, not just the session
-# cwd: the harness resets cwd to the primary checkout between commands, so a real
-# install in a worktree arrives as `cd /path/to/worktree && npm ci`.
+#   1. QUOTED SPANS ARE REMOVED FIRST. A manager invocation never has its own
+#      name inside quotes, while ordinary commands carry shell metacharacters
+#      there constantly. Splitting the raw string instead makes
+#      `git commit -m "fix: the link; npm install now blocks"` look like two
+#      commands, the second an install.
+#   2. The remainder is split on `&&`, `||`, `;`, `|`, `(`, `)` and newlines.
+#   3. Each segment is judged by its FIRST token, after leading env assignments
+#      and wrappers are stripped. A segment that does not START with a package
+#      manager is not an install, whatever else it contains.
+#   4. Only inside a manager-led segment are the remaining tokens scanned, and
+#      the FIRST one recognised as either an install verb or a known safe verb
+#      decides. Anything unrecognised is skipped rather than assumed, so a flag
+#      VALUE (`npm -w packages/core install`) does not hide the verb behind it.
 #
 # Contract: exit 0 = allow, exit 2 = block (message on stderr).
 # Escape hatch: WEBJS_NO_WORKTREE_INSTALL_GATE=1.
@@ -39,53 +48,35 @@ input=$(cat)
 cmd=$(printf '%s' "$input" | jq -r '.tool_input.command // empty' 2>/dev/null || true)
 if [ -z "$cmd" ]; then exit 0; fi
 
-# Every manager's documented install ALIASES, not just its canonical spelling.
-# The gate is worthless if `bun i` walks past it, and Bun is the manager that
-# writes THROUGH the symlink into the primary rather than replacing it.
-#
-# HYPHENATED verbs are spelled out: the trailing word boundary excludes `-`, so
-# `install-test` is NOT reached by listing `install`, and the short aliases
-# (`it`, `cit`, `sit`) do not cover the long spellings.
-#
-# The REMOVE verbs are here too. `npm rm <pkg>` in a linked worktree deletes from
-# the checkout that owns the tree, the same corruption in the other direction.
-NPM_VERBS='install-ci-test|clean-install-test|install-clean|clean-install|install-test|install|isntall|isntal|isnta|isnt|instal|insta|inst|ins|in|i|add|ci|cit|sit|it|ic|update|upgrade|udpate|up|dedupe|ddp|uninstall|unlink|un|remove|rm|r'
-BUN_VERBS='install|i|add|a|update|up|remove|rm'
-PNPM_VERBS='install|i|add|update|upgrade|up|dedupe|remove|rm|uninstall|un'
-YARN_VERBS='install|add|upgrade|up|dedupe|remove'
-# `npm --prefix <dir> install` puts flags BEFORE the verb. Only the two flags that
-# themselves name a target directory are admitted, so this stays targeted rather
-# than swallowing a token run and matching `npm run install`.
-SEG_VERBS="^(npm[[:space:]]+(${NPM_VERBS})|bun[[:space:]]+(${BUN_VERBS})|pnpm[[:space:]]+(${PNPM_VERBS})|yarn[[:space:]]+(${YARN_VERBS})|(npm|pnpm|yarn)[[:space:]]+(--prefix|-C)[[:space:]=]+[^[:space:]]+[[:space:]]+(${NPM_VERBS}))([^[:alnum:]_-]|\$)"
-# Bare `yarn` IS an install in yarn classic, but only when it is the whole
-# command: `yarn test` is not one.
-SEG_BARE_YARN='^yarn([[:space:]]+-[^[:space:]]*)*[[:space:]]*$'
+# Verbs that WRITE to node_modules. Every manager's documented aliases, because
+# a gate `bun i` walks past is worthless and Bun is the manager that writes
+# THROUGH the link rather than replacing it. `link`, `rebuild` and `prune` are
+# here for the same reason as the remove verbs: they all mutate the tree that
+# the symlink points at.
+INSTALL_VERBS='install-ci-test|clean-install-test|install-clean|clean-install|install-test|install|isntall|isntal|isnta|isnt|instal|insta|inst|ins|in|i|add|a|ci|cit|sit|it|ic|update|upgrade|udpate|up|dedupe|ddp|uninstall|unlink|un|remove|rm|r|link|ln|rebuild|rb|prune'
+# Verbs that do NOT touch node_modules. Listed explicitly so the scan can STOP:
+# without them, `npm run test -- --grep add` would keep scanning and hit `add`.
+SAFE_VERBS='run|run-script|rum|urn|test|tst|t|start|stop|restart|exec|x|ls|list|la|ll|init|innit|create|publish|pack|version|view|v|info|show|why|ping|config|c|get|set|docs|home|repo|bugs|audit|fund|outdated|prefix|root|bin|whoami|token|team|org|access|star|unstar|search|s|se|find|help|doctor|explain|edit|deprecate|dist-tag|hook|login|logout|adduser|owner|profile|shrinkwrap|unpublish|completion|diff|query|sbom'
 # A GLOBAL install writes to the npm prefix, never through the local link, and
 # `npm update -g webjsdev` is this repo's documented post-release step.
 GLOBAL='(^|[[:space:]])(-g|--global)([[:space:]]|$)'
 
-# Walk the segments in order so a `cd` earlier in the line moves the target the
-# way the shell would.
+# STAGE 1: remove quoted spans. See the docblock; this is what keeps a shell
+# metacharacter inside a commit message from being read as a command boundary.
+scrubbed=$(printf '%s' "$cmd" | sed -e "s/'[^']*'/ /g" -e 's/"[^"]*"/ /g')
+
 eff="$PWD"
 target=""
+# STAGE 2: split into segments. `cd` in an earlier segment moves the target the
+# way the shell would.
 while IFS= read -r seg; do
-  # Quotes are dropped so a quoted command body tokenizes (`bash -c "npm ci"`).
-  # This is safe: what keeps `git commit -m "npm ci"` out is the command-position
-  # rule below, never the quoting.
-  seg=$(printf '%s' "$seg" | tr -d '"'"'"'')
   seg="${seg#"${seg%%[![:space:]]*}"}"
   [ -z "$seg" ] && continue
 
-  # Strip leading env assignments and benign wrappers, so `FOO=1 npm ci`,
-  # `sudo npm ci` and `bash -c "npm ci"` are still judged on the manager that
-  # follows them.
-  #
-  # This is done TOKEN BY TOKEN, and the env-assignment test is anchored to the
-  # first token alone. An unanchored `[A-Za-z_]*=*` case glob matches the WHOLE
-  # segment whenever any LATER token contains `=`, so it ate leading words and
-  # `npm install --omit=dev`, `npm ci --loglevel=error` and
-  # `npm install --workspace=packages/core` all failed OPEN. Failing open is the
-  # one direction that matters here, since the whole point is to stop a write.
+  # STAGE 3: strip leading env assignments and benign wrappers, token by token.
+  # The assignment test is anchored to the FIRST token: an unanchored
+  # `[A-Za-z_]*=*` glob matches the whole segment whenever any LATER token
+  # carries an `=`, which silently disabled the gate for `npm install --omit=dev`.
   wrapper_seen=0
   prev_flag=0
   for _ in 1 2 3 4 5 6 7 8 9 10; do
@@ -94,7 +85,6 @@ while IFS= read -r seg; do
     strip=0
     case "$first" in
       *=*)
-        # A real env assignment: NAME=..., NAME being a valid shell identifier.
         name="${first%%=*}"
         case "$name" in
           ''|*[!A-Za-z0-9_]*|[0-9]*) ;;
@@ -102,17 +92,14 @@ while IFS= read -r seg; do
         esac ;;
       sudo|env|time|nice) wrapper_seen=1; prev_flag=0; strip=1 ;;
       npm|bun|pnpm|yarn|yarnpkg) ;;
-      -*)
-        # A wrapper's OWN flag, e.g. `sudo -u foo npm ci`.
-        [ "$wrapper_seen" = "1" ] && { prev_flag=1; strip=1; } ;;
+      -*) [ "$wrapper_seen" = "1" ] && { prev_flag=1; strip=1; } ;;
       *)
-        # The VALUE of the wrapper flag just stripped, e.g. the `foo` in `-u foo`
-        # or the `10` in `nice -n 10`. Deliberately narrow: walking past ARBITRARY
-        # tokens after a wrapper re-creates the token-anywhere class one level in,
-        # where `bash -c "echo yarn"` would reach the bare-yarn branch and block.
-        # `command`, `exec`, `bash` and `sh` are NOT wrappers here for that reason,
-        # so `command -v yarn` stays allowed and `bash -c "npm ci"` is a known,
-        # accepted gap rather than a parser for nested shells.
+        # The VALUE of a wrapper flag (`sudo -u foo`, `nice -n 10`). Deliberately
+        # narrow: walking past ARBITRARY tokens after a wrapper re-creates the
+        # token-anywhere class one level in, where `bash -c "echo yarn"` reaches
+        # the bare-yarn branch. `command`, `exec`, `bash` and `sh` are NOT
+        # wrappers for that reason, so `command -v yarn` stays allowed and
+        # `bash -c "npm ci"` is an accepted gap rather than a nested-shell parser.
         if [ "$wrapper_seen" = "1" ] && [ "$prev_flag" = "1" ]; then prev_flag=0; strip=1; fi ;;
     esac
     [ "$strip" = "1" ] || break
@@ -122,31 +109,78 @@ while IFS= read -r seg; do
   done
   [ -n "$seg" ] || continue
 
-  case "$seg" in
-    cd|cd\ *)
-      d="${seg#cd}"; d="${d#"${d%%[![:space:]]*}"}"; d="${d%% *}"
-      d=$(printf '%s' "$d" | tr -d "\"'")
+  set -- $seg
+  head_tok="$1"
+
+  # `cd` / `pushd` move the effective directory.
+  case "$head_tok" in
+    cd|pushd)
+      shift
+      # Skip `--` and any option, so `cd -- <dir>` and `cd -P <dir>` both work.
+      while [ $# -gt 0 ]; do
+        case "$1" in --) shift; break ;; -*) shift ;; *) break ;; esac
+      done
+      d="${1:-}"
       case "$d" in
         '') ;;
+        '~') eff="$HOME" ;;
+        '~/'*) eff="$HOME/${d#'~/'}" ;;
         /*) eff="$d" ;;
-        '~'*) ;;
         *) eff="$eff/$d" ;;
       esac
       continue ;;
   esac
 
-  if printf '%s' "$seg" | grep -Eq "$SEG_VERBS" || printf '%s' "$seg" | grep -Eq "$SEG_BARE_YARN"; then
-    printf '%s' "$seg" | grep -Eq "$GLOBAL" && continue
-    target="$eff"
-    # An explicit --prefix / -C on the install itself wins over the cwd.
-    p=$(printf '%s' "$seg" | grep -oE '(^|[[:space:]])(-C|--prefix)[[:space:]=]+[^[:space:]]+' | sed -E 's/.*(-C|--prefix)[[:space:]=]+//' | tr -d "\"'" | head -1)
-    if [ -n "$p" ]; then
-      case "$p" in /*) target="$p" ;; '~'*) ;; *) target="$eff/$p" ;; esac
-    fi
-    break
+  # STAGE 4: only a manager-led segment can be an install.
+  case "$head_tok" in
+    npm|bun|pnpm|yarn|yarnpkg) ;;
+    *) continue ;;
+  esac
+  shift
+
+  # A global install never touches this tree.
+  printf '%s' "$seg" | grep -Eq "$GLOBAL" && continue
+
+  verdict=""
+  prefix_dir=""
+  pending_prefix=0
+  while [ $# -gt 0 ]; do
+    tok="$1"; shift
+    case "$tok" in
+      --prefix=*|-C=*) prefix_dir="${tok#*=}"; continue ;;
+      --prefix|-C) pending_prefix=1; continue ;;
+      -*) continue ;;
+    esac
+    if [ "$pending_prefix" = "1" ]; then prefix_dir="$tok"; pending_prefix=0; continue; fi
+    # The first token recognised either way decides; anything else is a flag
+    # value or a package name and is skipped rather than assumed.
+    # Do NOT stop at the verb: `--prefix` may still be ahead of us, and
+    # `npm install --prefix <worktree>` run from the primary would otherwise be
+    # judged against the primary's own real node_modules and allowed. The FIRST
+    # verdict wins; later tokens are only mined for the prefix.
+    [ -n "$verdict" ] && continue
+    if printf '%s' "$tok" | grep -Eq "^(${INSTALL_VERBS})$"; then verdict="install"; continue; fi
+    if printf '%s' "$tok" | grep -Eq "^(${SAFE_VERBS})$"; then verdict="safe"; continue; fi
+  done
+
+  # A bare `yarn` (only flags, no verb) IS an install in yarn classic.
+  if [ -z "$verdict" ]; then
+    case "$head_tok" in yarn|yarnpkg) verdict="install" ;; esac
   fi
+  [ "$verdict" = "install" ] || continue
+
+  target="$eff"
+  if [ -n "$prefix_dir" ]; then
+    case "$prefix_dir" in
+      '~') target="$HOME" ;;
+      '~/'*) target="$HOME/${prefix_dir#'~/'}" ;;
+      /*) target="$prefix_dir" ;;
+      *) target="$eff/$prefix_dir" ;;
+    esac
+  fi
+  break
 done <<EOF
-$(printf '%s' "$cmd" | tr '&|;()' '\n\n\n\n\n')
+$(printf '%s' "$scrubbed" | tr '&|;()' '\n\n\n\n\n')
 EOF
 
 [ -n "$target" ] || exit 0
