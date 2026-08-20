@@ -192,6 +192,23 @@ connectWS('/posts/' + id + '/feed', { onMessage: (m) =&gt; renderStream(m) });</
     <p>A frame-targeted navigation or submission is the one exception to the closing rule above: it swaps a single <code>&lt;webjs-frame&gt;</code> rather than the page, so the restored offset is still the right one and the restore is left running. Frame targeting here means what it means everywhere else, so a trigger that breaks out with <code>data-webjs-frame="_top"</code>, or names an id that does not resolve, is a page navigation and does close the window.</p>
     <p><strong>The browser restores Back/Forward scroll, not the router.</strong> WebJs FORCES <code>history.scrollRestoration</code> to <code>auto</code> when the router starts, overriding an app that had set <code>'manual'</code> (and putting that value back if you call <code>disableClientRouter()</code>), so <strong>setting it to <code>'manual'</code> yourself does not take effect while the router is running</strong>. Only under <code>auto</code> does the browser record a scroll position per history entry, replay it on a traverse, and compose the iOS edge back-swipe gesture preview from that recording. The router writes no scroll of its own on a restore: it reserves the recorded height across the swap so the browser's replay lands on a document that can hold the offset, and that is the entire mechanism. One writer, which is the model Next and Remix 3 use as well. Taking manual control suppresses the recording, so every scrolled page previews blank for the whole duration of the gesture; that is a real bug WebJs shipped, inherited from Turbo Drive's <code>assumeControlOfScrollRestoration</code>, and it is why Turbo still has it (Turbo is single-writer too, but its writer is the app rather than the browser).</p>
     <p>Navigation never animates the scroll, so setting <code>html { scroll-behavior: smooth }</code> in your app does not make it do so. The forward-nav scroll-to-top is the router's own write and is forced <code>behavior: 'instant'</code>; the back/forward restore is the browser's and is not a scrolling-API call at all, so <code>scroll-behavior</code> cannot reach it either. It jumps like a native page load. A hash-anchor (<code>#section</code>) link still scrolls smoothly when you opt into it. Because route transitions ignore <code>scroll-behavior: smooth</code> (it only affects in-page anchors), the router logs a one-time dev-only console hint if it detects that setting on <code>&lt;html&gt;</code>, and notes that combining it with a sticky <code>backdrop-filter</code> header can flash on iOS during navigation.</p>
+    <h3 id="preserving-scroll">Preserving scroll on a forward navigation (<code>data-preserve-scroll</code>)</h3>
+    <p>A forward navigation scrolls to the top, the way a browser does. <code>data-preserve-scroll</code> is the per-link escape hatch, for a navigation that changes only part of what the reader is looking at: a filter, sort, or tab link whose control sits below the fold, a pager, or a form that re-renders in place with validation errors. WebJs wants it more than most frameworks do, because a searchParams-only navigation already morphs the deepest shared boundary and keeps the hydrated state of every component around it, so the scroll is the only thing such a navigation still throws away.</p>
+    <code-block>&lt;!-- one link --&gt;
+&lt;a href="?sort=new" data-preserve-scroll&gt;Newest&lt;/a&gt;
+
+&lt;!-- or a whole region, resolved with closest() --&gt;
+&lt;nav data-preserve-scroll&gt;
+  &lt;a href="?sort=new"&gt;Newest&lt;/a&gt;
+  &lt;a href="?sort=top"&gt;Top&lt;/a&gt;
+  &lt;a href="/" data-preserve-scroll="false"&gt;Home&lt;/a&gt;  &lt;!-- opts back out --&gt;
+&lt;/nav&gt;
+
+&lt;!-- forms too: the lookup starts at the submitter and walks up through the form --&gt;
+&lt;form method="post" action="${'${saveDraft}'}" data-preserve-scroll&gt;...&lt;/form&gt;</code-block>
+    <p>The attribute resolves through <code>closest()</code>, so one mark on a wrapping element covers every link inside it, and <code>data-preserve-scroll="false"</code> on something nearer opts back out. A hash link still scrolls to its anchor, because the reader named a target and a named target beats a blanket preference. It is inert on a frame-targeted link, since a frame swap never writes a scroll to begin with, and inert with JS off, where the link is a plain <code>&lt;a&gt;</code>, so nothing about a page's correctness may depend on it.</p>
+    <p>It carries the reader's <em>current</em> offset onto the destination. It does not restore the offset they once had there, which is a different feature and not one WebJs ships, so this is the wrong tool for a "back to the list" link.</p>
+
     <p>After a server action mutates data that a cached page depends on, call <code>revalidate()</code>:</p>
     <code-block>import { revalidate } from '@webjsdev/core';
 
@@ -250,7 +267,10 @@ revalidate();</code-block>
 await navigate('/about');
 
 // Replace current history entry
-await navigate('/login', { replace: true });</code-block>
+await navigate('/login', { replace: true });
+
+// Keep the reader's scroll offset (the twin of data-preserve-scroll)
+await navigate('/products?sort=new', { scroll: false });</code-block>
 
     <h2>Refreshing the page you are on</h2>
     <p><code>refreshPage()</code> re-renders the <em>current</em> URL on the server and applies it in place, with no page load. It records no history entry and never scrolls, so the reader keeps their place and Back still goes to the previous page.</p>
@@ -275,6 +295,7 @@ await refreshPage('shell');</code-block>
       <li><strong>Print views / embed pages</strong>: anywhere you want a clean-slate render without the existing layout.</li>
       <li><strong>Experimental routes</strong> backed by a different client runtime that needs a full boot.</li>
     </ul>
+    <p>To keep the router but skip its scroll-to-top, the attribute is <code>data-preserve-scroll</code> rather than this one. See <a href="#preserving-scroll">Preserving scroll on a forward navigation</a> above.</p>
 
     <h2>Auto-skipped (no <code>data-no-router</code> needed)</h2>
     <ul>

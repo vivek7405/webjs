@@ -44,12 +44,30 @@ enableClientRouter();    // turn soft navigation back on
 
 Per link, opt out with `data-no-router` (auth flows like `/logout`, OAuth redirects, print views, an experimental route with a different runtime). Cross-origin hrefs, `download`, a non-`_self` target, pure same-page hash jumps, and non-HTML extensions are auto-skipped.
 
+**Per link, keep the reader's scroll offset with `data-preserve-scroll`.** A forward navigation scrolls to top, matching what a browser does and what Next and Remix 3 do. The attribute is the escape hatch for a navigation that changes only part of what the reader is looking at: a filter, sort, or tab link whose control sits below the fold, a pager, or a form that re-renders in place with validation errors. WebJs wants it more than most, because a searchParams-only navigation already morphs the deepest shared boundary and preserves hydrated component state, so the scroll is the only thing such a navigation still throws away.
+
+```html
+<nav data-preserve-scroll>            <!-- covers every link inside -->
+  <a href="?sort=new">Newest</a>
+  <a href="?sort=top">Top</a>
+  <a href="/" data-preserve-scroll="false">Home</a>   <!-- opts back out -->
+</nav>
+<form method="post" action=${saveDraft} data-preserve-scroll>...</form>
+```
+
+It resolves through `closest()`, so one mark on a wrapping element covers every link in it (the same walk `data-webjs-frame` uses), and `data-preserve-scroll="false"` on a nearer element opts back out. On a form the lookup starts at the submitter, which passes through the form on its way up, so a marked form covers its own buttons.
+
+Three things it does NOT do. A hash link still scrolls to its anchor, because the reader named a target and a named target beats a blanket preference. It is inert on a frame-targeted link, since a frame swap never writes a scroll to begin with. And it is inert with JS off, where the link is a plain `<a>` and the browser does whatever it does, so nothing about a page's correctness may depend on it.
+
+It carries the reader's CURRENT offset onto the destination; it does not restore the destination's remembered offset. Those are different features, and the second one is not something WebJs ships. So this is the wrong tool for a "back to the list" link, where the offset the reader wants is the one they had in the list, not the one they have in the article.
+
 **Programmatic navigation and cache eviction.**
 
 ```js
 import { navigate, revalidate } from '@webjsdev/core';
 await navigate('/about');                     // push history
 await navigate('/login', { replace: true });  // replace history
+await navigate('/products?sort=new', { scroll: false });  // keep the reader's offset
 revalidate('/products/123');                  // evict one URL from the snapshot cache
 revalidate();                                 // clear the entire snapshot cache
 ```
@@ -69,6 +87,8 @@ It records no history entry and never scrolls, so the reader keeps their place a
 It sends no `X-Webjs-Have`, deliberately: the server short-circuits at the first layout the client already holds, and a same-url request matches every one of them, so the response would omit the very layout that changed. It resolves `false` when it did not apply (the router is disabled, or the fetch failed), so a caller falls back to a full load.
 
 It does NOT reload changed component modules and cannot: `customElements.define` is once-per-tag and a module url is fetched once per document. A caller whose change touched browser code has to reload. This is exactly why the dev live-reload client calls `refreshPage` for a page or layout edit and `location.reload()` for a component edit (#1398, and see `references/runtime.md` for which dev modes get the refresh).
+
+Keep the two scroll concerns apart. The Back/Forward restore below is the BROWSER's and has no per-link knob, because the offset it replays is one the browser recorded. The forward-navigation scroll-to-top is the router's own write, and `data-preserve-scroll` is its knob.
 
 **Back/Forward scroll restore vs late layout growth.** The router SUPPRESSES the browser's scroll anchoring (`overflow-anchor`) for the duration of a Back/Forward restore, then puts it back. The saved offset was recorded against the page at its SETTLED height, while the DOM the restore swaps in is still shorter until its components upgrade and render. Without the suppression the browser treats that late growth as content appearing above a reader and adds it to the offset the router just replayed, so the reader lands BELOW where they left (the reported case was 763px, exactly the height a page gained after its swap). What follows for an app:
 

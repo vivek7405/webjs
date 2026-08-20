@@ -35,15 +35,21 @@
  *   - `scroll-behavior` is forced off: the assertions are about position, and a
  *     smooth scroll would not have landed by the time they run (#601).
  *
- * COUNTERFACTUALS, each proven to red the cases it names (at `fadd07eb`):
+ * COUNTERFACTUALS, each RUN and proven to red the cases it names, at commit
+ * `9ed0b456`. A counterfactual claim is true of a commit rather than of a
+ * branch, so re-run the toggle and restate this list if a later commit touches
+ * the scroll block or the resolver:
  *
  *   - delete the `!preserveScroll` guard in `fetch-apply.js`: cases 2, 3, 6, 7
  *   - gate the WHOLE `if (recordHistory && !frameId)` block on `!preserveScroll`
  *     instead: case 5 (the hash carve-out is what that breaks)
- *   - drop the `closest()` walk to a bare `hasAttribute`: case 3
+ *   - drop the `closest()` walk to a bare `hasAttribute`: cases 3 AND 6. The
+ *     form half is not incidental: the mark sits on the `<form>` while the
+ *     trigger is its submit BUTTON, so case 6 is what proves the walk is why a
+ *     marked form covers its own buttons with no second lookup.
  *   - drop the `!== 'false'` test so presence alone preserves: case 4
  *   - read the option as `!opts?.scroll` rather than `opts?.scroll === false`:
- *     case 7's optionless half
+ *     case 7's optionless half, plus 3 assertions in the unit file
  */
 import { enableClientRouter, disableClientRouter, navigate } from '../../../src/router-client.js';
 
