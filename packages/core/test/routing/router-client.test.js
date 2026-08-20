@@ -3247,43 +3247,27 @@ test('addNewHeadElements: skips incoming importmap (importmap-mismatch reload ha
  * popstate fires).
  * ==================================================================== */
 
-test('enableClientRouter: sets history.scrollRestoration = "manual"', () => {
-  // Start from a known state. enableClientRouter is idempotent: it
-  // early-returns if `enabled` is already true (which it is, since the
-  // module auto-enables on import). Cycle off-then-on to exercise it.
-  const origScrollRestoration = globalThis.history?.scrollRestoration;
-  const origHistory = globalThis.history;
-  /** @type {{ scrollRestoration: string, pushState: Function, replaceState: Function }} */
-  const mockHistory = { scrollRestoration: 'auto', pushState: () => {}, replaceState: () => {} };
-  globalThis.history = /** @type any */ (mockHistory);
-  try {
-    disableClientRouter();
-    enableClientRouter();
-    assert.equal(mockHistory.scrollRestoration, 'manual',
-      'router takes control of scroll restoration so the browser ' +
-      'doesn\'t race with our snapshot-based scroll restore');
-  } finally {
-    globalThis.history = origHistory;
-    if (origScrollRestoration !== undefined) {
-      globalThis.history.scrollRestoration = origScrollRestoration;
-    }
-    enableClientRouter(); // re-enable for subsequent tests
-  }
-});
-
-test('disableClientRouter: restores the previous history.scrollRestoration value', () => {
+test('the router leaves history.scrollRestoration alone, in both directions (#1428)', () => {
+  // Under 'auto' the browser records a scroll position per history entry, and
+  // WebKit composes the back-swipe gesture preview from that recorded state.
+  // The router used to take 'manual' here (the Turbo Drive pattern), which
+  // stopped the recording and blanked the preview on every scrolled page,
+  // measured on-device in #1428. UA interference with the router's own restore
+  // is settled by the restore window writing back an off-target programmatic
+  // displacement instead, so this module must never write the history-wide
+  // attribute again: not on enable, and nothing to put back on disable.
   const origHistory = globalThis.history;
   /** @type {any} */
   const mockHistory = { scrollRestoration: 'auto', pushState: () => {}, replaceState: () => {} };
   globalThis.history = mockHistory;
   try {
     disableClientRouter();
-    enableClientRouter();           // captures 'auto', sets 'manual'
-    assert.equal(mockHistory.scrollRestoration, 'manual');
-    disableClientRouter();           // should restore 'auto'
+    enableClientRouter();
     assert.equal(mockHistory.scrollRestoration, 'auto',
-      'disable restores the value enable captured, so the browser\'s ' +
-      'default scroll-restoration behavior is back in effect');
+      'enable must not take manual control: that is what blanked the iOS back-swipe preview');
+    disableClientRouter();
+    assert.equal(mockHistory.scrollRestoration, 'auto',
+      'disable has nothing to restore and must not write either');
   } finally {
     globalThis.history = origHistory;
     enableClientRouter();
@@ -5239,35 +5223,8 @@ test('diagFlag: false when the app sets nothing, so the nav path is untouched (#
     assert.equal(diagFlag('raf'), false, 'no diag object means no lever');
     assert.equal(diagFlag('raf2'), false);
     assert.equal(diagFlag('scrolllast'), false);
-    assert.equal(diagFlag('scrollauto'), false, 'scroll restoration stays manual by default');
   } finally {
     if (globalThis.window && saved !== undefined) globalThis.window.__webjsDiag = saved;
-  }
-});
-
-test('scrollauto lever: only it suppresses the manual scrollRestoration (#1428)', () => {
-  // The prior-art measurement put `history.scrollRestoration` at the centre of
-  // this bug: on a real iPhone, WebJs and Turbo Drive both set 'manual' and
-  // both blank the back-swipe preview, while Next's App Router leaves 'auto'
-  // and is clean. So the lever must move exactly that one property and must
-  // not be reachable from a sibling lever, or the run cannot attribute a
-  // verdict to it.
-  const saved = globalThis.window ? globalThis.window.__webjsDiag : undefined;
-  try {
-    globalThis.window.__webjsDiag = { raf: true, raf2: true, scrolllast: true };
-    assert.equal(
-      diagFlag('scrollauto'), false,
-      'the paint-timing levers must not switch off manual scroll restoration',
-    );
-    globalThis.window.__webjsDiag = { scrollauto: true };
-    assert.equal(diagFlag('scrollauto'), true, 'the opted-in lever reads true');
-    assert.equal(diagFlag('raf'), false, 'and it does not switch on a sibling');
-    assert.equal(diagFlag('scrolllast'), false);
-  } finally {
-    if (globalThis.window) {
-      if (saved === undefined) delete globalThis.window.__webjsDiag;
-      else globalThis.window.__webjsDiag = saved;
-    }
   }
 });
 

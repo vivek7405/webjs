@@ -50,18 +50,6 @@ let activeAbortController = null;
  */
 let currentPageUrl = null;
 
-/**
- * Previous value of `history.scrollRestoration` (so we can restore it
- * when the router is disabled). The browser's default behavior of
- * auto-restoring scroll on popstate races with the SPA's own scroll
- * restoration: disabled here so WebJs is the sole authority on scroll
- * during navigation. Same pattern as Turbo Drive's
- * `assumeControlOfScrollRestoration()` (turbo/src/core/drive/history.js).
- *
- * @type {ScrollRestoration | null}
- */
-export let prevScrollRestoration = null;
-
 /** Enable the client router. Idempotent. */
 export function enableClientRouter() {
   if (enabled || typeof document === 'undefined') return;
@@ -105,33 +93,24 @@ export function enableClientRouter() {
   ensureUpgradeObserver();
   // Apply render/viewport prefetch modes to the initial document.
   refreshPrefetchObservers();
-  // Take control of scroll restoration so the browser doesn't fight
-  // the SPA's own snapshot-based restore on popstate.
-  if (typeof history !== 'undefined' && 'scrollRestoration' in history) {
-    prevScrollRestoration = history.scrollRestoration;
-    // #1428 diagnostic, TEMPORARY (default off). The lever the prior-art
-    // measurement points at, and the only property that tracked the symptom
-    // across three frameworks on a real iPhone: WebJs blanks and sets
-    // 'manual', Turbo Drive blanks and sets 'manual', Next's App Router is
-    // clean and leaves 'auto'. Push ORDERING, which is what #1410 changed, ran
-    // the other way (both frameworks that push ahead of the swap blank, and
-    // the one that pushes after does not), so it cannot be the cause.
-    //
-    // The hypothesis this tests: under 'auto' WebKit records a scroll position
-    // per history entry and can compose the gesture preview from it, while
-    // 'manual' hands that to the app and the browser records nothing, leaving
-    // the preview no scroll state to render against. That fits all three
-    // observations plus the two the earlier hypotheses left over, namely why
-    // the symptom depends on the offset at navigation time and why the back
-    // BUTTON is fine (the snapshot cache restore is correct, and is untouched
-    // here).
-    //
-    // This is a MEASUREMENT, not a candidate fix. Leaving 'auto' in place lets
-    // the browser restore on popstate alongside the router's own restore, and
-    // reconciling those two is the design work that follows a positive result
-    // (#1310 / #1313 are the guards). One variable moves: the attribute.
-    if (!diagFlag('scrollauto')) history.scrollRestoration = 'manual';
-  }
+  // `history.scrollRestoration` is deliberately LEFT ALONE ('auto', the
+  // default). Under 'auto' the browser records a scroll position per history
+  // entry, and WebKit composes the back-swipe gesture preview from that
+  // recorded state; under 'manual' it records nothing and the preview renders
+  // BLANK for the whole gesture on a scrolled page (#1428, measured on-device:
+  // WebJs and Turbo Drive both set 'manual' and both blank, Next leaves 'auto'
+  // and is clean, and the same page here flips from blank to correct with this
+  // one property).
+  //
+  // The router previously took 'manual' (the Turbo Drive
+  // `assumeControlOfScrollRestoration` pattern) to stop the UA's own popstate
+  // restore racing the snapshot restore below: that UA write lands a frame
+  // AFTER the popstate handler, so it always won, against a document whose
+  // height was still settling. The race is now settled where it happens
+  // instead: the restore window WRITES BACK an off-target programmatic
+  // displacement for its duration (see `suppressScrollAnchoring`), so a late
+  // UA write inside the restore's span is corrected rather than pre-empted by
+  // a session-wide mode that costs the gesture preview.
   // Seed the "current page" tracker so the first navigation can
   // snapshot the page the user is leaving.
   if (typeof location !== 'undefined') currentPageUrl = location.href;
@@ -157,10 +136,6 @@ export function disableClientRouter() {
   clearPrefetchHover();
   clearPrefetchViewTimers();
   teardownPrefetchViewObserver();
-  if (typeof history !== 'undefined' && prevScrollRestoration !== null) {
-    history.scrollRestoration = prevScrollRestoration;
-    prevScrollRestoration = null;
-  }
   // Never leave a restore window open on <html>, nor a catch-up chasing a
   // scroll offset after the router is gone (#1310).
   bumpRestoreGeneration();
@@ -541,7 +516,7 @@ export async function performNavigation(href, isPopState, frameId, opts) {
             const restoreScroll = () => {
               window.scrollTo({ left: cached.scrollX, top: cached.scrollY, behavior: 'instant' });
               if (window.scrollY >= cached.scrollY - 1) {
-                releaseAnchor = suppressScrollAnchoring();
+                releaseAnchor = suppressScrollAnchoring(cached.scrollX, cached.scrollY);
               } else {
                 // Clamped. Anchoring is left on, since it is what carries the
                 // reader back down, but it adds the FULL growth regardless of
@@ -608,12 +583,13 @@ export async function performNavigation(href, isPopState, frameId, opts) {
           return null;
         }
       }
-      // Cache-miss popstate. Browser-native scroll restoration is
-      // disabled (we set scrollRestoration='manual'): so without
-      // explicit handling, scroll would just stay where the user was
-      // on the page they popped FROM. Scroll to top as the reasonable
-      // default; fetchAndApply skips its own scroll handling when
-      // recordHistory=false (which is the case here).
+      // Cache-miss popstate. There is no recorded snapshot to restore, so
+      // without explicit handling scroll would just stay where the user was on
+      // the page they popped FROM. Scroll to top as the reasonable default;
+      // fetchAndApply skips its own scroll handling when recordHistory=false
+      // (which is the case here). Under `scrollRestoration: 'auto'` the UA may
+      // then land its own recorded offset over this, which is strictly better
+      // than top, and no restore window is open here to write back against it.
       if (typeof window !== 'undefined') window.scrollTo({ left: 0, top: 0, behavior: 'instant' });
     }
 

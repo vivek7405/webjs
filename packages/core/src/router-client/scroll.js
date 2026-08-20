@@ -61,17 +61,35 @@ export let releaseScrollAnchor = null;
  * @returns {() => void} Idempotent release. Safe to call after the window has
  *   already closed on user input or the ceiling.
  */
-export function suppressScrollAnchoring() {
+export function suppressScrollAnchoring(targetX, targetY) {
   if (typeof document === 'undefined' || !document.documentElement) return () => {};
   // A second restore inside an open window supersedes the first.
   if (releaseScrollAnchor) releaseScrollAnchor();
   const root = document.documentElement;
   // Save and restore the author's own inline value rather than blanking it,
-  // the same contract `prevScrollRestoration` keeps above.
+  // the same save-and-put-back contract the router keeps elsewhere.
   const prev = root.style.getPropertyValue('overflow-anchor');
   root.style.setProperty('overflow-anchor', 'none');
   /** @type {ReturnType<typeof setTimeout> | null} */
   let timer = null;
+  // With a target, the window also WRITES BACK a programmatic displacement
+  // (#1428). Under `scrollRestoration: 'auto'` Firefox performs a scroll
+  // action of its own after an intercepted traverse's handler settles,
+  // ignoring the interception's `scroll: 'manual'`, and it lands at 0,
+  // clobbering the restore this window is holding. A user can never trigger
+  // this listener first: every release event is a CAPTURE-phase input
+  // listener (wheel / touchmove / keydown / pointerdown), and each of those
+  // fires BEFORE the scroll event that follows it, so by the time a
+  // user-driven scroll lands here the window is already closed. What remains
+  // is exactly a programmatic non-user write inside the restore's own span,
+  // which is the one thing the restore may overrule. Re-entry is benign: the
+  // write-back's own scroll event arrives on-target and returns.
+  const onScroll = (typeof targetY === 'number' && typeof window !== 'undefined')
+    ? () => {
+      if (Math.abs(window.scrollY - targetY) <= 1 && Math.abs(window.scrollX - (targetX || 0)) <= 1) return;
+      window.scrollTo({ left: targetX || 0, top: targetY, behavior: 'instant' });
+    }
+    : null;
   const release = () => {
     // Only the window that installed this release may close it.
     if (releaseScrollAnchor !== release) return;
@@ -81,6 +99,7 @@ export function suppressScrollAnchoring() {
       for (const ev of ANCHOR_RELEASE_EVENTS) {
         window.removeEventListener(ev, release, /** @type {any} */ ({ capture: true }));
       }
+      if (onScroll) window.removeEventListener('scroll', onScroll);
     }
     if (prev) root.style.setProperty('overflow-anchor', prev);
     else root.style.removeProperty('overflow-anchor');
@@ -91,6 +110,7 @@ export function suppressScrollAnchoring() {
     for (const ev of ANCHOR_RELEASE_EVENTS) {
       window.addEventListener(ev, release, { capture: true, passive: true });
     }
+    if (onScroll) window.addEventListener('scroll', onScroll, { passive: true });
   }
   return release;
 }

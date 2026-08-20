@@ -785,9 +785,17 @@ suite('Client router: a Back restore survives late layout growth (#1310)', () =>
     await setup();
     try {
       await goBack();
+      // Read at FRAME granularity, not task granularity. The contract is what
+      // the reader sees: the recorded offset by the next paint, held there.
+      // Under `scrollRestoration: 'auto'` Firefox lands a stale UA write (0)
+      // inside the same task as the traverse and the restore window's
+      // write-back corrects it on the following scroll event, so a
+      // task-granularity read can catch the sub-frame transient between the
+      // two writes without either being user-visible (#1428).
+      await frame();
       const restored = window.scrollY;
       assert.ok(Math.abs(restored - RESTORED_Y) < 5,
-        `the restore lands on the recorded offset (got ${restored})`);
+        `the restore lands on the recorded offset by the next frame (got ${restored})`);
       await afterGrowth();
       const grown = document.querySelector('wj-grow-late-1310');
       assert.ok(grown && grown.getBoundingClientRect().height > GROWTH - 5,
@@ -808,8 +816,14 @@ suite('Client router: a Back restore survives late layout growth (#1310)', () =>
     await setup({ instantRevalidation: true });
     try {
       await goBack();
+      // Frame granularity, for the same reason as the sibling case above: the
+      // contract is the offset the reader sees by the next paint, and under
+      // `scrollRestoration: 'auto'` Firefox lands a stale UA write inside the
+      // traverse's own task that the restore window corrects on the next
+      // scroll event (#1428).
+      await frame();
       assert.ok(Math.abs(window.scrollY - RESTORED_Y) < 5,
-        `the restore lands on the recorded offset (got ${window.scrollY})`);
+        `the restore lands on the recorded offset by the next frame (got ${window.scrollY})`);
       for (let i = 0; i < 14; i++) await frame();
       const grown = document.querySelector('wj-grow-very-late-1310');
       assert.ok(grown && grown.getBoundingClientRect().height > GROWTH - 5,
@@ -844,6 +858,49 @@ suite('Client router: a Back restore survives late layout growth (#1310)', () =>
       await new Promise((r) => setTimeout(r, 700));
       assert.equal(document.documentElement.style.getPropertyValue('overflow-anchor'), '',
         'the router leaves nothing of its own on <html> after the restore');
+    } finally { await teardown(); }
+  });
+
+  test('the window writes back a programmatic displacement, so a stale UA restore cannot win (#1428)', async () => {
+    // The router leaves `history.scrollRestoration` at 'auto' so the browser
+    // keeps recording per-entry offsets, which is what WebKit's back-swipe
+    // gesture preview is composed from. The cost is that an engine may still
+    // perform a scroll action of its own after an intercepted traverse (
+    // Firefox does, landing at 0, ignoring the interception's
+    // `scroll: 'manual'`). The open restore window absorbs it.
+    await setup();
+    try {
+      await goBack();
+      await frame();
+      assert.ok(Math.abs(window.scrollY - RESTORED_Y) < 5,
+        `precondition: the restore landed (got ${window.scrollY})`);
+      // Exactly the shape of a stale UA restore: a programmatic write to a
+      // stale offset, inside the window, from no user gesture.
+      window.scrollTo({ left: 0, top: 0, behavior: 'instant' });
+      await frame();
+      assert.ok(Math.abs(window.scrollY - RESTORED_Y) < 5,
+        `an off-target programmatic write inside the window is corrected `
+        + `(expected ~${RESTORED_Y}, got ${window.scrollY})`);
+    } finally { await teardown(); }
+  });
+
+  test('the write-back never fights a reader, because input closes the window first (#1428)', async () => {
+    // The safety property behind the write-back: every release event is a
+    // CAPTURE-phase input listener, and an input event precedes the scroll it
+    // causes. So a user-driven scroll always arrives with the window already
+    // closed, and the only writes the window can ever overrule are
+    // programmatic ones inside the restore's own span.
+    await setup();
+    try {
+      await goBack();
+      await frame();
+      window.dispatchEvent(new WheelEvent('wheel', { bubbles: true }));
+      assert.equal(document.documentElement.style.getPropertyValue('overflow-anchor'), '',
+        'precondition: the input event closed the window');
+      window.scrollTo({ left: 0, top: 0, behavior: 'instant' });
+      await frame();
+      assert.ok(window.scrollY < 5,
+        `a scroll after the reader took over is left alone (got ${window.scrollY})`);
     } finally { await teardown(); }
   });
 

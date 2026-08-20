@@ -206,13 +206,8 @@ export default function RootLayout({ children }: LayoutProps) {
       (function(){
         try {
           var p = new URLSearchParams(location.search);
-          if (p.has('raf') || p.has('raf2') || p.has('scrolllast') || p.has('scrollauto')) {
-            window.__webjsDiag = {
-              raf: p.has('raf'),
-              raf2: p.has('raf2'),
-              scrolllast: p.has('scrolllast'),
-              scrollauto: p.has('scrollauto'),
-            };
+          if (p.has('raf') || p.has('raf2') || p.has('scrolllast')) {
+            window.__webjsDiag = { raf: p.has('raf'), raf2: p.has('raf2'), scrolllast: p.has('scrolllast') };
           }
         } catch (_) {}
       })();
