@@ -2977,7 +2977,19 @@ test('onPopState: a fragment-only popstate does not navigate (#1437)', async () 
   assert.equal(fetched, false, 'a same-document fragment traversal must not re-fetch');
 });
 
-test('onPopState: an identical-url popstate is absorbed too (#1437)', async () => {
+test('onPopState: a FRAGMENTLESS same-url popstate still navigates (#1437)', async () => {
+  // Two DISTINCT entries can share a url, and the framework's own no-JS write
+  // path makes that pair: a bound `<form action=${fn}>` emits no `action`
+  // attribute, so `getSubmitAction` falls back to `location.href` and the 422
+  // re-render pushes a duplicate entry at the page's own url. Back from that
+  // validation error must keep falling through, so the cache branch's
+  // background revalidation can swap the fresh render in. This is the case an
+  // over-broad guard swallows, and the reader then has to press Back twice.
+  const { fetched } = await popTo('http://localhost/p', 'http://localhost/p');
+  assert.equal(fetched, true, 'a fragmentless same-url traversal is still a navigation');
+});
+
+test('onPopState: an identical-url popstate WITH a fragment is absorbed (#1437)', async () => {
   // The REPEAT click of one in-page anchor. That navigation REPLACES rather
   // than pushes, and it still fires popstate, so it arrives with `location.href`
   // equal to what the tracker already holds (measured in Chromium: two clicks of
