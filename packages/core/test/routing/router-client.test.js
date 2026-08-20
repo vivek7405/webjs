@@ -2187,6 +2187,32 @@ test('a second navigation closes an open scroll-anchor window (#1310)', async ()
   }
 });
 
+test('disableClientRouter drops a pending fragment mark (#1437)', async () => {
+  // Pure module state, so it belongs at this layer rather than the browser one:
+  // no DOM, no layout, no history traversal is involved in the assertion, and
+  // this is the node suite CI's unit gate runs. Sibling of the scroll-anchor
+  // teardown below, which is the same obligation for a different piece of
+  // pending state.
+  //
+  // The failure it guards: a mark left by a click whose popstate has not fired
+  // yet survives the router stepping aside, then absorbs the first same-url
+  // popstate after a re-enable, which is the swallowed-Back this PR exists to
+  // prevent.
+  const { _pendingFragmentNav, clearFragmentNav, markFragmentNav } =
+    await import('../../src/router-client/state.js');
+  try {
+    assert.equal(_pendingFragmentNav, null, 'precondition: nothing pending');
+    markFragmentNav('http://localhost/p#x');
+    const live = await import('../../src/router-client/state.js');
+    assert.equal(live._pendingFragmentNav, 'http://localhost/p#x', 'precondition: the mark is set');
+    disableClientRouter();
+    assert.equal(live._pendingFragmentNav, null, 'disable must drop the mark');
+  } finally {
+    clearFragmentNav();
+    enableClientRouter();
+  }
+});
+
 test('disableClientRouter closes an open scroll-anchor window (#1310)', async () => {
   // The router must leave nothing of its own on <html> after it is disabled.
   const origLoc = globalThis.location;

@@ -398,22 +398,6 @@ suite('Client router: a same-document fragment jump is the browser\'s (#1437)', 
     } finally { await teardown(); }
   });
 
-  test('disabling the router drops a pending fragment mark', async () => {
-    setup();
-    try {
-      // A mark left by a click whose popstate has not fired yet must not
-      // survive the router stepping aside, or it absorbs the first same-url
-      // popstate after a re-enable, which is the swallowed-Back failure.
-      const { markFragmentNav, _pendingFragmentNav } = await import('../../../src/router-client/state.js');
-      assert.equal(_pendingFragmentNav, null, 'precondition: nothing pending');
-      markFragmentNav(location.href);
-      disableClientRouter();
-      const state = await import('../../../src/router-client/state.js');
-      assert.equal(state._pendingFragmentNav, null, 'disable must drop the mark');
-      enableClientRouter();
-    } finally { await teardown(); }
-  });
-
   test('a genuine cross-document popstate still re-navigates', async () => {
     setup();
     try {
