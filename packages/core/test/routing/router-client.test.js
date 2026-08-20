@@ -32,7 +32,7 @@ import { prefetchEvict } from '../../src/router-client/prefetch.js';
 
 let _collect, _plan, _keyOf, _diffEl, _reconcile,
   _addNewHead, _merge, _isNonHtmlPath, navigate,
-  _reactivateScripts, _activateSwappedRange, _findAnchorInPath, _activeFrameId, _resolveTargetFrameId, _onPopState,
+  _reactivateScripts, _activateSwappedRange, _findAnchorInPath, _activeFrameId, _resolveTargetFrameId, _resolvePreserveScroll, _onPopState,
   _applySwap, _prefetchCache,
   _snapshotCache, _LIVE_ATTRS, _blurOutgoingFocus,
   _getSubmitMethod, _getSubmitAction, _buildSubmitFormData,
@@ -98,6 +98,7 @@ before(async () => {
     _findAnchorInPath,
     _activeFrameId,
     _resolveTargetFrameId,
+    _resolvePreserveScroll,
     _onPopState,
     _applySwap,
     _prefetchCache,
@@ -446,6 +447,85 @@ test('resolveTargetFrameId: an unresolvable id falls back to null and warns once
 
 test('resolveTargetFrameId: null trigger → null (no crash)', () => {
   assert.equal(_resolveTargetFrameId(null), null);
+});
+
+/* ====================================================================
+ * resolvePreserveScroll (#1436)
+ *
+ * ATTRIBUTE RESOLUTION ONLY. The linkedom harness implements no layout and no
+ * scrolling, so `window.scrollY` never moves here and a position assertion
+ * would pass vacuously whatever the code did. The behaviour itself (does the
+ * reader stay put) is proven with a real offset in three engines, in
+ * `browser/nav-preserve-scroll.test.js`.
+ * ==================================================================== */
+
+test('resolvePreserveScroll: absent attribute → false (the default is unchanged)', () => {
+  const f = frameFixture('<a id="plain" href="/x">go</a>');
+  try {
+    assert.equal(_resolvePreserveScroll(f.get('plain')), false);
+  } finally { f.cleanup(); }
+});
+
+test('resolvePreserveScroll: present with an empty value → true', () => {
+  const f = frameFixture('<a id="lnk" href="/x" data-preserve-scroll>go</a>');
+  try {
+    assert.equal(_resolvePreserveScroll(f.get('lnk')), true);
+  } finally { f.cleanup(); }
+});
+
+test('resolvePreserveScroll: ="true" → true', () => {
+  const f = frameFixture('<a id="lnk" href="/x" data-preserve-scroll="true">go</a>');
+  try {
+    assert.equal(_resolvePreserveScroll(f.get('lnk')), true);
+  } finally { f.cleanup(); }
+});
+
+test('resolvePreserveScroll: ="false" → false (the one value that means anything)', () => {
+  const f = frameFixture('<a id="lnk" href="/x" data-preserve-scroll="false">go</a>');
+  try {
+    assert.equal(_resolvePreserveScroll(f.get('lnk')), false);
+  } finally { f.cleanup(); }
+});
+
+test('resolvePreserveScroll: the false test is case-insensitive and trimmed', () => {
+  // Same normalization `prefetchMode` applies, so the two attributes read a
+  // value the same way rather than each inventing its own rule.
+  const f = frameFixture(
+    '<a id="upper" href="/x" data-preserve-scroll="FALSE">go</a>' +
+    '<a id="padded" href="/x" data-preserve-scroll=" false ">go</a>'
+  );
+  try {
+    assert.equal(_resolvePreserveScroll(f.get('upper')), false);
+    assert.equal(_resolvePreserveScroll(f.get('padded')), false);
+  } finally { f.cleanup(); }
+});
+
+test('resolvePreserveScroll: the attribute may sit on an ANCESTOR of the trigger', () => {
+  // Follows `resolveTargetFrameId`, not `data-no-router`: marking a filter bar
+  // or tab strip once covers every link inside it.
+  const f = frameFixture('<nav data-preserve-scroll><a id="lnk" href="/x">go</a></nav>');
+  try {
+    assert.equal(_resolvePreserveScroll(f.get('lnk')), true);
+  } finally { f.cleanup(); }
+});
+
+test('resolvePreserveScroll: ="false" inside a marked wrapper wins (nearest carrier)', () => {
+  // closest() returns the nearest carrier, so the per-link escape needs no
+  // extra logic. This is the case that makes the value form worth having.
+  const f = frameFixture(
+    '<nav data-preserve-scroll>' +
+    '<a id="inherits" href="/x">go</a>' +
+    '<a id="opted-out" href="/y" data-preserve-scroll="false">go</a>' +
+    '</nav>'
+  );
+  try {
+    assert.equal(_resolvePreserveScroll(f.get('inherits')), true);
+    assert.equal(_resolvePreserveScroll(f.get('opted-out')), false);
+  } finally { f.cleanup(); }
+});
+
+test('resolvePreserveScroll: null trigger → false (no crash)', () => {
+  assert.equal(_resolvePreserveScroll(null), false);
 });
 
 /* ====================================================================
@@ -1553,6 +1633,43 @@ test('navigate: text/html response proceeds with router swap (no fallback)', asy
     restore();
     document.body.innerHTML = '';
   }
+});
+
+test('navigate: { scroll: false } issues no scroll-to-top, and the default still does (#1436)', async () => {
+  // The programmatic twin of `data-preserve-scroll`, spelled the way Next
+  // spells it. linkedom has no layout, so the offset itself cannot be read
+  // here; what IS observable is whether the router wrote a scroll at all, and
+  // that is the thing the option controls. The reader-visible half is asserted
+  // with a real offset in `browser/nav-preserve-scroll.test.js`.
+  const page =
+    '<!doctype html><html><head><title>ok</title></head><body>' +
+    '<!--wj:children:/:/-->content<!--/wj:children:/-->' +
+    '</body></html>';
+
+  /** @param {{ scroll?: boolean } | undefined} opts */
+  async function scrollWritesFor(opts) {
+    const { restore } = installNavigationMocks({ contentType: 'text/html; charset=utf-8', body: page });
+    // Installed AFTER the mocks, which stub `scrollTo` as a bare no-op.
+    /** @type {unknown[]} */
+    const writes = [];
+    globalThis.scrollTo = /** @type any */ ((...args) => { writes.push(args[0]); });
+    try {
+      document.body.innerHTML = '<!--wj:children:/:/-->old<!--/wj:children:/-->';
+      await navigate('http://localhost/target', opts);
+      return writes;
+    } finally { restore(); document.body.innerHTML = ''; }
+  }
+
+  assert.deepEqual(await scrollWritesFor({ scroll: false }), [],
+    '{ scroll: false } must suppress the scroll-to-top write');
+  // Read as `opts?.scroll === false`, so an omitted option and an explicit
+  // `true` both keep today's behaviour. Asserting both is what catches a
+  // `!opts?.scroll` regression, which would silently preserve on every
+  // optionless navigate.
+  assert.deepEqual(await scrollWritesFor(undefined), [{ left: 0, top: 0, behavior: 'instant' }],
+    'an optionless navigate still scrolls to top');
+  assert.deepEqual(await scrollWritesFor({ scroll: true }), [{ left: 0, top: 0, behavior: 'instant' }],
+    'an explicit { scroll: true } still scrolls to top');
 });
 
 test('navigate: response without content-type falls back safely', async () => {
