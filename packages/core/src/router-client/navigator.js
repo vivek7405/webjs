@@ -51,56 +51,49 @@ let activeAbortController = null;
 let currentPageUrl = null;
 
 /**
- * Absorb a popstate that is not a navigation, and report that it was one.
+ * Absorb the popstate produced by a fragment click the router bowed out of.
  *
- * A popstate whose destination shares this page's pathname AND search cannot
- * need a fetch on its own account: only the fragment can differ, the fragment
- * is never sent to the server, so both entries resolve to the same response.
- * Re-navigating one re-fetches the page and re-swaps the DOM, which destroys
- * live node identity and hydrated state outside the anchor and undoes the jump
- * the reader just asked for (#1437). It fires for an ordinary
- * `<a href="#section">` click too, since the spec's "navigate to a fragment"
- * ends by firing popstate.
+ * The spec's "navigate to a fragment" ends by firing popstate, so an ordinary
+ * `<a href="#section">` click reaches `onPopState`, which treated every
+ * popstate as back/forward and re-navigated. That re-fetched the page and
+ * re-swapped the DOM, destroying live node identity and hydrated state outside
+ * the anchor and undoing the jump the reader had just asked for (#1437).
  *
- * Same pathname and search is necessary but NOT sufficient, and the gap is the
- * whole difficulty. Two popstates can arrive carrying the url the reader is
- * already on, and they need opposite treatment:
+ * The gate is PROVENANCE, and it is the only thing that works. The router SAW
+ * the click it bowed out of, and it never sees a traversal, so `onClick` leaves
+ * a mark and the next popstate consumes it (`state.js` documents the lifetime).
+ * Two earlier attempts tried to decide this from the urls instead and both were
+ * measured wrong, because the urls carry no signal that separates the cases:
  *
- *   - a REPEAT click of one in-page anchor, which REPLACES its entry rather
- *     than pushing, so `location.href` is unchanged (measured in Chromium: two
- *     clicks of one `#sec` link give two popstates at the same href, with
- *     `history.length` unchanged). Nothing to fetch;
- *   - a Back between two DISTINCT entries that share a url, which is a real
- *     traversal. The no-JS write path produces that pair, because a bound form
- *     emits no `action` and its 422 re-render pushes a duplicate entry at the
- *     page's own url. That Back has to re-render, or the reader is stuck on the
- *     validation error and has to press Back twice.
+ *   - a REPEAT click REPLACES its entry rather than pushing, so it arrives with
+ *     `location.href` UNCHANGED, exactly like a Back between two distinct
+ *     entries that share a url. (Two clicks of one `#sec` link give two
+ *     popstates at the same href, `history.length` unchanged, measured in
+ *     Chromium.) So an unchanged url cannot mean "absorb".
+ *   - a CHANGED url cannot mean "absorb" either. Same pathname and search does
+ *     prove the two entries resolve to the same server response, but not that
+ *     they hold the same DOM, and a swap in between makes them differ. The
+ *     no-JS write path reaches that shape: `getSubmitAction` prefers the raw
+ *     `action` ATTRIBUTE (`form-encoder.js:33`), which carries no fragment, so
+ *     a bound-submitter form declaring `action="/p"` pushes its 422 re-render
+ *     at `/p` while the reader sits at `/p#sec`. Back from that validation
+ *     error differs only by fragment and still has to re-render.
  *
- * The urls are IDENTICAL in both, so no comparison can separate them, and two
- * earlier attempts here failed on exactly that. Requiring the hrefs to differ
- * missed the repeat click. Allowing an identical href when it carried a
- * fragment missed the 422 Back as soon as the reader had used an in-page anchor
- * first, because `form.action` reflects the node document's URL and keeps its
- * fragment (measured, for a missing `action` attribute and an empty one alike).
+ * So a popstate the router did not cause is left alone, whatever its url.
  *
- * What actually distinguishes them is PROVENANCE, not spelling: the router SAW
- * the click it bowed out of, and it never sees a traversal. So `onClick` leaves
- * a mark on its way out and the next popstate consumes it (`consumeFragmentNav`
- * in `state.js`, which documents the lifetime), and an identical-href popstate
- * with no mark is left to the normal path.
+ * What that does NOT cover, deliberately: an ordinary Back or Forward between
+ * two fragment states of one page, which is a traversal with no click behind
+ * it, so it still re-navigates as it does today. Telling that apart from the
+ * 422 case needs to know whether the DOM was replaced between the two ENTRIES,
+ * which is per-entry state the router does not keep (`history.pushState` is
+ * called with `null` throughout). Turbo tags its entries for exactly this
+ * reason. Adding that here is a larger change than this fix, and getting it
+ * wrong reintroduces a swallowed Back, so this stops at the click.
  *
- * A DIFFERING href needs no mark. It is same-document by the pathname and
- * search test, so there is nothing to fetch whichever way the reader got here,
- * which is what makes an ordinary Back or Forward between two fragment states
- * safe to absorb.
- *
- * It RECORDS as well as deciding, and that is load-bearing rather than tidy.
- * `currentPageUrl` is otherwise written only in the `finally` of a completed
- * navigation, so a bow-out that did not record would leave the tracker at the
- * pre-jump url, and the Back OUT of the fragment would then see two matching
- * hrefs with no mark and re-navigate (measured: it destroyed the live DOM).
- * Turbo's `historyPoppedWithEmptyState` also records the new location and
- * navigates nothing.
+ * It RECORDS as well as deciding, so `currentPageUrl` tracks the fragment the
+ * reader is on. That field is otherwise written only in the `finally` of a
+ * completed navigation, and `snapshotCurrent` keys through `cacheKey`, which
+ * strips the fragment, so the record cannot disturb the snapshot cache.
  *
  * @param {string} href  The destination, i.e. `location.href` at popstate time.
  * @returns {boolean} True when the popstate was absorbed and the caller must do
@@ -109,7 +102,7 @@ let currentPageUrl = null;
 export function absorbSameDocumentTraversal(href) {
   // Consume unconditionally, so a mark can never outlive the popstate it was
   // left for, whatever this one turns out to be.
-  const wasOurFragmentClick = consumeFragmentNav(href);
+  if (!consumeFragmentNav(href)) return false;
   if (!currentPageUrl) return false;
   /** @type {URL} */ let prev;
   /** @type {URL} */ let next;
@@ -119,11 +112,10 @@ export function absorbSameDocumentTraversal(href) {
   } catch {
     return false;
   }
-  // Both sides are serializations of this document's own `location.href`, so
-  // the origin cannot differ and is not compared.
+  // The mark is already proof this is our own same-document jump; this re-checks
+  // it against the tracker so a mark left while the page was elsewhere cannot
+  // absorb a popstate on a different page.
   if (prev.pathname !== next.pathname || prev.search !== next.search) return false;
-  // Identical url: only the click the router itself bowed out of may be absorbed.
-  if (prev.href === next.href && !wasOurFragmentClick) return false;
   currentPageUrl = next.href;
   return true;
 }

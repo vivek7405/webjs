@@ -3006,8 +3006,20 @@ async function popTo(trackerUrl, poppedUrl, opts) {
 }
 
 test('onPopState: a fragment-only popstate does not navigate (#1437)', async () => {
-  const { fetched } = await popTo('http://localhost/p', 'http://localhost/p#x');
-  assert.equal(fetched, false, 'a same-document fragment traversal must not re-fetch');
+  const { fetched } = await popTo('http://localhost/p', 'http://localhost/p#x',
+    { viaFragmentClick: 'http://localhost/p#x' });
+  assert.equal(fetched, false, 'the click the router bowed out of must not re-fetch');
+});
+
+test('onPopState: a traversal with no click behind it still navigates (#1437)', async () => {
+  // An ordinary Back or Forward between two fragment states is NOT absorbed.
+  // It looks identical to the Back out of a 422 re-render, which must
+  // re-render, and separating them needs to know whether the DOM was replaced
+  // between the two ENTRIES. That is per-entry state the router does not keep,
+  // since every `pushState` here passes `null`. So this stays on the normal
+  // path, exactly as it behaves without this fix.
+  const { fetched } = await popTo('http://localhost/p#x', 'http://localhost/p');
+  assert.equal(fetched, true, 'no click behind it, so it is a real traversal');
 });
 
 test('onPopState: a FRAGMENTLESS same-url popstate still navigates (#1437)', async () => {
@@ -3058,7 +3070,7 @@ test('onPopState: a mark that MISSES is dropped, not left armed (#1437)', async 
   // popstate later, which is the swallowed-Back failure in slow motion.
   const missed = await popTo('http://localhost/p', 'http://localhost/p#x',
     { viaFragmentClick: 'http://localhost/p#SOMETHING-ELSE' });
-  assert.equal(missed.fetched, false, 'this one is absorbed on the changed-url clause');
+  assert.equal(missed.fetched, true, 'a mark for a DIFFERENT href does not absorb this one');
   const { _pendingFragmentNav } = await import('../../src/router-client/state.js');
   assert.equal(_pendingFragmentNav, null, 'a mark that did not match must still be dropped');
 
@@ -3122,12 +3134,14 @@ test('onPopState: an absorbed fragment traversal records the new url (#1437)', a
   // Regression test for the failure the first attempted patch actually showed:
   // a bow-out that returns without recording leaves the tracker at the pre-jump
   // url, so the REVERSE traversal compares two equal hrefs and re-navigates.
-  const { tracker } = await popTo('http://localhost/p', 'http://localhost/p#x');
+  const { tracker } = await popTo('http://localhost/p', 'http://localhost/p#x',
+    { viaFragmentClick: 'http://localhost/p#x' });
   assert.equal(tracker, 'http://localhost/p#x');
 });
 
 test('onPopState: the empty fragment is absorbed too (#1437)', async () => {
-  const { fetched } = await popTo('http://localhost/p', 'http://localhost/p#');
+  const { fetched } = await popTo('http://localhost/p', 'http://localhost/p#',
+    { viaFragmentClick: 'http://localhost/p#' });
   assert.equal(fetched, false, 'an empty fragment is still a fragment');
 });
 

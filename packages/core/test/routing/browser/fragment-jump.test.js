@@ -320,81 +320,29 @@ suite('Client router: a same-document fragment jump is the browser\'s (#1437)', 
     } finally { await teardown(); }
   });
 
-  test('Back and Forward between two fragment states re-navigate nothing', async () => {
+  test('Back after a fragment click is a real traversal and still re-renders', async () => {
     setup();
     try {
-      clickIt('wj-named');
-      await settle();
-      assert.deepEqual(fetched, [], 'precondition: the click itself did not fetch');
-      const afterClickTop = targetTop();
-
-      await traverse(() => history.back());
-      assert.deepEqual(fetched, [], 'Back between two fragment states is not a navigation');
-      assert.ok(injected.isConnected, 'and it destroys nothing');
-      assert.equal(injected.wjLive, 'injected-expando');
-      assert.equal(new URL(location.href).hash, '', 'back at the fragmentless entry');
-
-      // The reverse leg is the one that reds when the bow-out returns early
-      // WITHOUT recording the new url: the tracker would still hold the
-      // pre-click url, so this would compare two equal hrefs and re-navigate.
-      await traverse(() => history.forward());
-      assert.deepEqual(fetched, [], 'Forward likewise');
-      assert.ok(injected.isConnected);
-      assert.equal(new URL(location.href).hash, '#wj-frag-target');
-      assert.ok(Math.abs(targetTop() - afterClickTop) <= 2,
-        'the UA replayed the offset it recorded for this entry');
-
-      assert.deepEqual(fallbacks, [], 'neither traversal is a degradation');
-    } finally { await teardown(); }
-  });
-
-  test('Back across a DUPLICATE entry at the same url still re-navigates', async () => {
-    setup();
-    try {
-      // The no-JS write path produces two distinct entries sharing one url: a
-      // bound form emits no `action`, so `form.action` reflects the document URL
-      // and a 422 re-render pushes a duplicate entry at it. `form.action` keeps
-      // the FRAGMENT too (measured in Chromium, for a missing `action` attribute
-      // and an empty one alike), which is why the url cannot be what decides
-      // this: it is byte-identical to a repeat anchor click's popstate.
+      // Deliberately NOT absorbed, and this documents why. A Back between two
+      // fragment states looks identical to the Back out of a 422 re-render,
+      // which must re-render: `getSubmitAction` prefers the raw `action`
+      // ATTRIBUTE, which carries no fragment, so a bound-submitter form
+      // declaring `action="/p"` pushes its 422 entry at `/p` while the reader
+      // sits at `/p#sec`, and the two differ only by fragment. Separating them
+      // needs to know whether the DOM was replaced between the two ENTRIES,
+      // which is per-entry state the router does not keep.
       //
-      // Modelled by pushing the duplicate entry directly, since the point is the
-      // history shape rather than the submission that produced it. The reader
-      // anchors in FIRST, so the shared url carries a fragment, which is exactly
-      // the shape that defeated the earlier fragment-presence rule.
+      // So the CLICK is fixed and the traversal is left exactly as it behaves
+      // without this fix. Absorbing it here would swallow that validation-error
+      // Back, which is strictly worse than re-rendering one fragment step.
       clickIt('wj-named');
       await settle();
-      assert.deepEqual(fetched, [], 'precondition: the anchor click was absorbed');
-
-      history.pushState(null, '', location.href);
-      await settle();
+      assert.deepEqual(fetched, [], 'precondition: the click itself was absorbed');
 
       await traverse(() => history.back());
 
-      assert.equal(fetched.length, 1, 'a real traversal must re-render, not be swallowed');
+      assert.equal(fetched.length, 1, 'a traversal with no click behind it still re-renders');
       assert.ok(fetched[0].startsWith('page:'));
-    } finally { await teardown(); }
-  });
-
-  test('a data-no-router in-page anchor survives a REPEAT click too', async () => {
-    setup();
-    try {
-      // `data-no-router` opts out of ROUTING, and the fragment bow-out routes
-      // nothing either way, but the browser still performs the native jump and
-      // still fires the popstate. So the click has to be marked even here, or
-      // the repeat click arrives with an unchanged url and no mark and gets
-      // re-navigated destructively.
-      clickIt('wj-noroute');
-      await settle();
-      assert.deepEqual(fetched, [], 'first click: absorbed on the changed-url clause');
-
-      clickIt('wj-noroute');
-      await settle();
-
-      assert.deepEqual(fetched, [], 'repeat click: absorbed on the mark');
-      assert.ok(injected.isConnected, 'and the live DOM is untouched');
-      assert.equal(document.getElementById('wj-frag-injected'), injected);
-      assert.deepEqual(fallbacks, []);
     } finally { await teardown(); }
   });
 
