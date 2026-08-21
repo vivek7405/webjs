@@ -47,8 +47,12 @@ import type { FileStore } from '@webjsdev/server';
 import { testRequest } from '@webjsdev/server/testing';
 import { checkConventions } from '@webjsdev/server/check';
 
-// createRequestHandler resolves to the documented handler shape.
-const app: Promise<{ handle: (r: Request) => Promise<Response> }> =
+// createRequestHandler resolves to the documented handler shape. `handle` may
+// answer synchronously, so its return is `Promise<Response> | Response`, the
+// same union `Handle` declares. Narrowing it to `Promise<Response>` here used to
+// pass only because `RequestHandler.handle` referenced a `Handle` that was never
+// imported, making it an error type that absorbed the mismatch (#1451).
+const app: Promise<{ handle: (r: Request) => Promise<Response> | Response }> =
   createRequestHandler({ appDir: '.' });
 
 // startServer takes options + a port and resolves to a server handle.
