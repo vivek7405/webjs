@@ -306,7 +306,25 @@ The whole flow is tool-agnostic: the universal pre-commit hook fires for every `
 
 npm runs first; if it fails (auth, network, transient registry error), the GitHub Release step is skipped and the workflow fails. After fixing, a re-run picks up where it left off: the npm-side check makes the completed package a no-op and only the missing release lands.
 
-The workflow uses `NPM_TOKEN` (repo secret) and the auto-provisioned `GITHUB_TOKEN`. Free for public repos.
+**npm authentication is trusted publishing (OIDC), not a stored token.** The job declares `id-token: write`, and the npm CLI detects the Actions OIDC environment and exchanges that id-token for a short-lived, workflow-scoped credential. There is no `NPM_TOKEN` secret, nothing to rotate, and nothing that expires. The `GITHUB_TOKEN` the GitHub Packages and Releases steps use is auto-provisioned. Free for public repos.
+
+Three things this couples, all of which break every publish if changed carelessly:
+
+- **Each of the 8 published packages carries its OWN Trusted Publisher configuration** on npmjs.com (trusted publishing is per package, not per repo), naming owner `webjsdev`, repo `webjs`, and workflow `release.yml`. That includes the two unscoped wrappers, `create-webjs` and `webjsdev`. **Renaming `release.yml`, the repo, or the org breaks publishing until all 8 are updated**, and the failure surfaces as an opaque `404 Not Found - PUT` rather than an auth error.
+- **`registry-url` in the `setup-node` step is load-bearing.** It writes the `.npmrc` naming the registry the exchange authenticates against. Dropping it as "only needed for tokens" breaks the exchange.
+- **Do not upgrade npm past the bundled 11.19.x.** Trusted publishing needs npm >= 11.5.1, which Node 24 already satisfies. npm `latest` is 12.x, and npm 12 enables install-time security defaults (`allowScripts` off) that block esbuild's postinstall, so `packages/core/dist` never builds.
+
+A brand-new package generally cannot be created by trusted publishing, so its FIRST publish may need a one-off manual one before its Trusted Publisher configuration takes over.
+
+**Recovering a release whose npm publish failed: use the `republish_paths` dispatch input, NOT a re-run.** Re-running the failed run does not work, and the reason is easy to miss: a re-run replays the workflow file from its ORIGINAL commit, so a run that predates a fix to `release.yml` never sees the fix, however long ago it was merged. Merging a fix does not re-trigger anything either, since the workflow fires only on a push touching `changelog/**`. So run the workflow from the Actions tab with `republish_paths` set to the changelog files to publish:
+
+```
+changelog/core/0.7.52.md changelog/core/0.7.53.md changelog/server/0.8.66.md
+```
+
+Space or comma separated. Every path is validated to exist before anything publishes, because a typo that silently published nothing would look exactly like success. The set is then sorted by its `date:` frontmatter ASC, the same ordering the push path uses, so core still publishes before server and npm's `latest` tag lands on the newest version rather than on whichever path was typed last. Every publish script is idempotent, so naming an already-published version is a no-op. Listing a `cli` changelog also republishes the two unscoped wrappers at that cli version.
+
+This replaced a `NPM_TOKEN` repo secret that expired at npm's 90-day cap on granular write tokens and silently failed two consecutive releases (#1456). Tokens were a dead end regardless: npm removes direct publishing for bypass-2FA tokens around January 2027, leaving only OIDC or a staged publish that a human approves with 2FA.
 
 **When `server` or the scaffold consumes a NEW `@webjsdev/core` export, core MUST publish first.** `packages/server/src/dev/handler.js` and `context.js` import core symbols statically (`setAssetUrlProvider`, `setCspNonceProvider`), and `webjs create` emits an app that imports them too. A server published against an older core dies at module load with `does not provide an export named ...`, and a cli published first makes every freshly scaffolded app 500 on every route. Two things force the right order:
 
