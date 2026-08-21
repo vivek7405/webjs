@@ -202,6 +202,23 @@ revalidate('/products/123');
 revalidate();</code-block>
     <p>Mutating form submissions (POST / PUT / PATCH / DELETE) clear the cache automatically on success. You only need <code>revalidate()</code> when the mutation happens via JS / RPC and didn't go through a form.</p>
 
+    <h2 id="preserving-scroll">Preserving scroll on a forward navigation (<code>data-preserve-scroll</code>)</h2>
+    <p>A forward navigation scrolls to the top, the way a browser does. <code>data-preserve-scroll</code> is the per-link escape hatch, for a navigation that changes only part of what the reader is looking at: a filter, sort, or tab link whose control sits below the fold, a pager, or a form that re-renders in place with validation errors. WebJs wants it more than most frameworks do, because a searchParams-only navigation already morphs the deepest shared boundary and keeps the hydrated state of every component around it, so the scroll is the only thing such a navigation still throws away.</p>
+    <code-block>&lt;!-- one link --&gt;
+&lt;a href="?sort=new" data-preserve-scroll&gt;Newest&lt;/a&gt;
+
+&lt;!-- or a whole region, resolved with closest() --&gt;
+&lt;nav data-preserve-scroll&gt;
+  &lt;a href="?sort=new"&gt;Newest&lt;/a&gt;
+  &lt;a href="?sort=top"&gt;Top&lt;/a&gt;
+  &lt;a href="/" data-preserve-scroll="false"&gt;Home&lt;/a&gt;  &lt;!-- opts back out --&gt;
+&lt;/nav&gt;
+
+&lt;!-- forms too: resolved from the submitter, falling back to the form itself --&gt;
+&lt;form method="post" action="${'${saveDraft}'}" data-preserve-scroll&gt;...&lt;/form&gt;</code-block>
+    <p>The attribute resolves through <code>closest()</code>, so one mark on a wrapping element covers every link inside it, and <code>data-preserve-scroll="false"</code> on something nearer opts back out. On a form the lookup starts at the submitter and falls back to the form, so a marked form covers its buttons even when one is attached from elsewhere with <code>form="id"</code> rather than nested inside it. A hash link still scrolls to its anchor, because the reader named a target and a named target beats a blanket preference. It is inert on a frame-targeted link, since a frame swap never writes a scroll to begin with, and inert with JS off, where the link is a plain <code>&lt;a&gt;</code>, so nothing about a page's correctness may depend on it.</p>
+    <p>It carries the reader's <em>current</em> offset onto the destination. It does not restore the offset they once had there, which is a different feature and not one WebJs ships, so this is the wrong tool for a "back to the list" link.</p>
+
     <h2>Link prefetch (on by default)</h2>
     <p>Same-origin in-app links are prefetched speculatively, so a click resolves from a warm cache with no round-trip. No attribute is needed; it is on for every internal <code>&lt;a href&gt;</code>, the way Next, Nuxt, and SvelteKit ship auto-prefetch, and the prefetch sends the same headers a real navigation does so the click consumes the fragment.</p>
     <p>The default strategy is <strong>device-adaptive</strong>, because one strategy cannot serve both input modalities. On a hover-capable pointer (mouse / trackpad) the default is <strong>intent</strong> (warm on hover or focus, a real head-start before the click). On touch the default is <strong>viewport</strong> (warm as links settle on-screen), because touch has no hover and <code>touchstart</code> fires at tap time, too late to help. The modality is detected with <code>matchMedia('(hover: hover) and (pointer: fine)')</code>, not a user-agent sniff, and a per-link <code>data-prefetch</code> always overrides it.</p>
@@ -250,7 +267,10 @@ revalidate();</code-block>
 await navigate('/about');
 
 // Replace current history entry
-await navigate('/login', { replace: true });</code-block>
+await navigate('/login', { replace: true });
+
+// Keep the reader's scroll offset (the twin of data-preserve-scroll)
+await navigate('/products?sort=new', { scroll: false });</code-block>
 
     <h2>Refreshing the page you are on</h2>
     <p><code>refreshPage()</code> re-renders the <em>current</em> URL on the server and applies it in place, with no page load. It records no history entry and never scrolls, so the reader keeps their place and Back still goes to the previous page.</p>
@@ -275,6 +295,7 @@ await refreshPage('shell');</code-block>
       <li><strong>Print views / embed pages</strong>: anywhere you want a clean-slate render without the existing layout.</li>
       <li><strong>Experimental routes</strong> backed by a different client runtime that needs a full boot.</li>
     </ul>
+    <p>To keep the router but skip its scroll-to-top, the attribute is <code>data-preserve-scroll</code> rather than this one. See <a href="#preserving-scroll">Preserving scroll on a forward navigation</a> above.</p>
 
     <h2>Auto-skipped (no <code>data-no-router</code> needed)</h2>
     <ul>

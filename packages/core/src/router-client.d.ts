@@ -2,7 +2,7 @@ import type { Route } from './routes.js';
 
 export function enableClientRouter(): void;
 export function disableClientRouter(): void;
-export function navigate(url: Route, opts?: { replace?: boolean }): Promise<void>;
+export function navigate(url: Route, opts?: { replace?: boolean; scroll?: boolean }): Promise<void>;
 export function loadFrame(
   frameEl: Element,
   url: string,

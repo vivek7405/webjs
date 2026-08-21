@@ -35,13 +35,23 @@ import { _swapCommit, applySwap } from './swap.js';
  * @param {boolean} [revalidating]  True for the BACKGROUND refresh after a
  *   snapshot restore: the user is already viewing a page, so a boundary
  *   mismatch must degrade in place (never a jarring `location.href` load).
- * @param {'page' | 'shell'} [refresh]  Same-URL in-place refresh (#1398). It
- *   suppresses the `X-Webjs-Have` header and picks the swap tier; see
- *   `refreshPage`.
- * @param {boolean} [noPrefetch]  Never consume a speculative entry, whatever the
- *   cache holds (#1407). Set by `loadFrame`: a `<webjs-frame src>` self-load or
- *   `src` mutation asks for THIS frame's content now, which is a freshness
- *   request rather than the click-follows-hover shape the warm cache serves.
+ * @param {{ refresh?: 'page' | 'shell', noPrefetch?: boolean, preserveScroll?: boolean }} [opts]
+ *   Per-navigation POLICY, as a bag rather than three more positionals. The
+ *   nine parameters above are request inputs; these three decide what the
+ *   pipeline does with the response, and the list was already at eleven.
+ *
+ *   `refresh` is a same-URL in-place refresh (#1398). It suppresses the
+ *   `X-Webjs-Have` header and picks the swap tier; see `refreshPage`.
+ *
+ *   `noPrefetch` never consumes a speculative entry, whatever the cache holds
+ *   (#1407). Set by `loadFrame`: a `<webjs-frame src>` self-load or `src`
+ *   mutation asks for THIS frame's content now, which is a freshness request
+ *   rather than the click-follows-hover shape the warm cache serves.
+ *
+ *   `preserveScroll` keeps the reader's current offset instead of scrolling to
+ *   top on a forward navigation (#1436), from `data-preserve-scroll` on the
+ *   link or form, or from `navigate(url, { scroll: false })`. It suppresses only
+ *   the scroll-to-top writes, never the hash-anchor scroll.
  * @returns {Promise<{ ok: boolean, status: number | null, aborted: boolean, applied: boolean }>}
  *   The fetch outcome, so a caller (the form-submission busy/event lifecycle)
  *   can report whether the submission settled as a success, an error, or an
@@ -62,8 +72,11 @@ import { _swapCommit, applySwap } from './swap.js';
  *   boundary scan). A caller deciding whether to fall back to a full page load
  *   wants `applied`; one reporting the submission's success wants `ok`.
  */
-export async function fetchAndApply(href, frameId, recordHistory, optimisticState, method, body, signal, token, revalidating, refresh, noPrefetch) {
+export async function fetchAndApply(href, frameId, recordHistory, optimisticState, method, body, signal, token, revalidating, opts) {
   method = method || 'GET';
+  const refresh = (opts && opts.refresh) || undefined;
+  const noPrefetch = !!(opts && opts.noPrefetch);
+  const preserveScroll = !!(opts && opts.preserveScroll);
   const myToken = typeof token === 'number' ? token : currentNavigationToken;
   let html;
   // Set when the response streams Suspense boundaries (#473): holds the open
@@ -367,18 +380,23 @@ export async function fetchAndApply(href, frameId, recordHistory, optimisticStat
   // one rule ("a frame swap never moves the window") beats two. `_top` and an
   // unresolvable `data-webjs-frame` id both resolve to a null `frameId` in
   // `resolveTargetFrameId`, so they stay page navigations and still scroll.
+  // `preserveScroll` (#1436) suppresses the scroll-to-TOP writes and nothing
+  // else. A hash anchor still wins, because the reader named a target and a
+  // named target beats a blanket preference; that is the one arm below that is
+  // not guarded. The arm where the hash names an element the response does not
+  // contain scrolls to top today and is guarded with the rest, so "preserve"
+  // means one thing on every path.
   if (recordHistory && !frameId) {
     // Use the final URL (after any server-side redirect) so hash
     // anchors point at the document we actually rendered.
     const url = new URL(finalUrl);
-    if (url.hash) {
-      const t = document.getElementById(url.hash.slice(1));
+    const target = url.hash ? document.getElementById(url.hash.slice(1)) : null;
+    if (target) {
       // A hash anchor is the one nav scroll we DON'T force instant: a
       // `#section` link is exactly where an app's `scroll-behavior: smooth`
       // is wanted, and native browsers animate it too.
-      if (t) t.scrollIntoView();
-      else { warnIfSmoothScrollOnHtml(); window.scrollTo({ left: 0, top: 0, behavior: 'instant' }); }
-    } else {
+      target.scrollIntoView();
+    } else if (!preserveScroll) {
       // Scroll-to-top on a forward nav. behavior:'instant' so an app-level
       // `scroll-behavior: smooth` does not animate it (match native nav).
       warnIfSmoothScrollOnHtml();

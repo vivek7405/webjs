@@ -179,8 +179,15 @@ export function disableClientRouter() {
 
 /**
  * Programmatic navigation (replaces `location.href = url`).
+ *
+ * `scroll: false` is the programmatic twin of `data-preserve-scroll` on a link
+ * (#1436), spelled the way Next spells it on its own programmatic entry
+ * (`router.push(url, { scroll: false })`), which is the reflex a reader arrives
+ * with. Default is `true`, so an omitted option scrolls to top exactly as
+ * before.
+ *
  * @param {string} url
- * @param {{ replace?: boolean }} [opts]
+ * @param {{ replace?: boolean, scroll?: boolean }} [opts]
  */
 export async function navigate(url, opts) {
   const target = new URL(url, location.href);
@@ -190,7 +197,9 @@ export async function navigate(url, opts) {
     hardNavigate(url);
     return;
   }
-  await performNavigation(target.href, opts?.replace ?? false, null);
+  await performNavigation(target.href, opts?.replace ?? false, null, {
+    preserveScroll: opts?.scroll === false,
+  });
 }
 
 /**
@@ -258,14 +267,13 @@ export async function loadFrame(frameEl, url) {
     signal,
     myToken,
     /* revalidating */ false,
-    /* refresh */ undefined,
     // A self-load never consumes a speculative entry (#1407). Dropping the
     // blanket `!frameId` guard from the consume check made this path eligible
     // for the first time, and it should not be: a `src` self-load or a `src`
     // mutation is the app asking for THIS frame's content now, which is a
     // freshness request, not the click-follows-hover shape the warm cache
     // exists to serve. Deliberately out of scope for that change.
-    /* noPrefetch */ true,
+    { noPrefetch: true },
   );
 
   // A self-load is a freshness request, so it does BOTH halves (#1407): it
@@ -410,10 +418,15 @@ export async function refreshPage(mode) {
  * @param {string} href
  * @param {boolean} isPopState
  * @param {string | null} frameId  Active <webjs-frame> id, or null.
- * @param {{ refresh?: 'page' | 'shell' }} [opts]  `refresh` marks a same-URL
- *   in-place re-render (#1398). It suppresses three things a forward navigation
- *   does and a refresh must not: the outgoing snapshot, the optimistic loading
- *   skeleton, and history plus scroll. See `refreshPage`.
+ * @param {{ refresh?: 'page' | 'shell', preserveScroll?: boolean }} [opts]
+ *   `refresh` marks a same-URL in-place re-render (#1398). It suppresses three
+ *   things a forward navigation does and a refresh must not: the outgoing
+ *   snapshot, the optimistic loading skeleton, and history plus scroll. See
+ *   `refreshPage`. `preserveScroll` keeps the reader's current offset on a
+ *   forward navigation that WOULD otherwise scroll to top (#1436), from
+ *   `data-preserve-scroll` or `navigate(url, { scroll: false })`. The two are
+ *   independent: a refresh already writes no scroll, so `preserveScroll` adds
+ *   nothing there.
  * @returns {Promise<{ ok: boolean, status: number | null, aborted: boolean, applied: boolean } | null>}
  *   The `fetchAndApply` outcome, so a caller can tell an applied navigation from
  *   a failed one (#1398). Read `applied` rather than `ok` for that question: an
@@ -425,6 +438,7 @@ export async function refreshPage(mode) {
  */
 export async function performNavigation(href, isPopState, frameId, opts) {
   const refresh = (opts && opts.refresh) || undefined;
+  const preserveScroll = !!(opts && opts.preserveScroll);
   // #1008 / #936: a forward, main-document nav fired while the document is
   // still parsing (`readyState === 'loading'`) races the DOM. The leaving
   // page's closing layout markers at the bottom of the body may not exist yet,
@@ -643,7 +657,7 @@ export async function performNavigation(href, isPopState, frameId, opts) {
     // duplicate `history.pushState` and the whole scroll block in one flag,
     // which is exactly what the comment above that block already says it means.
     // So Back still goes to the previous page and the reader keeps their place.
-    const outcome = await fetchAndApply(href, frameId, !isPopState && !refresh, optimisticState, 'GET', null, signal, myToken, /* revalidating */ false, refresh);
+    const outcome = await fetchAndApply(href, frameId, !isPopState && !refresh, optimisticState, 'GET', null, signal, myToken, /* revalidating */ false, { refresh, preserveScroll });
     // The cache-miss re-assert described above, DEFERRED two frames rather
     // than written synchronously. A synchronous write here only wins when the
     // fetch was slower than the UA's replay, which is most fetches but not a
@@ -711,8 +725,14 @@ export async function performNavigation(href, isPopState, frameId, opts) {
  *   either without an explicit header.
  * @param {string | null} frameId
  * @param {HTMLFormElement | null} [form]  The submitted form, for busy + events.
+ * @param {{ preserveScroll?: boolean }} [opts]  `preserveScroll` keeps the
+ *   reader's offset instead of scrolling to top after the response applies
+ *   (#1436), from `data-preserve-scroll` on the form or its submitter. The case
+ *   it exists for is a long form failing validation: the 422 re-renders in
+ *   place, and scrolling to top would move the reader away from the field that
+ *   failed.
  */
-export async function performSubmission(href, method, body, frameId, form) {
+export async function performSubmission(href, method, body, frameId, form, opts) {
   if (activeAbortController) activeAbortController.abort();
   activeAbortController = new AbortController();
   const signal = activeAbortController.signal;
@@ -771,6 +791,8 @@ export async function performSubmission(href, method, body, frameId, form) {
       isSafe ? null : body,
       signal,
       myToken,
+      /* revalidating */ false,
+      { preserveScroll: !!(opts && opts.preserveScroll) },
     );
     outcomeOk = !!(outcome && outcome.ok);
     // Mutating submissions invalidate cached versions of other URLs -
