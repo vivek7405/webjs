@@ -2950,7 +2950,7 @@ test('onPopState: triggers a router navigation to location.href', async () => {
 });
 
 /* ====================================================================
- * onPopState: a fragment-only traversal is not a navigation (#1437)
+ * onPopState: the popstate a fragment CLICK produces is not a navigation (#1437)
  *
  * The DECISION is pure, so it belongs here. The observable half (no swap,
  * live DOM survives, the viewport lands on the anchor) cannot be asserted
@@ -3119,22 +3119,34 @@ test('performNavigation and performSubmission each drop a pending mark (#1437)',
   }
 });
 
-test('onPopState: a mark cannot absorb a popstate on a different PATH (#1437)', async () => {
-  // The tracker cross-check behind the mark. A mark left while the page was
-  // elsewhere must not absorb a popstate here, so the marked href alone is not
-  // enough: the destination has to match the page the router believes it is on.
-  // Marked and matching by href, but the tracker is on another path.
-  const { fetched } = await popTo('http://localhost/p', 'http://localhost/other#x',
-    { viaFragmentClick: 'http://localhost/other#x' });
+test('onPopState: an unmarked popstate on a different PATH navigates (#1437)', async () => {
+  // Reachable behaviour, and the shape a real cross-document Back has: no mark,
+  // because no click was bowed out of. The absorber returns on the mark alone,
+  // before it parses anything.
+  const { fetched } = await popTo('http://localhost/p', 'http://localhost/other');
   assert.equal(fetched, true, 'a different document must still be fetched');
 });
 
-test('onPopState: a mark cannot absorb a popstate on a different SEARCH (#1437)', async () => {
-  // Same cross-check on the query, which is a different server response even
-  // though the path matches.
-  const { fetched } = await popTo('http://localhost/p?a=1', 'http://localhost/p?a=2#x',
-    { viaFragmentClick: 'http://localhost/p?a=2#x' });
+test('onPopState: an unmarked popstate on a different SEARCH navigates (#1437)', async () => {
+  // Same, for the query. A different search is a different server response, and
+  // this is the unit-layer pin for it.
+  const { fetched } = await popTo('http://localhost/p?a=1', 'http://localhost/p?a=2');
   assert.equal(fetched, true, 'a different query is a different server response');
+});
+
+test('onPopState: the tracker cross-check rejects a mark from another page (#1437)', async () => {
+  // Exercises the DEFENSIVE branch in `absorbFragmentClickPopState`, which is
+  // unreachable today: `onClick` marks only when the anchor's pathname and
+  // search already match `location`, and every writer of `currentPageUrl`
+  // clears the mark first. So this drives it through `_setCurrentPageUrl`
+  // rather than through anything production can do, and it exists to keep the
+  // branch honest for whoever adds a fourth writer of that tracker.
+  const path = await popTo('http://localhost/p', 'http://localhost/other#x',
+    { viaFragmentClick: 'http://localhost/other#x' });
+  assert.equal(path.fetched, true, 'a mark for another path must not absorb');
+  const search = await popTo('http://localhost/p?a=1', 'http://localhost/p?a=2#x',
+    { viaFragmentClick: 'http://localhost/p?a=2#x' });
+  assert.equal(search.fetched, true, 'nor a mark for another query');
 });
 
 test('onPopState: an absorbed fragment traversal records the new url (#1437)', async () => {

@@ -99,7 +99,7 @@ let currentPageUrl = null;
  * @returns {boolean} True when the popstate was absorbed and the caller must do
  *   nothing further.
  */
-export function absorbSameDocumentTraversal(href) {
+export function absorbFragmentClickPopState(href) {
   // Consume unconditionally, so a mark can never outlive the popstate it was
   // left for, whatever this one turns out to be.
   if (!consumeFragmentNav(href)) return false;
@@ -112,9 +112,15 @@ export function absorbSameDocumentTraversal(href) {
   } catch {
     return false;
   }
-  // The mark is already proof this is our own same-document jump; this re-checks
-  // it against the tracker so a mark left while the page was elsewhere cannot
-  // absorb a popstate on a different page.
+  // Defense in depth, and UNREACHABLE by construction today, so it carries no
+  // counterfactual: `onClick` marks only when the anchor's pathname and search
+  // already match `location`, and every writer of `currentPageUrl` clears the
+  // mark before it writes (`performNavigation`, `performSubmission`) or nulls
+  // it (`disableClientRouter`, with enable re-seeding). It is kept because that
+  // invariant lives in three separate files: a fourth writer of
+  // `currentPageUrl` added without clearing the mark would make it reachable,
+  // and this is what keeps that mistake from absorbing a popstate on a page the
+  // mark was never left for. If you add such a writer, clear the mark there.
   if (prev.pathname !== next.pathname || prev.search !== next.search) return false;
   currentPageUrl = next.href;
   return true;

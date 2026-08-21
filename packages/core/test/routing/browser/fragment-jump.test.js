@@ -376,8 +376,12 @@ suite('Client router: a same-document fragment jump is the browser\'s (#1437)', 
   test('a genuine cross-document popstate still re-navigates', async () => {
     setup();
     try {
-      // The narrowness proof, and the case that reds if the guard is ever
-      // widened to compare pathname alone.
+      // A real cross-document Back, end to end in a browser: the click
+      // navigates for real and the traversal back re-renders. It carries no
+      // mark (the click ran `performNavigation`, which clears one), so it takes
+      // the same path as any traversal. This is the whole-journey version of
+      // the unmarked unit cases, not a proof about url comparison: the absorber
+      // returns on the mark alone, before it compares anything.
       clickIt('wj-other');
       await settle();
       assert.equal(fetched.length, 1, 'precondition: the click navigated');

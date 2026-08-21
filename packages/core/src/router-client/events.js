@@ -12,7 +12,7 @@ import { enabled, markFragmentNav } from './state.js';
 import { warnIfActionSubmissionCannotDeliver } from './diagnostics.js';
 import { buildSubmitFormData, encodeSubmitBody, getSubmitAction, getSubmitEnctype, getSubmitMethod } from './form-encoder.js';
 import { resolveTargetFrameId } from './frames.js';
-import { absorbSameDocumentTraversal, performNavigation, performSubmission } from './navigator.js';
+import { absorbFragmentClickPopState, performNavigation, performSubmission } from './navigator.js';
 
 /** @param {MouseEvent} e */
 export function onClick(e) {
@@ -75,7 +75,7 @@ export function onPopState(_e) {
   // with no mark behind it is a traversal and stays on the normal path,
   // whatever its url. The callee's docstring has the full reasoning, including
   // why no url comparison can stand in for the mark.
-  if (absorbSameDocumentTraversal(location.href)) return;
+  if (absorbFragmentClickPopState(location.href)) return;
   // popstate has no DOM anchor, so no frame context: restore via cache or
   // refetch the whole document.
   performNavigation(location.href, true, null);
