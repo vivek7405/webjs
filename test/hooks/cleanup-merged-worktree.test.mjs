@@ -13,7 +13,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { execFileSync, spawnSync } from 'node:child_process';
-import { mkdtempSync, writeFileSync, existsSync, chmodSync } from 'node:fs';
+import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, existsSync, chmodSync, symlinkSync, readlinkSync, lstatSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, dirname, resolve, delimiter } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -189,4 +189,112 @@ test('honours the WEBJS_NO_WORKTREE_CLEANUP escape hatch', () => {
 
   assert.equal(r.status, 0);
   assert.ok(existsSync(clean), 'the escape hatch disables all cleanup');
+});
+
+// --- #1442: the primary's @webjsdev links must survive a worktree removal ---
+//
+// The primary can hold `node_modules/@webjsdev/*` links pointing INTO a
+// worktree, which is what an install run inside a linked worktree leaves behind.
+// Removing that worktree without repointing them leaves the primary resolving
+// into a directory that is gone, and every checkout resolving through the
+// primary breaks at once on an error naming nothing related.
+
+/** Plant a `@webjsdev/<name>` symlink in the primary, pointing at `target`. */
+function plantLink({ main }, name, target) {
+  mkdirSync(join(main, 'node_modules', '@webjsdev'), { recursive: true });
+  const entry = join(main, 'node_modules', '@webjsdev', name);
+  symlinkSync(target, entry);
+  return entry;
+}
+
+/** Give the primary a real `packages/<name>` so a repoint has somewhere to land. */
+function plantPackage({ main, git }, name) {
+  mkdirSync(join(main, 'packages', name), { recursive: true });
+  writeFileSync(join(main, 'packages', name, 'package.json'), `{"name":"@webjsdev/${name}"}\n`);
+  git('add', '-A');
+  git('commit', '-q', '-m', `add ${name}`);
+}
+
+test('repoints a primary @webjsdev link that targets the worktree being removed', () => {
+  const repo = makeRepo();
+  plantPackage(repo, 'core');
+  const wt = addWorktree(repo, 'feat-merged-clean', { merged: true });
+  const entry = plantLink(repo, 'core', join(wt, 'packages', 'core'));
+
+  const { code } = runHook('gh pr merge 1 --squash', repo.main);
+
+  assert.equal(code, 0);
+  assert.ok(!existsSync(wt), 'the merged worktree is still removed');
+  // COUNTERFACTUAL: without the repoint this link still names the deleted
+  // worktree, so `existsSync` on the resolved entry is false.
+  assert.equal(readlinkSync(entry), '../../packages/core');
+  assert.ok(existsSync(entry), 'the primary link resolves after the removal');
+});
+
+test('drops an npm staging entry that pointed into the removed worktree', () => {
+  const repo = makeRepo();
+  plantPackage(repo, 'core');
+  const wt = addWorktree(repo, 'feat-merged-clean', { merged: true });
+  const entry = plantLink(repo, '.core-AbCdEf12', join(wt, 'packages', 'core'));
+
+  runHook('gh pr merge 1 --squash', repo.main);
+
+  assert.ok(!existsSync(wt));
+  assert.throws(() => lstatSync(entry), 'the dangling-to-be staging entry is removed');
+});
+
+test('leaves a primary link that already points inside the primary alone', () => {
+  const repo = makeRepo();
+  plantPackage(repo, 'server');
+  const wt = addWorktree(repo, 'feat-merged-clean', { merged: true });
+  const entry = plantLink(repo, 'server', '../../packages/server');
+
+  runHook('gh pr merge 1 --squash', repo.main);
+
+  assert.ok(!existsSync(wt));
+  assert.equal(readlinkSync(entry), '../../packages/server', 'untouched, byte for byte');
+});
+
+test('never repoints to a path the primary does not have', () => {
+  const repo = makeRepo();
+  // No `packages/ghost` in the primary, so repointing would create a fresh
+  // dangling link. The entry must be kept and reported instead.
+  const wt = addWorktree(repo, 'feat-merged-clean', { merged: true });
+  mkdirSync(join(wt, 'packages', 'ghost'), { recursive: true });
+  const target = join(wt, 'packages', 'ghost');
+  const entry = plantLink(repo, 'ghost', target);
+
+  const { out } = runHook('gh pr merge 1 --squash', repo.main);
+
+  assert.equal(readlinkSync(entry), target, 'left exactly as it was');
+  assert.match(out, /KEPT @webjsdev\/ghost/);
+});
+
+test('leaves the primary links untouched when the worktree is KEPT', () => {
+  const repo = makeRepo();
+  plantPackage(repo, 'core');
+  const wt = addWorktree(repo, 'feat-merged-dirty', { merged: true, dirty: true });
+  const target = join(wt, 'packages', 'core');
+  const entry = plantLink(repo, 'core', target);
+
+  runHook('gh pr merge 1 --squash', repo.main);
+
+  assert.ok(existsSync(wt), 'a dirty worktree is kept');
+  assert.equal(readlinkSync(entry), target, 'so its links are left pointing at it');
+});
+
+test('repoint_primary_links never shadows the script-global `base` merge ref', () => {
+  // `base` holds the merge base ref resolved once at the top and read by
+  // `is_merged()`. bash `local` is dynamically scoped, so declaring `base` local
+  // inside this function blanks the ref for anything the function calls. Nothing
+  // calls a helper from there TODAY, which is why this is a source assertion
+  // rather than a behavioural one: the defect is unreachable until someone adds
+  // that call, and then it silently leaks the worktree this hook exists to remove.
+  const src = readFileSync(HOOK, 'utf8');
+  const fn = src.slice(src.indexOf('repoint_primary_links() {'));
+  const locals = fn.slice(0, fn.indexOf('\n}')).match(/^\s*local .*$/gm) || [];
+  assert.ok(locals.length > 0, 'the function still declares locals');
+  for (const line of locals) {
+    assert.doesNotMatch(line, /\blocal\b[^\n]*\bbase\b/, `shadows the global merge ref: ${line.trim()}`);
+  }
 });

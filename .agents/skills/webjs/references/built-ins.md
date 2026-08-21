@@ -216,7 +216,7 @@ An over-limit body responds `413` without buffering the whole payload.
 
 ### Doctor severity gate
 
-`webjs doctor` reports project health, and by default only a broken toolchain fails the exit. `--strict` makes EVERY warning fatal, which is unusable in CI, because four checks are environment-shaped: `GIT_HOOK` wants a local pre-commit hook a runner has no reason to have, `ENV_DRIFT` compares against a `.env` CI does not carry, `VENDOR_PIN` fetches the network, and `FRAMEWORK_RESOLVE` depends on the environment. So per-check severity is CONFIG, keyed by the stable code every result carries.
+`webjs doctor` reports project health, and by default only a broken toolchain fails the exit. `--strict` makes EVERY warning fatal, which is unusable in CI, because four checks are environment-shaped: `GIT_HOOK` wants a local pre-commit hook a runner has no reason to have, `ENV_DRIFT` compares against a `.env` CI does not carry, `VENDOR_PIN` fetches the network, and `FRAMEWORK_RESOLVE` plus `FRAMEWORK_LINKS` depend on the environment. So per-check severity is CONFIG, keyed by the stable code every result carries.
 
 ```jsonc
 { "webjs": {

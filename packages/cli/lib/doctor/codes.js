@@ -42,6 +42,7 @@ export const DOCTOR_CODES = {
   'vendor-gitignore': 'VENDOR_GITIGNORE',
   'webjs-versions': 'WEBJS_VERSIONS',
   'framework-resolve': 'FRAMEWORK_RESOLVE',
+  'framework-links': 'FRAMEWORK_LINKS',
   'importmap-coherence': 'IMPORTMAP_COHERENCE',
   'git-hook': 'GIT_HOOK',
   'Page/layout elision (carrier hygiene)': 'ELISION_CARRIERS',

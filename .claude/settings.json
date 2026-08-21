@@ -61,6 +61,10 @@
           {
             "type": "command",
             "command": ".claude/hooks/require-bun-parity-with-runtime-src.sh"
+          },
+          {
+            "type": "command",
+            "command": ".claude/hooks/block-install-in-linked-worktree.sh"
           }
         ]
       }

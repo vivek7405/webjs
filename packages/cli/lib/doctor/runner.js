@@ -10,7 +10,7 @@ import { checkGitHook } from './probes/git-hook.js';
 import { checkElisionCarriers, checkElisionComponents } from './probes/elision.js';
 import { checkStaticAssetFreshness } from './probes/static-asset-freshness.js';
 import { checkUnmarkedAssetLinks } from './probes/unmarked-asset-links.js';
-import { checkFrameworkResolves } from './probes/framework-resolves.js';
+import { checkFrameworkResolves, checkFrameworkLinks } from './probes/framework-resolves.js';
 
 /**
  * @typedef {import('./codes.js').DoctorResult} DoctorResult
@@ -57,6 +57,7 @@ export async function runDoctorChecks(appDir, opts = {}) {
     checkVendorGitignore(appDir),
     checkWebjsVersions(appDir),
     Promise.resolve(checkFrameworkResolves(appDir)),
+    Promise.resolve(checkFrameworkLinks(appDir)),
     checkImportmapCoherence(appDir, opts),
     Promise.resolve(checkGitHook(appDir)),
     checkElisionCarriers(elision),
