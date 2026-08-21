@@ -42,7 +42,13 @@ export default function MetadataExample({
       Current title source:
       <code class="font-mono text-sm">${topic ? '?topic=' + topic : '(default, no ?topic=)'}</code>
     </p>
-    <ul class="list-disc pl-5 mb-4">
+    <!-- data-preserve-scroll keeps the reader's scroll offset instead of
+         jumping to the top on click. These links change only the query string
+         of the page you are already on, so the control you just used would
+         otherwise scroll out from under you. It sits on the <ul> and the router
+         resolves it with closest(), so one mark covers every link inside; a
+         single link can opt back out with data-preserve-scroll="false". -->
+    <ul class="list-disc pl-5 mb-4" data-preserve-scroll>
       <li><a class="text-primary underline underline-offset-2" href="/features/metadata?topic=webjs">?topic=webjs</a></li>
       <li><a class="text-primary underline underline-offset-2" href="/features/metadata?topic=Routing">?topic=Routing</a></li>
       <li><a class="text-primary underline underline-offset-2" href="/features/metadata">clear the param</a></li>

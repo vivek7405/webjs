@@ -38,10 +38,16 @@ const tscBin = join(ROOT, 'node_modules', 'typescript', 'bin', 'tsc');
 // regression), the run FAILS loudly instead of silently checking almost nothing.
 // `minNames` is the per-package total of CHECKED export names, which catches the
 // failure the entry count cannot see: an entry that still resolves, but to a
-// SMALLER module than intended, quietly shrinking the check. Today's totals are
-// 169 for core (232 runtime names minus the 63 exempt `_` seams) and 146 for
-// server; the floors sit just below. Raising an export count only makes both
-// floors stricter, which is the same rationale recorded on the reverse guard.
+// SMALLER module than intended, quietly shrinking the check. Each floor sits
+// just below its package's real total, and raising an export count only makes
+// the floor stricter, which is the same rationale recorded on the reverse guard.
+//
+// The real totals are deliberately NOT written down here. They move with every
+// export, a frozen copy of them is wrong the next time anyone adds one, and a
+// number in a comment fails nothing when it rots, so nothing catches it. Two of
+// the three that used to sit on this line had already drifted before anyone
+// noticed. Read the current totals off a failure message, or compute them with
+// `entryPairs` + `checkedNames` below, which is what the assertions do.
 const PACKAGES = [
   { name: '@webjsdev/core', dir: 'packages/core', minEntries: 12, minNames: 160 },
   { name: '@webjsdev/server', dir: 'packages/server', minEntries: 3, minNames: 140 },
@@ -69,9 +75,11 @@ function entryPairs(pkgDir) {
 
 /**
  * Runtime export names the overlay is REQUIRED to declare. A leading `_` marks a
- * test-only seam that is deliberately NOT part of the published API (the
- * `Internal exports for unit testing` block in `src/router-client.js` is 63 such
- * names), so declaring them would publish a test seam as editor autocomplete.
+ * test-only seam that is deliberately NOT part of the published API (the bulk of
+ * them are the `Internal exports for unit testing` block in
+ * `src/router-client.js`), so declaring them would publish a test seam as editor
+ * autocomplete. The count is not stated here on purpose; see the note on
+ * `minNames` above.
  *
  * The convention is expressed as a RULE rather than an ignore list, because a
  * list would grow with every new unit test, get edited on unrelated PRs, and rot
@@ -215,7 +223,8 @@ for (const { name, dir, minEntries, minNames } of PACKAGES) {
       assert.ok(
         exemptTotal >= 1,
         `${name}: no underscore-prefixed export was exempted anywhere, so the ` +
-          `test-only-seam rule in checkedNames() is dead code (63 such names exist today)`,
+          `test-only-seam rule in checkedNames() is dead code (it exempted ` +
+          `${exemptTotal} today, and this fires only at 0)`,
       );
     }
   });

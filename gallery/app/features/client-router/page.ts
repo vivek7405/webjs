@@ -39,7 +39,11 @@ export default function ClientRouterExample() {
       Opt out app-wide with <code class="font-mono">{ "webjs": { "clientRouter": false } }</code>,
       or per-link with <code class="font-mono">data-no-router</code> (use it for
       auth flows like <code class="font-mono">/logout</code> that must reset
-      in-memory state).
+      in-memory state). A forward navigation scrolls to top; per link (or per
+      wrapping element) <code class="font-mono">data-preserve-scroll</code> keeps
+      the reader where they are, for a filter or tab link that changes only part
+      of what they are looking at. A hash link still scrolls to its anchor, and
+      a frame-targeted link never scrolled anyway.
     </p>
   `;
 }

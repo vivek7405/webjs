@@ -96,6 +96,9 @@ export {
   prefetchTake as _prefetchTake,
 } from './router-client/prefetch.js';
 export {
+  resolvePreserveScroll as _resolvePreserveScroll,
+} from './router-client/scroll.js';
+export {
   snapshotCache as _snapshotCache,
 } from './router-client/snapshot-cache.js';
 export {

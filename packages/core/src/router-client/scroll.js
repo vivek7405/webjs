@@ -257,3 +257,52 @@ export function afterTwoFrames(fn) {
 export function bumpRestoreGeneration() {
   restoreGeneration += 1;
 }
+
+/**
+ * Whether this navigation should keep the reader's current scroll offset rather
+ * than scrolling to top (#1436).
+ *
+ * Resolved from `data-preserve-scroll` on the trigger OR the nearest ancestor
+ * carrying it, so one filter bar / tab strip / breadcrumb marks every link in it
+ * at once. That is `resolveTargetFrameId`'s precedent (`frames.js`), not
+ * `data-no-router`'s element-only read: `data-no-router` turns the router OFF
+ * for a link, a big enough hammer that an ancestor doing it silently would
+ * surprise, while this is a soft preference whose natural authoring unit is a
+ * region.
+ *
+ * VALUE-aware, and the only value that means anything is the literal `false`.
+ * That is Remix 3's `rmx-reset-scroll` test (`!== 'false'`) and the value
+ * vocabulary `prefetchMode` already accepts here. Because `closest()` returns
+ * the NEAREST carrier, `data-preserve-scroll="false"` on one link inside a
+ * marked wrapper opts that link back into the default with no extra logic.
+ *
+ * `fallback` is consulted only when `trigger` resolves NO carrier, which is what
+ * a form submission needs. A submitter is form-associated by `form="id"` rather
+ * than by containment, so `<button form="f">` may sit anywhere in the document
+ * and `closest()` from it would never pass through the form it submits. Falling
+ * back to the form covers that, and ordering it AFTER the trigger is what keeps
+ * `data-preserve-scroll="false"` on the submitter winning over a marked form:
+ * a resolved carrier is never overridden, only a missing one is filled in.
+ *
+ * @param {Element | null} trigger  the clicked anchor, or a submitted form's
+ *   submitter (falling back to the form when there is no submitter).
+ * @param {Element | null} [fallback]  the submitted form, consulted only when
+ *   the trigger carries no mark and is not inside one.
+ * @returns {boolean}
+ */
+export function resolvePreserveScroll(trigger, fallback) {
+  const carrier = findScrollCarrier(trigger) || findScrollCarrier(fallback);
+  if (!carrier) return false;
+  return (carrier.getAttribute('data-preserve-scroll') || '').toLowerCase().trim() !== 'false';
+}
+
+/**
+ * The nearest element at or above `el` carrying `data-preserve-scroll`.
+ *
+ * @param {Element | null | undefined} el
+ * @returns {Element | null}
+ */
+function findScrollCarrier(el) {
+  if (!el || typeof el.closest !== 'function') return null;
+  return el.closest('[data-preserve-scroll]');
+}

@@ -88,7 +88,7 @@ export { enableClientRouter, disableClientRouter, revalidate, refreshPage, loadF
 // `string`, so this is non-breaking; once generated, a bogus in-app path is a
 // tsserver error. The runtime is the same async function in router-client.js.
 import type { Route } from './src/routes.d.ts';
-export function navigate(url: Route, opts?: { replace?: boolean }): Promise<void>;
+export function navigate(url: Route, opts?: { replace?: boolean; scroll?: boolean }): Promise<void>;
 // The full lit-html-parity directive set (mirrors index.js); the per-directive
 // declarations live in src/directives.d.ts. `repeat` is re-exported above.
 export {

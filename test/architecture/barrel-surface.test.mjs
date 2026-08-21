@@ -2,7 +2,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 
 const BARREL_FLOORS = [
-  { path: '../../packages/core/src/router-client.js', floor: 69 },
+  { path: '../../packages/core/src/router-client.js', floor: 70 },
   { path: '../../packages/core/src/slot.js', floor: 31 },
   { path: '../../packages/server/src/vendor.js', floor: 26 },
   { path: '../../packages/server/src/ssr.js', floor: 21 },

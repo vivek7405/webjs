@@ -12,6 +12,7 @@ import { enabled, markFragmentNav } from './state.js';
 import { warnIfActionSubmissionCannotDeliver } from './diagnostics.js';
 import { buildSubmitFormData, encodeSubmitBody, getSubmitAction, getSubmitEnctype, getSubmitMethod } from './form-encoder.js';
 import { resolveTargetFrameId } from './frames.js';
+import { resolvePreserveScroll } from './scroll.js';
 import { absorbFragmentClickPopState, performNavigation, performSubmission } from './navigator.js';
 
 /** @param {MouseEvent} e */
@@ -63,7 +64,11 @@ export function onClick(e) {
   // external sidebar/nav link), `_top` breaks out to a full-page nav, and
   // absence falls back to the closest enclosing frame (today's default).
   const frameId = resolveTargetFrameId(anchor);
-  performNavigation(href, false, frameId);
+  // #1436: `data-preserve-scroll` on the anchor or an ancestor keeps the reader
+  // where they are instead of scrolling to top. Read here, beside the other
+  // per-link opt-outs, and carried on the navigation's opts bag. Inert on a
+  // frame-targeted link, which already writes no scroll (#1427).
+  performNavigation(href, false, frameId, { preserveScroll: resolvePreserveScroll(anchor) });
 }
 
 /** @param {PopStateEvent} _e */
@@ -165,6 +170,13 @@ export function onSubmit(e) {
   // an explicit `data-webjs-frame` on (or above) the form or its submitter
   // wins, `_top` breaks out, absence falls back to the enclosing frame.
   const frameId = resolveTargetFrameId(submitter || form);
-  performSubmission(url.href, method, body, frameId, form);
+  // Same trigger precedence as the frame line above. The form is passed as a
+  // FALLBACK rather than relied on through the submitter's ancestors, because a
+  // submitter is form-associated by `form="id"` and may sit outside the form
+  // entirely, where `closest()` would never reach it. The trigger still wins
+  // when it resolves a carrier, so `data-preserve-scroll="false"` on a button
+  // inside a marked form still opts that button out.
+  const preserveScroll = resolvePreserveScroll(submitter || form, form);
+  performSubmission(url.href, method, body, frameId, form, { preserveScroll });
 }
 

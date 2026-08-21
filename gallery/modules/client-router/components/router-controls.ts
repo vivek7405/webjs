@@ -2,6 +2,10 @@
 // swap an <a> click does, but from an event handler (after a save, a wizard
 // step, etc.). `revalidate(url?)` evicts the browser snapshot cache so the next
 // visit refetches fresh HTML instead of the cached page.
+// `navigate(url, { scroll: false })` is the programmatic twin of
+// `data-preserve-scroll` on a link: the same soft swap, without the
+// scroll-to-top. Reach for it after an in-page action that changes the URL but
+// should not move the reader.
 // `refreshPage(mode?)` re-renders the page you are ALREADY on and swaps the
 // result in place, recording no history entry and never scrolling, so the reader
 // keeps their place. 'page' (the default) morphs the deepest shared boundary, so
@@ -37,6 +41,9 @@ export class RouterControls extends WebComponent {
           <button
             @click=${() => navigate('/features/client-router/second')}
             class=${buttonClass({ variant: 'secondary' })}>navigate() to page two</button>
+          <button
+            @click=${() => navigate('/features/client-router/second', { scroll: false })}
+            class=${buttonClass({ variant: 'secondary' })}>navigate(..., { scroll: false })</button>
           <button
             @click=${() => revalidate()}
             class=${buttonClass({ variant: 'link', size: 'none' })}>revalidate() the snapshot cache</button>
