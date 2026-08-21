@@ -34,10 +34,12 @@
  *
  * So this makes the suite RUNNABLE, not self-testing. If you are editing
  * `packages/core/src` or `packages/server/src` and need a bare-specifier
- * consumer to exercise YOUR copy, delete the `node_modules` SYMLINK first
- * (`rm node_modules`, it is only a link and nothing else is lost) and then
- * install, or point the individual `@webjsdev/<pkg>` entries at this worktree
- * instead. CI always builds from the branch, so it is unaffected either way.
+ * consumer to exercise YOUR copy, delete EVERY `node_modules` SYMLINK first,
+ * not only the root one, because this script plants one per workspace that
+ * carries its own tree (`find . -maxdepth 4 -type l -name node_modules -delete`,
+ * they are only links and nothing else is lost) and then install, or point the
+ * individual `@webjsdev/<pkg>` entries at this worktree instead. CI always
+ * builds from the branch, so it is unaffected either way.
  *
  * NEVER install while the link is standing (#1442). Measured on npm 11.19.0 and
  * bun 1.3.14: `npm ci` DELETES the primary's whole `node_modules` through the

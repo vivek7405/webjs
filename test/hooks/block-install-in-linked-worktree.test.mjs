@@ -447,3 +447,29 @@ test('mines --cwd and --dir as target directories, not just --prefix', () => {
     assert.equal(runHook(`yarn --cwd ${worktree} install`, primary).status, 2);
   } finally { rmSync(root, { recursive: true, force: true }); }
 });
+
+test('a NESTED node_modules symlink blocks, not only the root one', () => {
+  // `worktree:link` plants a symlink per workspace that carries its own tree
+  // (packages/server is the live example). Removing just the root link for a
+  // real install leaves those live, and an install writes through them into the
+  // primary the same way. This was the gate's blind spot in exactly the escape
+  // path its own message used to recommend.
+  const root = mkdtempSync(join(tmpdir(), 'install-gate-nested-'));
+  const primary = join(root, 'primary');
+  const worktree = join(root, 'worktree');
+  mkdirSync(join(primary, 'packages', 'server', 'node_modules'), { recursive: true });
+  mkdirSync(join(worktree, 'packages', 'server'), { recursive: true });
+  mkdirSync(join(worktree, 'node_modules'), { recursive: true }); // REAL root tree
+  writeFileSync(join(worktree, 'package.json'), '{"name":"w"}\n');
+  symlinkSync(join(primary, 'packages', 'server', 'node_modules'), join(worktree, 'packages', 'server', 'node_modules'));
+  try {
+    const r = runHook('npm install', worktree);
+    assert.equal(r.status, 2, `expected block, got ${r.status}: ${r.stderr}`);
+    assert.match(r.stderr, /packages\/server\/node_modules is a SYMLINK/);
+    assert.match(r.stderr, /find \. -maxdepth 4 -type l -name node_modules -delete/, 'the remedy removes them ALL');
+    // COUNTERFACTUAL: the same layout with a real nested directory passes.
+    rmSync(join(worktree, 'packages', 'server', 'node_modules'));
+    mkdirSync(join(worktree, 'packages', 'server', 'node_modules'));
+    assert.equal(runHook('npm install', worktree).status, 0);
+  } finally { rmSync(root, { recursive: true, force: true }); }
+});

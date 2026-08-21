@@ -74,7 +74,8 @@ try {
     say(`  ${primaryModules}`);
     say('An install now writes THROUGH that link, into a checkout you are not working in.');
     say('Stop it if you can. Use `npm run worktree:link` to set this worktree up, or');
-    say('`rm node_modules` first if a real, self-contained install is what you want.');
+    say('remove EVERY node_modules symlink first (the link script plants nested ones too:');
+    say('`find . -maxdepth 4 -type l -name node_modules -delete`) if a real install is what you want.');
   } else if (haveOwnModules && !hasEntries(primaryModules)) {
     // The `npm ci` aftermath: npm deleted the link's target before we ran.
     say('the PRIMARY checkout\'s node_modules is now EMPTY or missing:');

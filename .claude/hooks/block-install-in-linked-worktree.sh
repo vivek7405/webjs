@@ -254,23 +254,40 @@ EOF
 [ -d "$target" ] || exit 0
 
 # The install lands at the package root, which for a subdirectory is the
-# enclosing checkout, so judge the git toplevel too.
+# enclosing checkout, so judge the git toplevel too. And judge NESTED
+# node_modules symlinks, not only the root: `npm run worktree:link` plants one
+# per workspace that carries its own tree (packages/server, website, ...), so a
+# worktree whose root link was removed for a real install still holds seven live
+# links into the primary, and an install writes through the nested ones the same
+# way. This was the gate's blind spot in exactly the escape path its own message
+# recommends.
+#
+# find without -L neither follows nor descends symlinks, and the prune keeps it
+# out of real node_modules trees, so this is a handful of directory reads.
 top=$(git -C "$target" rev-parse --show-toplevel 2>/dev/null || true)
 for dir in "$target" "$top"; do
   [ -n "$dir" ] || continue
-  [ -L "$dir/node_modules" ] || continue
-  owner=$(cd "$dir" 2>/dev/null && cd "$(readlink node_modules)" 2>/dev/null && pwd -P) || owner="the checkout it points at"
+  hit=""
+  if [ -L "$dir/node_modules" ]; then
+    hit="$dir/node_modules"
+  else
+    hit=$(find "$dir" -maxdepth 4 \( -type d \( -name .git -o -name node_modules \) \) -prune -o -type l -name node_modules -print 2>/dev/null | head -1)
+  fi
+  [ -n "$hit" ] || continue
+  owner=$(cd "$(dirname "$hit")" 2>/dev/null && cd "$(readlink "$(basename "$hit")")" 2>/dev/null && pwd -P) || owner="the checkout it points at"
   {
-    echo "BLOCKED: this command installs into $dir, whose node_modules is a SYMLINK at $owner."
+    echo "BLOCKED: this command installs into $dir, where $hit is a SYMLINK at $owner."
     echo "An install through that link damages the checkout that OWNS the tree, not this one:"
-    echo "  npm ci       DELETES $owner outright, before any lifecycle script can run"
-    echo "  bun install  writes packages and .bin entries straight into $owner"
-    echo "  npm install  silently REPLACES the link with a real tree, detaching this worktree"
+    echo "  npm ci       DELETES the linked tree outright, before any lifecycle script can run"
+    echo "  bun install  writes packages and .bin entries straight through the link"
+    echo "  npm install  silently REPLACES a root link with a real tree, detaching this worktree"
     echo "A remove verb (npm rm, bun remove) deletes from that same owning checkout."
     echo "Safe alternatives:"
     echo "  npm run worktree:link          links a fresh worktree; it never installs"
-    echo "  a real install with NO symlink in the way. Run \`rm node_modules\` first (it is"
-    echo "  only a link, nothing else is lost), or install in the PRIMARY checkout."
+    echo "  a real install with NO symlink in the way. The link script plants NESTED"
+    echo "  node_modules links too (packages/server, website, ...), so remove them ALL first:"
+    echo "    find . -maxdepth 4 -type l -name node_modules -delete"
+    echo "  (they are only links, nothing else is lost), or install in the PRIMARY checkout."
     echo "A GLOBAL install (-g) is not affected by this and is never blocked."
     echo "Escape hatch for a deliberate exception: WEBJS_NO_WORKTREE_INSTALL_GATE=1."
   } >&2
