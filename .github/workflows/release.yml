@@ -24,6 +24,14 @@ name: Auto-release
 # Packages without needing a fresh changelog file. Cost on public
 # repos: $0 (Actions has unlimited free minutes for public repos
 # on ubuntu-latest).
+#
+# npm auth is TRUSTED PUBLISHING (OIDC), so there is no NPM_TOKEN
+# secret to store, rotate, or let expire. Each of the 8 published
+# packages carries its own Trusted Publisher configuration on
+# npmjs.com naming owner `webjsdev`, repo `webjs`, and workflow
+# `release.yml`. Renaming THIS FILE breaks every publish until all
+# 8 are updated, and it fails as an opaque 404 on the publish PUT
+# rather than as an auth error. See framework-dev.md.
 
 on:
   push:
@@ -44,6 +52,7 @@ on:
 permissions:
   contents: write   # gh release create needs write access to the repo
   packages: write   # npm publish to GitHub Packages
+  id-token: write   # mint the OIDC credential npm trusted publishing exchanges
 
 jobs:
   release:
@@ -56,10 +65,18 @@ jobs:
         with:
           fetch-depth: 2
 
-      # setup-node writes an .npmrc with the standard
-      # //registry.npmjs.org/:_authToken=${NODE_AUTH_TOKEN} line, so
-      # subsequent `npm publish` invocations pick up the token from
-      # the env var.
+      # `registry-url` is REQUIRED for trusted publishing, not optional
+      # decoration: it writes the .npmrc that points npm at the registry
+      # the OIDC exchange authenticates against. Removing it breaks the
+      # exchange even though no token is involved any more.
+      #
+      # Node 24 bundles npm 11.19.x, which clears trusted publishing's
+      # npm >= 11.5.1 floor. Do NOT add `npm install -g npm@latest` to
+      # "make sure npm is new enough": npm `latest` is 12.x, and npm 12
+      # turns on the install-time security defaults (`allowScripts` off),
+      # which blocks esbuild's postinstall, which means packages/core/dist
+      # never builds. The bundled 11.19.x satisfies OIDC without opting
+      # into that.
       - uses: actions/setup-node@v6
         with:
           node-version: '24'
@@ -121,10 +138,19 @@ jobs:
           echo "count=${#NEW[@]}" >> "$GITHUB_OUTPUT"
           echo "bootstrap=$BOOTSTRAP" >> "$GITHUB_OUTPUT"
 
+      # No NODE_AUTH_TOKEN: this publishes via npm trusted publishing
+      # (OIDC). The npm CLI detects the Actions OIDC environment and
+      # exchanges the job's id-token for a short-lived, workflow-scoped
+      # credential before it would ever fall back to a token, so
+      # scripts/publish-npm.js needs no change (its auth comment already
+      # says it relies on standard npm publish token resolution).
+      #
+      # Each of the 8 published packages has a Trusted Publisher
+      # configured on npmjs.com naming owner `webjsdev`, repo `webjs`,
+      # and workflow `release.yml`. Renaming this FILE therefore breaks
+      # every publish until those 8 configurations are updated to match.
       - name: Publish to npm
         if: steps.diff.outputs.count != '0' && steps.diff.outputs.bootstrap != 'true'
-        env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
         run: |
           set -euo pipefail
           while IFS= read -r f; do
@@ -182,10 +208,13 @@ jobs:
       # `lockstep_only` (workflow_dispatch input) runs ONLY this step at
       # the current CLI_VERSION: the recovery path for a release whose
       # wrapper publish did not land.
+      # Also publishes over OIDC, so no NODE_AUTH_TOKEN here either.
+      # `create-webjs` and `webjsdev` each carry their own Trusted
+      # Publisher configuration, since trusted publishing is per package
+      # rather than per repo. This step is the easily-missed second
+      # consumer of the old NPM_TOKEN secret.
       - name: Lockstep-publish wrappers to match @webjsdev/cli
         if: inputs.lockstep_only || (steps.diff.outputs.count != '0' && steps.diff.outputs.bootstrap != 'true')
-        env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
         run: |
           set -euo pipefail
 
