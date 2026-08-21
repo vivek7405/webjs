@@ -260,7 +260,7 @@ There is NO automated pre-merge review cycle in this workflow. Do not spawn revi
 
 Before flipping to ready, run everything the Definition of done demands: the full suites for every layer the change touches (full Node, browser, e2e, the Bun matrix, the two-app dogfood boot check). Launch them as parallel background tasks in one batch and collect EVERY result before reporting, because a task you forget to collect is a silently skipped layer. Then `gh pr ready <N>` and report back that the PR awaits the owner's review. Never report the PR ready with failing or unrun suites.
 
-**If the owner explicitly asks you to review something, do it yourself, inline in this session** (the built-in code-review skill fits), and report the findings in the conversation. Never delegate that review to a subagent, and never expand it into rounds. One read, findings reported, the owner decides what gets fixed.
+**If the owner explicitly asks you to review a PR, do it yourself, inline in this session, per the `pr-review` skill** (`.claude/skills/pr-review`, exposed cross-agent at `.agents/skills/pr-review`): one read over the whole diff, posted to the PR through the GitHub review API as one review object, a summary plus line-anchored comments with suggestion blocks. The reviewer ONLY reviews. It never fixes the findings, never resolves threads, never waits on or reports CI, and is never delegated to a subagent or expanded into rounds. The owner decides what gets fixed, and fixing is separate branch work on a separate ask.
 
 ### Acting on the owner's review comments
 

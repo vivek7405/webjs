@@ -178,7 +178,7 @@ test('webjs-instagram-post stays quiet without instagram intent', () => {
   assert.ok(!routed(ctx, 'webjs-instagram-post'), 'non-instagram publish must not route to instagram');
 });
 
-test('code-review routes on review phrases', () => {
+test('pr-review routes on review phrases', () => {
   for (const p of [
     'review the PR',
     'review my changes',
@@ -187,7 +187,7 @@ test('code-review routes on review phrases', () => {
     'review the branch',
   ]) {
     const { ctx } = run(p);
-    assert.ok(routed(ctx, 'code-review'), `expected code-review route for: ${p}`);
+    assert.ok(routed(ctx, 'pr-review'), `expected pr-review route for: ${p}`);
   }
 });
 
@@ -234,13 +234,14 @@ test('every skill the hook can route to is committed in-repo (no dangling refere
   // The hook names skills it routes to; each PROJECT skill MUST have a
   // committed `.claude/skills/<name>/SKILL.md`, or a fresh clone routes a
   // prompt at a skill that does not exist (the #543 portability bug). The
-  // regex matches only project-skill names (webjs-* and use-railway);
-  // built-in Claude Code skills the hook also routes (code-review, verify)
-  // ship with the CLI for everyone, so they are intentionally exempt.
+  // regex matches only project-skill names (webjs-*, use-railway,
+  // pr-review); the built-in Claude Code skill the hook also routes
+  // (verify) ships with the CLI for everyone, so it is intentionally
+  // exempt.
   // Extract the project-skill names from the hook source and assert each is
   // present in the repo.
   const hookSrc = readFileSync(HOOK, 'utf8');
-  const names = [...new Set((hookSrc.match(/\b(?:webjs-[a-z-]+|use-railway)\b/g) || []))];
+  const names = [...new Set((hookSrc.match(/\b(?:webjs-[a-z-]+|use-railway|pr-review)\b/g) || []))];
   assert.ok(names.length >= 4, `expected the hook to reference its skills; found ${names.join(', ')}`);
   for (const name of names) {
     const skillFile = resolve(REPO, '.claude/skills', name, 'SKILL.md');

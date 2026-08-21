@@ -192,18 +192,20 @@ if printf '%s' "$lc" | grep -q 'instagram' \
   add_match "webjs-instagram-post: the request is to publish to the WebJs Instagram account. Invoke the webjs-instagram-post skill. Every post is SEO-only, so ALWAYS create a fresh branded image plus a keyword-rich caption, host the JPEG at a public HTTPS URL, and CONFIRM the image and caption with the user before the public publish. Never print or commit the access token."
 fi
 
-# --- code-review: the owner reviews PRs; inline-only when asked ---------
+# --- pr-review: review a PR inline, posted via the GitHub API -----------
 # Triggers: review the PR/diff/branch/changes, code review, look it over
-# for bugs. The owner reviews every PR themselves before merge, inline or
-# with an agent of their own choosing. There is NO automated pre-merge
-# review cycle and NO reviewer subagent, so review phrasings inject the
-# inline-only guard below rather than a cycle. code-review is a built-in
-# Claude Code skill (no in-repo SKILL.md, so the portability test that
-# guards project skills does not cover it).
+# for bugs. The owner reviews every PR themselves before merge; when they
+# ask THIS agent for a review, the pr-review skill runs it like a human
+# reviewer working over the GitHub API instead of the dashboard: one
+# inline read, one posted review object (summary plus line-anchored
+# comments with suggestion blocks). Review only: no reviewer subagent,
+# no multi-round cycle, no fixing findings, no waiting on CI. The skill
+# is agent-agnostic (plain gh/REST) and committed at
+# .claude/skills/pr-review, exposed cross-agent via .agents/skills/.
 if has '(review|audit) (the |my |this )?(pr|diff|branch|change|changes|code|commit)' \
    || has 'code ?review' \
    || has '(review|look) .{0,20}(over )?for (bug|issue|correctness|regression)'; then
-  add_match "code-review: the request is to review code. Invoke the code-review skill (it reviews the diff for correctness bugs plus reuse and simplification) and perform the review YOURSELF, inline in this session. NEVER spawn a reviewer subagent and NEVER run a multi-round review cycle. One inline read, findings reported to the owner in the conversation, and the owner decides what gets fixed. The owner reviews every PR themselves before merge, so your job is to hand them a reviewable PR, not to review it for them."
+  add_match "pr-review: the request is to review code. Invoke the pr-review skill and perform the review YOURSELF, inline in this session. NEVER spawn a reviewer subagent and NEVER run a multi-round review cycle. When the target is a pull request, post the review through the GitHub review API as ONE review object, a summary plus line-anchored comments that highlight the code to fix and carry suggestion blocks where a concrete replacement is obvious, exactly as the skill specifies. The reviewer ONLY reviews: it does not fix findings, does not resolve threads, and never waits on or reports CI. For a local diff with no PR, review inline and report the findings in the conversation instead. The owner decides what gets fixed, and fixing is separate work on a separate ask."
 fi
 
 # --- verify: prove the change works by running the app ------------------
