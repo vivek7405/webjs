@@ -8,12 +8,12 @@
  */
 import { findAnchorInPath } from './anchors.js';
 import { NON_HTML_EXTENSIONS } from './constants.js';
-import { enabled } from './state.js';
+import { enabled, markFragmentNav } from './state.js';
 import { warnIfActionSubmissionCannotDeliver } from './diagnostics.js';
 import { buildSubmitFormData, encodeSubmitBody, getSubmitAction, getSubmitEnctype, getSubmitMethod } from './form-encoder.js';
 import { resolveTargetFrameId } from './frames.js';
 import { resolvePreserveScroll } from './scroll.js';
-import { performNavigation, performSubmission } from './navigator.js';
+import { absorbFragmentClickPopState, performNavigation, performSubmission } from './navigator.js';
 
 /** @param {MouseEvent} e */
 export function onClick(e) {
@@ -24,7 +24,6 @@ export function onClick(e) {
   const anchor = findAnchorInPath(e);
   if (!anchor) return;
   if (anchor.hasAttribute('download')) return;
-  if (anchor.hasAttribute('data-no-router')) return;
   if (anchor.target && anchor.target !== '_self') return;
 
   const href = anchor.href;
@@ -32,7 +31,31 @@ export function onClick(e) {
 
   const url = new URL(href);
   if (url.origin !== location.origin) return;
-  if (url.pathname === location.pathname && url.search === location.search && url.hash) return;
+  // `href.includes('#')` rather than `url.hash`, because the URL serializer
+  // reports BOTH a null fragment and an empty one as `''`, and only the second
+  // is a fragment navigation. `href="#"` keeps its `#` in `href` and per the
+  // spec navigates to the document element (the back-to-top idiom), while
+  // `href=""` resolves to the current url with the fragment REMOVED, which the
+  // spec reloads rather than jumping, so it must stay a router navigation. A
+  // `#` cannot appear anywhere else in a serialized url: the parser encodes it
+  // in the path and starts the fragment at it in the query (#1437).
+  if (url.pathname === location.pathname && url.search === location.search && url.href.includes('#')) {
+    // Leave a mark for the popstate this jump is about to fire. A REPEAT click
+    // replaces its history entry rather than pushing, so that popstate arrives
+    // with an unchanged url and is indistinguishable by comparison from a real
+    // Back between two entries that share one. Provenance is the only thing
+    // that separates them, and this is where the router has it (#1437).
+    markFragmentNav(url.href);
+    return;
+  }
+  // Checked AFTER the fragment bow-out on purpose. `data-no-router` opts out of
+  // ROUTING, and the bow-out above routes nothing either way, but the browser
+  // still performs the native jump and still fires the popstate that has to be
+  // recognised. Returning here first would leave EVERY click of a
+  // `data-no-router` in-page anchor unmarked, first and repeat alike, since the
+  // mark is the only thing that absorbs one, so each would be re-navigated
+  // destructively (#1437).
+  if (anchor.hasAttribute('data-no-router')) return;
   if (NON_HTML_EXTENSIONS.test(url.pathname)) return;
 
   e.preventDefault();
@@ -50,6 +73,14 @@ export function onClick(e) {
 
 /** @param {PopStateEvent} _e */
 export function onPopState(_e) {
+  // The popstate an in-page fragment CLICK produces is not a navigation: the
+  // browser has already done the jump, so re-fetching and re-swapping would
+  // destroy live DOM identity and undo it (#1437). Absorbed only when the
+  // router MARKED that click on its way out (the bow-out above); a popstate
+  // with no mark behind it is a traversal and stays on the normal path,
+  // whatever its url. The callee's docstring has the full reasoning, including
+  // why no url comparison can stand in for the mark.
+  if (absorbFragmentClickPopState(location.href)) return;
   // popstate has no DOM anchor, so no frame context: restore via cache or
   // refetch the whole document.
   performNavigation(location.href, true, null);

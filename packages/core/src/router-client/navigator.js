@@ -19,7 +19,7 @@ import { clearPrefetchHover, clearPrefetchRefused, clearPrefetchViewTimers, onPr
 // through bumpRestoreGeneration(), since ESM forbids assigning an import.
 import { afterTwoFrames, bumpRestoreGeneration, releaseHeightReservation, releaseScrollAnchor, reserveRestoredHeight, restoreGeneration, suppressScrollAnchoring } from './scroll.js';
 import { snapshotCache, snapshotCurrent, snapshotGet } from './snapshot-cache.js';
-import { _setEnabled, bumpNavToken, currentNavigationToken, enabled, hardNavigate } from './state.js';
+import { _setEnabled, bumpNavToken, clearFragmentNav, consumeFragmentNav, currentNavigationToken, enabled, hardNavigate } from './state.js';
 import { _swapCommit, applySwap } from './swap.js';
 import { ensureUpgradeObserver } from './upgrade.js';
 import { viewTransitionsEnabled } from './view-transition.js';
@@ -49,6 +49,82 @@ let activeAbortController = null;
  * @type {string | null}
  */
 let currentPageUrl = null;
+
+/**
+ * Absorb the popstate produced by a fragment click the router bowed out of.
+ *
+ * The spec's "navigate to a fragment" ends by firing popstate, so an ordinary
+ * `<a href="#section">` click reaches `onPopState`, which treated every
+ * popstate as back/forward and re-navigated. That re-fetched the page and
+ * re-swapped the DOM, destroying live node identity and hydrated state outside
+ * the anchor and undoing the jump the reader had just asked for (#1437).
+ *
+ * The gate is PROVENANCE, and it is the only thing that works. The router SAW
+ * the click it bowed out of, and it never sees a traversal, so `onClick` leaves
+ * a mark and the next popstate consumes it (`state.js` documents the lifetime).
+ * Two earlier attempts tried to decide this from the urls instead and both were
+ * measured wrong, because the urls carry no signal that separates the cases:
+ *
+ *   - a REPEAT click REPLACES its entry rather than pushing, so it arrives with
+ *     `location.href` UNCHANGED, exactly like a Back between two distinct
+ *     entries that share a url. (Two clicks of one `#sec` link give two
+ *     popstates at the same href, `history.length` unchanged, measured in
+ *     Chromium.) So an unchanged url cannot mean "absorb".
+ *   - a CHANGED url cannot mean "absorb" either. Same pathname and search does
+ *     prove the two entries resolve to the same server response, but not that
+ *     they hold the same DOM, and a swap in between makes them differ. The
+ *     no-JS write path reaches that shape: `getSubmitAction` prefers the raw
+ *     `action` ATTRIBUTE (`form-encoder.js:33`), which carries no fragment, so
+ *     a bound-submitter form declaring `action="/p"` pushes its 422 re-render
+ *     at `/p` while the reader sits at `/p#sec`. Back from that validation
+ *     error differs only by fragment and still has to re-render.
+ *
+ * So a popstate the router did not cause is left alone, whatever its url.
+ *
+ * What that does NOT cover, deliberately: an ordinary Back or Forward between
+ * two fragment states of one page, which is a traversal with no click behind
+ * it, so it still re-navigates as it does today. Telling that apart from the
+ * 422 case needs to know whether the DOM was replaced between the two ENTRIES,
+ * which is per-entry state the router does not keep (`history.pushState` is
+ * called with `null` throughout). Turbo tags its entries for exactly this
+ * reason. Adding that here is a larger change than this fix, and getting it
+ * wrong reintroduces a swallowed Back, so this stops at the click.
+ *
+ * It RECORDS as well as deciding, so `currentPageUrl` tracks the fragment the
+ * reader is on. That field is otherwise written only in the `finally` of a
+ * completed navigation, and `snapshotCurrent` keys through `cacheKey`, which
+ * strips the fragment, so the record cannot disturb the snapshot cache.
+ *
+ * @param {string} href  The destination, i.e. `location.href` at popstate time.
+ * @returns {boolean} True when the popstate was absorbed and the caller must do
+ *   nothing further.
+ */
+export function absorbFragmentClickPopState(href) {
+  // Consume unconditionally, so a mark can never outlive the popstate it was
+  // left for, whatever this one turns out to be.
+  if (!consumeFragmentNav(href)) return false;
+  if (!currentPageUrl) return false;
+  /** @type {URL} */ let prev;
+  /** @type {URL} */ let next;
+  try {
+    prev = new URL(currentPageUrl);
+    next = new URL(href, location.href);
+  } catch {
+    return false;
+  }
+  // Defense in depth, and UNREACHABLE by construction today, so it carries no
+  // counterfactual: `onClick` marks only when the anchor's pathname and search
+  // already match `location`, and every writer of `currentPageUrl` clears the
+  // mark before it writes (`performNavigation`, `performSubmission`) or nulls
+  // it (`disableClientRouter`, with enable re-seeding). It is kept because that
+  // invariant lives in three separate files: a fourth writer of
+  // `currentPageUrl` added without clearing the mark would make it reachable,
+  // and this is what keeps that mistake from absorbing a popstate on a page the
+  // mark was never left for. If you add such a writer, clear the mark there.
+  if (prev.pathname !== next.pathname || prev.search !== next.search) return false;
+  currentPageUrl = next.href;
+  return true;
+}
 
 /**
  * The app's own `history.scrollRestoration`, captured at enable so
@@ -153,6 +229,12 @@ export function disableClientRouter() {
   document.removeEventListener('click', onClick, false);
   document.removeEventListener('submit', onSubmit, false);
   window.removeEventListener('popstate', onPopState);
+  // A mark left by a click whose popstate has not fired yet must not survive
+  // the router stepping aside, or it would absorb the first same-url popstate
+  // after a re-enable, which is the swallowed-Back failure this exists to
+  // prevent (#1437). Every other pending piece of router state is torn down
+  // here too.
+  clearFragmentNav();
   document.removeEventListener('pointerover', onPrefetchIntent, true);
   document.removeEventListener('focusin', onPrefetchIntent, true);
   document.removeEventListener('touchstart', onPrefetchIntent, /** @type any */ ({ capture: true }));
@@ -437,6 +519,9 @@ export async function refreshPage(mode) {
  *   a failure. Every other caller ignores the value.
  */
 export async function performNavigation(href, isPopState, frameId, opts) {
+  // Same reasoning as in performSubmission: a real navigation invalidates any
+  // pending fragment mark (#1437).
+  clearFragmentNav();
   const refresh = (opts && opts.refresh) || undefined;
   const preserveScroll = !!(opts && opts.preserveScroll);
   // #1008 / #936: a forward, main-document nav fired while the document is
@@ -733,6 +818,10 @@ export async function performNavigation(href, isPopState, frameId, opts) {
  *   failed.
  */
 export async function performSubmission(href, method, body, frameId, form, opts) {
+  // A submission is real work, so any pending fragment mark is stale and must
+  // not survive into the popstate a later Back produces. This is exactly the
+  // 422 duplicate-entry path (#1437).
+  clearFragmentNav();
   if (activeAbortController) activeAbortController.abort();
   activeAbortController = new AbortController();
   const signal = activeAbortController.signal;

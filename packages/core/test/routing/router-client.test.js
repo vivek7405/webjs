@@ -2366,6 +2366,32 @@ test('a second navigation closes an open scroll-anchor window (#1310)', async ()
   }
 });
 
+test('disableClientRouter drops a pending fragment mark (#1437)', async () => {
+  // Pure module state, so it belongs at this layer rather than the browser one:
+  // no DOM, no layout, no history traversal is involved in the assertion, and
+  // this is the node suite CI's unit gate runs. Sibling of the scroll-anchor
+  // teardown below, which is the same obligation for a different piece of
+  // pending state.
+  //
+  // The failure it guards: a mark left by a click whose popstate has not fired
+  // yet survives the router stepping aside, then absorbs the first same-url
+  // popstate after a re-enable, which is the swallowed-Back this PR exists to
+  // prevent.
+  const { _pendingFragmentNav, clearFragmentNav, markFragmentNav } =
+    await import('../../src/router-client/state.js');
+  try {
+    assert.equal(_pendingFragmentNav, null, 'precondition: nothing pending');
+    markFragmentNav('http://localhost/p#x');
+    const live = await import('../../src/router-client/state.js');
+    assert.equal(live._pendingFragmentNav, 'http://localhost/p#x', 'precondition: the mark is set');
+    disableClientRouter();
+    assert.equal(live._pendingFragmentNav, null, 'disable must drop the mark');
+  } finally {
+    clearFragmentNav();
+    enableClientRouter();
+  }
+});
+
 test('disableClientRouter closes an open scroll-anchor window (#1310)', async () => {
   // The router must leave nothing of its own on <html> after it is disabled.
   const origLoc = globalThis.location;
@@ -3085,15 +3111,236 @@ test('onPopState: triggers a router navigation to location.href', async () => {
       { status: 200, headers: { 'content-type': 'text/html' } }
     );
   };
+  const prevPageUrl = _currentPageUrl();
+  // Set the tracker explicitly rather than inheriting whatever a previous test
+  // left behind. The fragment bow-out below reads it, so a test that asserts a
+  // navigation must say which page it is navigating away from.
+  _setCurrentPageUrl('http://localhost/before-pop');
   try {
     document.body.innerHTML = '<!--wj:children:/:/-->before<!--/wj:children:/-->';
     _onPopState({});
     await new Promise((r) => setTimeout(r, 10));
     assert.equal(fetched, 'http://localhost/popped');
   } finally {
+    _setCurrentPageUrl(prevPageUrl);
     globalThis.location = origLoc;
     globalThis.fetch = origFetch;
   }
+});
+
+/* ====================================================================
+ * onPopState: the popstate a fragment CLICK produces is not a navigation (#1437)
+ *
+ * The DECISION is pure, so it belongs here. The observable half (no swap,
+ * live DOM survives, the viewport lands on the anchor) cannot be asserted
+ * in linkedom, which implements no layout, no scrolling and no history
+ * traversal, and lives in the browser layer at
+ * `packages/core/test/routing/browser/fragment-jump.test.js`.
+ * ==================================================================== */
+
+/**
+ * Drive one popstate against a stubbed location and report whether the router
+ * fetched. Mirrors the stubbing the popstate tests above use.
+ *
+ * @param {string} trackerUrl  What the router believes is the current page.
+ * @param {string} poppedUrl   Where the browser has already moved location to.
+ * @param {{ viaFragmentClick?: string }} [opts] When set, stands in for the
+ *   click the router bowed out of, marking that href the way `onClick` does.
+ *   That mark is the only thing separating a repeat anchor click from a real
+ *   traversal to the same url (#1437).
+ * @returns {Promise<{fetched: boolean, tracker: string | null}>}
+ */
+async function popTo(trackerUrl, poppedUrl, opts) {
+  const origLoc = globalThis.location;
+  const origFetch = globalThis.fetch;
+  const prevPageUrl = _currentPageUrl();
+  const u = new URL(poppedUrl);
+  let fetched = false;
+  globalThis.location = /** @type {any} */ ({
+    href: u.href, pathname: u.pathname, origin: u.origin, search: u.search, hash: u.hash,
+  });
+  globalThis.fetch = async () => {
+    fetched = true;
+    return new Response(
+      '<!doctype html><html><body>' +
+      '<!--wj:children:/:/-->popped<!--/wj:children:/-->' +
+      '</body></html>',
+      { status: 200, headers: { 'content-type': 'text/html' } }
+    );
+  };
+  _setCurrentPageUrl(trackerUrl);
+  const { clearFragmentNav, markFragmentNav } = await import('../../src/router-client/state.js');
+  clearFragmentNav();
+  if (opts && opts.viaFragmentClick) markFragmentNav(opts.viaFragmentClick);
+  try {
+    document.body.innerHTML = '<!--wj:children:/:/-->before<!--/wj:children:/-->';
+    _onPopState({});
+    await new Promise((r) => setTimeout(r, 10));
+    return { fetched, tracker: _currentPageUrl() };
+  } finally {
+    _setCurrentPageUrl(prevPageUrl);
+    globalThis.location = origLoc;
+    globalThis.fetch = origFetch;
+  }
+}
+
+test('onPopState: a fragment-only popstate does not navigate (#1437)', async () => {
+  const { fetched } = await popTo('http://localhost/p', 'http://localhost/p#x',
+    { viaFragmentClick: 'http://localhost/p#x' });
+  assert.equal(fetched, false, 'the click the router bowed out of must not re-fetch');
+});
+
+test('onPopState: a traversal with no click behind it still navigates (#1437)', async () => {
+  // An ordinary Back or Forward between two fragment states is NOT absorbed.
+  // It looks identical to the Back out of a 422 re-render, which must
+  // re-render, and separating them needs to know whether the DOM was replaced
+  // between the two ENTRIES. That is per-entry state the router does not keep,
+  // since every `pushState` here passes `null`. So this stays on the normal
+  // path, exactly as it behaves without this fix.
+  const { fetched } = await popTo('http://localhost/p#x', 'http://localhost/p');
+  assert.equal(fetched, true, 'no click behind it, so it is a real traversal');
+});
+
+test('onPopState: a FRAGMENTLESS same-url popstate still navigates (#1437)', async () => {
+  // Two DISTINCT entries can share a url, and the framework's own no-JS write
+  // path makes that pair: a bound `<form action=${fn}>` emits no `action`
+  // attribute, so `getSubmitAction` falls back to `location.href` and the 422
+  // re-render pushes a duplicate entry at the page's own url. Back from that
+  // validation error must keep falling through, so the cache branch's
+  // background revalidation can swap the fresh render in. This is the case an
+  // over-broad guard swallows, and the reader then has to press Back twice.
+  const { fetched } = await popTo('http://localhost/p', 'http://localhost/p');
+  assert.equal(fetched, true, 'a fragmentless same-url traversal is still a navigation');
+});
+
+test('onPopState: the REPEAT click of one anchor is absorbed (#1437)', async () => {
+  // That navigation REPLACES its entry rather than pushing, and it still fires
+  // popstate, so it arrives with `location.href` equal to what the tracker
+  // holds (measured in Chromium: two clicks of one `#sec` link give two
+  // popstates at the same href, `history.length` unchanged). An early version
+  // required the hrefs to DIFFER, which read as the conservative choice and
+  // instead let the second click of a `<a href="#">Back to top</a>` fall
+  // through to a full navigation.
+  const { fetched } = await popTo('http://localhost/p#x', 'http://localhost/p#x',
+    { viaFragmentClick: 'http://localhost/p#x' });
+  assert.equal(fetched, false, 'the router saw this click, so there is nothing to navigate to');
+});
+
+test('onPopState: an identical-url popstate the router did NOT cause navigates (#1437)', async () => {
+  // Same urls as the case above, opposite answer, and the ONLY difference is
+  // provenance. This is the 422 duplicate entry: no click was bowed out of, so
+  // the popstate is a real traversal. A predicate that keyed on the url alone
+  // could not tell these two apart, which is what sank two earlier attempts.
+  const { fetched } = await popTo('http://localhost/p#x', 'http://localhost/p#x');
+  assert.equal(fetched, true, 'no mark means a real traversal, which must re-render');
+});
+
+test('onPopState: a fragment mark is consumed once, not left armed (#1437)', async () => {
+  const first = await popTo('http://localhost/p#x', 'http://localhost/p#x',
+    { viaFragmentClick: 'http://localhost/p#x' });
+  assert.equal(first.fetched, false, 'precondition: the marked popstate is absorbed');
+  const { _pendingFragmentNav } = await import('../../src/router-client/state.js');
+  assert.equal(_pendingFragmentNav, null, 'the mark must not survive its popstate');
+});
+
+test('onPopState: a mark that MISSES is dropped, not left armed (#1437)', async () => {
+  // The clear-on-miss half, which needs a mark whose href is not the one that
+  // pops. Without it a stale mark sits waiting to absorb an unrelated same-url
+  // popstate later, which is the swallowed-Back failure in slow motion.
+  const missed = await popTo('http://localhost/p', 'http://localhost/p#x',
+    { viaFragmentClick: 'http://localhost/p#SOMETHING-ELSE' });
+  assert.equal(missed.fetched, true, 'a mark for a DIFFERENT href does not absorb this one');
+  const { _pendingFragmentNav } = await import('../../src/router-client/state.js');
+  assert.equal(_pendingFragmentNav, null, 'a mark that did not match must still be dropped');
+
+  // And prove the drop matters: the very next same-url popstate, which the
+  // stale mark would have absorbed, still navigates.
+  const next = await popTo('http://localhost/p#SOMETHING-ELSE', 'http://localhost/p#SOMETHING-ELSE');
+  assert.equal(next.fetched, true, 'a stale mark must not absorb a later real traversal');
+});
+
+test('performNavigation and performSubmission each drop a pending mark (#1437)', async () => {
+  // Both clears guard the same shape: a fragment click leaves a mark, real work
+  // starts, and the popstate a later Back produces must NOT inherit it. The
+  // submission one guards this PR's own headline case, the 422 duplicate entry.
+  const { _pendingFragmentNav, markFragmentNav } = await import('../../src/router-client/state.js');
+  const origLoc = globalThis.location;
+  const origFetch = globalThis.fetch;
+  const prevPageUrl = _currentPageUrl();
+  globalThis.location = /** @type any */ ({
+    href: 'http://localhost/p', pathname: '/p', origin: 'http://localhost', search: '', hash: '',
+  });
+  globalThis.fetch = async () => new Response(
+    '<!doctype html><html><body><!--wj:children:/:/-->x<!--/wj:children:/--></body></html>',
+    { status: 200, headers: { 'content-type': 'text/html' } });
+  try {
+    document.body.innerHTML = '<!--wj:children:/:/-->before<!--/wj:children:/-->';
+
+    markFragmentNav('http://localhost/p#x');
+    await navigate('http://localhost/p?nav=1');
+    const { _pendingFragmentNav: afterNav } = await import('../../src/router-client/state.js');
+    assert.equal(afterNav, null, 'performNavigation must drop a pending mark');
+
+    markFragmentNav('http://localhost/p#x');
+    const form = document.createElement('form');
+    form.setAttribute('method', 'post');
+    form.setAttribute('action', 'http://localhost/p');
+    document.body.appendChild(form);
+    const { performSubmission } = await import('../../src/router-client/navigator.js');
+    await performSubmission('http://localhost/p', 'POST', new URLSearchParams(), null, form);
+    const { _pendingFragmentNav: afterSubmit } = await import('../../src/router-client/state.js');
+    assert.equal(afterSubmit, null, 'performSubmission must drop a pending mark');
+    form.remove();
+  } finally {
+    _setCurrentPageUrl(prevPageUrl);
+    globalThis.location = origLoc;
+    globalThis.fetch = origFetch;
+  }
+});
+
+test('onPopState: an unmarked popstate on a different PATH navigates (#1437)', async () => {
+  // Reachable behaviour, and the shape a real cross-document Back has: no mark,
+  // because no click was bowed out of. The absorber returns on the mark alone,
+  // before it parses anything.
+  const { fetched } = await popTo('http://localhost/p', 'http://localhost/other');
+  assert.equal(fetched, true, 'a different document must still be fetched');
+});
+
+test('onPopState: an unmarked popstate on a different SEARCH navigates (#1437)', async () => {
+  // Same, for the query. A different search is a different server response, and
+  // this is the unit-layer pin for it.
+  const { fetched } = await popTo('http://localhost/p?a=1', 'http://localhost/p?a=2');
+  assert.equal(fetched, true, 'a different query is a different server response');
+});
+
+test('onPopState: the tracker cross-check rejects a mark from another page (#1437)', async () => {
+  // Exercises the DEFENSIVE branch in `absorbFragmentClickPopState`, which is
+  // unreachable today: `onClick` marks only when the anchor's pathname and
+  // search already match `location`, and every writer of `currentPageUrl`
+  // clears the mark first. So this drives it through `_setCurrentPageUrl`
+  // rather than through anything production can do, and it exists to keep the
+  // branch honest for whoever adds a fourth writer of that tracker.
+  const path = await popTo('http://localhost/p', 'http://localhost/other#x',
+    { viaFragmentClick: 'http://localhost/other#x' });
+  assert.equal(path.fetched, true, 'a mark for another path must not absorb');
+  const search = await popTo('http://localhost/p?a=1', 'http://localhost/p?a=2#x',
+    { viaFragmentClick: 'http://localhost/p?a=2#x' });
+  assert.equal(search.fetched, true, 'nor a mark for another query');
+});
+
+test('onPopState: an absorbed fragment traversal records the new url (#1437)', async () => {
+  // Regression test for the failure the first attempted patch actually showed:
+  // a bow-out that returns without recording leaves the tracker at the pre-jump
+  // url, so the REVERSE traversal compares two equal hrefs and re-navigates.
+  const { tracker } = await popTo('http://localhost/p', 'http://localhost/p#x',
+    { viaFragmentClick: 'http://localhost/p#x' });
+  assert.equal(tracker, 'http://localhost/p#x');
+});
+
+test('onPopState: the empty fragment is absorbed too (#1437)', async () => {
+  const { fetched } = await popTo('http://localhost/p', 'http://localhost/p#',
+    { viaFragmentClick: 'http://localhost/p#' });
+  assert.equal(fetched, false, 'an empty fragment is still a fragment');
 });
 
 /* ====================================================================
@@ -3887,6 +4134,14 @@ test('eligibleAnchorHref: rejects a pure same-page hash jump', async () => {
   await withPrefetchEnv(() => {
     // location is /, so /#foo is a same-page hash and must not prefetch.
     assert.equal(_eligibleAnchorHref(mkAnchor('http://localhost/#foo')), null);
+    // The EMPTY fragment is a fragment too (#1437). It serializes with `hash`
+    // === '' exactly like a url carrying no fragment at all, so testing `hash`
+    // here missed it and the back-to-top idiom stayed prefetch-eligible.
+    assert.equal(_eligibleAnchorHref(mkAnchor('http://localhost/#')), null, 'bare #');
+    // And the pin for the other half: `href=""` resolves to the current url
+    // with the fragment REMOVED, which the spec reloads rather than jumping, so
+    // it is still a navigation and must stay eligible.
+    assert.equal(_eligibleAnchorHref(mkAnchor('http://localhost/')), 'http://localhost/', 'no fragment');
   });
 });
 

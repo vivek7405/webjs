@@ -23,7 +23,7 @@
  */
 import { html } from '../../../src/html.js';
 import { render } from '../../../src/render-client.js';
-import { enableClientRouter } from '../../../src/router-client.js';
+import { enableClientRouter, _setCurrentPageUrl } from '../../../src/router-client.js';
 
 import { assert } from '../../../../../test/browser-assert.js';
 import { installNavGuard } from '../../../../../test/browser-nav-guard.js';
@@ -37,6 +37,12 @@ suite('Browser-test nav guard (#1135)', () => {
     enableClientRouter(); // idempotent; ensures the document listeners are attached
     guard = installNavGuard();
     origHref = location.href;
+    // Seed the router's current-page tracker, the way `enableClientRouter()`
+    // does on a real load. Teardown puts the URL back but cannot put this back,
+    // so without it a case inherits whatever url the PREVIOUS case navigated
+    // to, and anything reading the tracker (the fragment bow-out, #1437) then
+    // compares against a page this one never visited.
+    _setCurrentPageUrl(location.href);
     container = document.createElement('div');
     // A live keyed boundary pair (#1015) so an intercepted nav swaps softly
     // rather than degrading, which the guard could not block.
@@ -65,8 +71,10 @@ suite('Browser-test nav guard (#1135)', () => {
     bClose.remove();
     guard.remove();
     // A committed soft nav pushState'd a fake URL. Put the runner's own URL
-    // back so it does not leak into the next test or file.
+    // back so it does not leak into the next test or file, and clear the
+    // tracker with it so the pair cannot drift apart.
     history.replaceState(null, '', origHref);
+    _setCurrentPageUrl(null);
   }
 
   /** Resolve when the router settles, so teardown never runs mid-swap. */
@@ -193,6 +201,38 @@ suite('Browser-test nav guard (#1135)', () => {
       assert.equal(guard.fallbacks.length, 0,
         `the nav must be soft, not degraded (cause: ${guard.fallbacks.length ? guard.fallbacks[0].cause : 'none'})`);
     } finally { teardown(); }
+  });
+
+  test('does NOT cancel a same-document fragment link, so the browser jumps (#1437)', async () => {
+    setup();
+    try {
+      // The guard cancels an anchor's default so a lost interception race
+      // cannot navigate the session away. A same-document fragment link has no
+      // such risk (the page never unloads), and cancelling it suppresses the
+      // browser's own jump, which is the behaviour the router's fragment
+      // bow-out exists to preserve. So the guard has to let this one through.
+      const frag = new URL(location.href);
+      frag.hash = 'nav-guard-frag-target';
+      render(html`
+        <div style="height:2000px">spacer</div>
+        <span id="nav-guard-frag-target">target</span>
+        <div style="height:2000px">spacer</div>
+        <a href=${frag.href}>jump</a>
+      `, container);
+      const target = container.querySelector('#nav-guard-frag-target');
+      assert.ok(target.getBoundingClientRect().top > 100, 'the target starts below the fold');
+
+      container.querySelector('a').click();
+      await tick();
+
+      assert.ok(Math.abs(target.getBoundingClientRect().top) <= 2,
+        'the guard must leave a same-document fragment jump to the browser');
+      assert.deepEqual(fetched, [], 'and the router must not have navigated it either');
+    } finally {
+      history.replaceState(null, '', location.href.split('#')[0]);
+      window.scrollTo({ top: 0, left: 0, behavior: 'instant' });
+      teardown();
+    }
   });
 
   test('does NOT suppress the router on a plain form submission', async () => {

@@ -1,6 +1,22 @@
 import { _setHardNavigate } from '../packages/core/src/router-client.js';
 
 /**
+ * Whether this href is a same-document fragment jump, which the guard leaves
+ * alone (see the header note). Mirrors the router's own bow-out predicate in
+ * `packages/core/src/router-client/events.js`.
+ *
+ * @param {string} href Absolute, as `HTMLAnchorElement.href` always is.
+ * @returns {boolean}
+ */
+function isSameDocumentFragment(href) {
+  let url;
+  try { url = new URL(href); } catch { return false; }
+  if (url.origin !== location.origin) return false;
+  if (url.pathname !== location.pathname || url.search !== location.search) return false;
+  return url.href.includes('#');
+}
+
+/**
  * Shared navigation guard for browser tests (#1135). Sibling of
  * `test/browser-assert.js` (#777) and with the same "one source of truth for
  * browser tests" role.
@@ -18,8 +34,24 @@ import { _setHardNavigate } from '../packages/core/src/router-client.js';
  * instead of taking down the run.
  *
  * It is opt-in PER SUITE, not global, so a new suite that clicks a real link or
- * submits a real form has to install it. A pure-fragment `href="#x"` link needs
- * no guard, since it never navigates the page away.
+ * submits a real form has to install it.
+ *
+ * ## What it deliberately does NOT cancel: a same-document fragment link
+ *
+ * A link whose origin, pathname and query match the page it sits on, and which
+ * carries a fragment, does not navigate the page away: the browser scrolls to
+ * the target and fires `popstate`, and the session survives. So there is
+ * nothing here to guard against, and cancelling it does real harm, because
+ * `preventDefault` is exactly what suppresses that native jump. A suite testing
+ * the router's own fragment bow-out (#1437) would then see no jump at all and
+ * could not tell a working bow-out from a broken one.
+ *
+ * The test is `href`-based rather than `hash`-based for the same reason the
+ * router's is: the URL serializer reports a null fragment and an EMPTY one
+ * identically as `''`, and `href="#"` is a real fragment navigation, to the
+ * document element. `href=""` carries no fragment at all, resolves to the
+ * current url with the fragment removed, and the spec RELOADS it, so it is a
+ * genuine session risk and stays guarded.
  *
  * ## The phase is load-bearing: `window`, BUBBLE, never capture
  *
@@ -85,7 +117,11 @@ export function installNavGuard() {
     // than the thing it backstops.
     const path = typeof e.composedPath === 'function' ? e.composedPath() : [];
     for (const el of path) {
-      if (el instanceof HTMLAnchorElement && el.hasAttribute('href')) { e.preventDefault(); return; }
+      if (el instanceof HTMLAnchorElement && el.hasAttribute('href')) {
+        if (isSameDocumentFragment(el.href)) return;
+        e.preventDefault();
+        return;
+      }
     }
   };
 
