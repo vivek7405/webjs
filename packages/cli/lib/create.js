@@ -6,7 +6,7 @@
  *   - modules/ skeleton
  *   - components/ with a theme toggle
  *   - test/unit/ and test/e2e/ with example tests
- *   - CONVENTIONS.md, AGENTS.md, CLAUDE.md
+ *   - AGENTS.md plus .agents/ (the one cross-agent guidance surface)
  *   - package.json with WebJs deps + test scripts
  *   - tsconfig.json for editor support
  */
@@ -623,27 +623,17 @@ export async function scaffoldApp(name, cwd, opts = {}) {
     exclude: ['node_modules', '.webjs/vendor', 'db/migrations'],
   }, null, 2) + '\n');
 
-  // --- Templates (AGENTS.md, CONVENTIONS.md, CLAUDE.md, test files, Claude hooks) ---
+  // --- Templates (AGENTS.md, .agents/, test files, git hook) ---
 
   const templateFiles = [
-    // Single cross-agent source: AGENTS.md points at .agents/skills/webjs/; the
-    // .agents/rules workflow rules and the Claude enforcement hooks back it up.
+    // ONE agent surface, no per-agent rule files. AGENTS.md is the open
+    // standard agents read natively, and it points at .agents/skills/webjs/
+    // (the guidance) and .agents/rules/workflow.md (the workflow). A generated
+    // app gets no CLAUDE.md, no .cursorrules, no vendor hook config: how a team
+    // runs its tools is theirs to decide, and the rules that actually protect
+    // the app are enforced agent-agnostically by `webjs check` and CI.
     'AGENTS.md',
-    'CONVENTIONS.md',
     '.agents/rules/workflow.md',
-    'CLAUDE.md',
-    // Claude Code config + the protective enforcement hooks (no design ceremony).
-    '.claude.json',
-    '.claude/settings.json',
-    '.claude/hooks/block-prose-punctuation.sh',
-    '.claude/hooks/block-raw-htmlelement.sh',
-    '.claude/hooks/guard-branch-context.sh',
-    '.claude/hooks/nudge-uncommitted.sh',
-    '.claude/hooks/commit-before-stop.sh',
-    '.claude/hooks/cleanup-merged-worktree.sh',
-    '.claude/hooks/require-tests-with-src.sh',
-    '.claude/hooks/check-server-imports.sh',
-    '.claude/hooks/check-server-imports.mjs',
     // Git pre-commit hook (blocks commits directly to main).
     '.hooks/pre-commit',
     // Starter tests under the feature-folder layout.
@@ -673,7 +663,7 @@ export async function scaffoldApp(name, cwd, opts = {}) {
   // rewrites; the three infra files get their file-specific transform. On Node,
   // every file is copied byte-identical (the map is empty).
   const PROSE_REWRITE = new Set([
-    'AGENTS.md', 'CLAUDE.md', 'CONVENTIONS.md',
+    'AGENTS.md',
     '.agents/rules/workflow.md',
     'test/hello/browser/hello.test.js', 'test/hello/e2e/hello.test.ts',
   ]);
@@ -741,12 +731,10 @@ export async function scaffoldApp(name, cwd, opts = {}) {
     }
   }
 
-  // Make the Claude enforcement hooks + the git pre-commit executable.
+  // Make the git pre-commit hook executable. It is the one piece of
+  // enforcement the scaffold ships, and it is git-level rather than
+  // agent-level, so it binds every agent, editor, and human equally.
   const { chmod } = await import('node:fs/promises');
-  for (const hook of ['block-prose-punctuation.sh', 'block-raw-htmlelement.sh', 'guard-branch-context.sh', 'nudge-uncommitted.sh', 'commit-before-stop.sh', 'cleanup-merged-worktree.sh', 'require-tests-with-src.sh', 'check-server-imports.sh']) {
-    const hookPath = join(appDir, '.claude', 'hooks', hook);
-    if (existsSync(hookPath)) await chmod(hookPath, 0o755);
-  }
   const preCommitPath = join(appDir, '.hooks', 'pre-commit');
   if (existsSync(preCommitPath)) await chmod(preCommitPath, 0o755);
 

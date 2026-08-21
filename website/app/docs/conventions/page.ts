@@ -133,16 +133,13 @@ After merging, should &lt;branch&gt; be deleted or kept?</code-block>
         <tr><td><code>AGENTS.md</code></td><td>All agents (Cursor, opencode, Antigravity, Copilot coding agent read it natively)</td><td>Framework API, conventions, recipes (the source of truth)</td></tr>
         <tr><td><code>.agents/skills/webjs/SKILL.md</code></td><td>All agents</td><td>The shipped routing skill carrying the framework context and project conventions (guidance, customizable in the prose)</td></tr>
         <tr><td><code>.agents/rules/workflow.md</code></td><td>All agents</td><td>Git, test, and review workflow rules</td></tr>
-        <tr><td><code>CLAUDE.md</code></td><td>Claude Code</td><td>Thin bridge pointing at AGENTS.md</td></tr>
-        <tr><td><code>GEMINI.md</code></td><td>Gemini CLI</td><td>Thin bridge pointing at AGENTS.md</td></tr>
-        <tr><td><code>.claude/settings.json</code></td><td>Claude Code</td><td>PreToolUse hook guarding git merge/push to main</td></tr>
-        <tr><td><code>.github/copilot-instructions.md</code></td><td>Copilot in VS Code</td><td>Thin bridge pointing at AGENTS.md</td></tr>
+        <tr><td><code>.hooks/pre-commit</code></td><td>All (via git)</td><td>Blocks commits directly on main, at the git level rather than per agent</td></tr>
         <tr><td><code>.github/pull_request_template.md</code></td><td>All (via GitHub)</td><td>PR checklist: tests, docs, convention check</td></tr>
         <tr><td><code>.editorconfig</code></td><td>All editors</td><td>Consistent indent/encoding/line endings</td></tr>
       </tbody>
     </table>
 
-    <p>All config files encode the same rules: the framework conventions, git workflow, and quality expectations. Each is formatted for its target agent's native config format.</p>
+    <p>There are no per-agent rule files. A scaffolded app ships <code>AGENTS.md</code>, which Cursor, opencode, Antigravity, and the Copilot coding agent read natively, and it routes to <code>.agents/</code> for everything else. No <code>CLAUDE.md</code>, no <code>.cursorrules</code>, no vendor hook config: how your team runs its tools is your call, and the rules that protect the app are enforced agent-agnostically by <code>webjs check</code> and the git pre-commit hook.</p>
 
     <h2>Autonomous Mode</h2>
     <p>When an agent runs in sandbox or bypass-permissions mode, it follows these defaults instead of asking questions:</p>
@@ -181,7 +178,7 @@ cd my-app && npm run dev</code-block>
       <li><code>.agents/skills/webjs/SKILL.md</code>: the shipped routing skill with the framework context and editable project conventions</li>
       <li><code>.agents/rules/workflow.md</code>: git, test, and review workflow rules</li>
       <li><code>AGENTS.md</code>: full framework API reference</li>
-      <li>Thin bridges pointing at AGENTS.md (<code>CLAUDE.md</code>, <code>GEMINI.md</code>, <code>.github/copilot-instructions.md</code>)</li>
+      <li>No per-agent rule files: <code>AGENTS.md</code> plus <code>.agents/</code> is the whole agent surface</li>
       <li><code>.editorconfig</code> for consistent formatting</li>
       <li><code>package.json</code> with scripts (<code>dev</code>, <code>build</code>, <code>start</code>, <code>test</code>, <code>check</code>, <code>db:migrate</code>, <code>db:generate</code>, <code>db:studio</code>)</li>
     </ul>

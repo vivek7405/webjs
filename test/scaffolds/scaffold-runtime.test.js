@@ -124,7 +124,7 @@ test('bun scaffold: agent-config markdown shows bun commands, no npm commands', 
   try {
     await scaffoldApp('bunapp', cwd, { template: 'full-stack', runtime: 'bun' });
     const appDir = join(cwd, 'bunapp');
-    for (const f of ['AGENTS.md', 'CLAUDE.md', '.agents/rules/workflow.md']) {
+    for (const f of ['AGENTS.md', '.agents/rules/workflow.md']) {
       const md = read(appDir, f);
       assert.doesNotMatch(md, /\bnpm run /, `${f} should not contain "npm run"`);
       assert.doesNotMatch(md, /\bnpx /, `${f} should not contain "npx "`);

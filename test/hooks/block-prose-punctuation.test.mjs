@@ -280,20 +280,30 @@ test('no tracked JSON or front-matter prose value carries a banned pause', () =>
   }
 });
 
-// --- Drift guard: all three copies of the hook stay in step ---
+// --- Drift guard: the dogfood copy keeps the rules it carries ---
+//
+// There used to be THREE copies of this hook: this repo's, the scaffold's,
+// and the blog dogfood app's, and the guard asserted the scaffold and blog
+// copies were byte-identical. The scaffold ships no agent config at all now
+// (these prose rules are OUR house style, and a generated app has no reason
+// to inherit them), so that pairing is gone and only two copies remain.
+//
+// They are deliberately NOT compared byte-for-byte: the repo copy carries a
+// fifth rule (brand casing) the blog copy predates. What must hold is that the
+// blog copy still carries the prose-key patterns it does implement, and that
+// NEITHER copy reintroduces the SIGPIPE bug, where a `grep -q` behind a pipe
+// silently skips its rule once the payload outgrows the pipe buffer.
 
-test('the scaffold and dogfood hook copies carry the same rules', () => {
-  const scaffold = resolve(REPO_ROOT, 'packages/cli/templates/.claude/hooks/block-prose-punctuation.sh');
-  const blog = resolve(REPO_ROOT, 'examples/blog/.claude/hooks/block-prose-punctuation.sh');
-  const scaffoldSrc = readFileSync(scaffold, 'utf8');
-  assert.equal(scaffoldSrc, readFileSync(blog, 'utf8'), 'the two copies are byte-identical');
+test('the dogfood hook copy keeps its prose rules and the SIGPIPE fix', () => {
+  const blogSrc = readFileSync(resolve(REPO_ROOT, 'examples/blog/.claude/hooks/block-prose-punctuation.sh'), 'utf8');
+  const repoSrc = readFileSync(HOOK, 'utf8');
 
-  for (const pattern of proseKeyPatterns()) {
-    assert.ok(scaffoldSrc.includes(pattern), `copy is missing a prose-key pattern: ${pattern}`);
-  }
-  // The SIGPIPE fix must hold in every copy: a `grep -q` behind a pipe silently
-  // skips its rule once the payload outgrows the pipe buffer.
-  for (const [label, src] of [['repo', readFileSync(HOOK, 'utf8')], ['scaffold', scaffoldSrc]]) {
+  const blogKeyPatterns = [...blogSrc.matchAll(/^if grep -qE '(.*)' <<< "\$new_content"; then$/gm)]
+    .map((m) => m[1])
+    .filter((p) => p.includes('(description|title|displayName)'));
+  assert.equal(blogKeyPatterns.length, 4, 'blog copy carries the four prose-key patterns');
+
+  for (const [label, src] of [['repo', repoSrc], ['blog', blogSrc]]) {
     assert.equal(
       /^if printf .*\| grep -q/m.test(src),
       false,

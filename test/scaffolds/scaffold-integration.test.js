@@ -86,21 +86,25 @@ test('scaffoldApp full-stack: writes the canonical full-stack app layout', async
     assert.ok(existsSync(join(appDir, 'package.json')));
     assert.ok(existsSync(join(appDir, 'tsconfig.json')));
 
-    // Single cross-agent source (AGENTS.md + the one skill + the .agents workflow
-    // rules), CONVENTIONS.md, CLAUDE.md bridge, and Claude protective hooks.
-    for (const f of ['AGENTS.md', '.agents/skills/webjs/SKILL.md', '.agents/rules/workflow.md', 'CLAUDE.md', 'CONVENTIONS.md', '.claude/settings.json', '.editorconfig']) {
+    // ONE agent surface: AGENTS.md (the open standard agents read natively)
+    // pointing at .agents/, which carries the skill and the workflow rules.
+    for (const f of ['AGENTS.md', '.agents/skills/webjs/SKILL.md', '.agents/rules/workflow.md', '.editorconfig']) {
       assert.ok(existsSync(join(appDir, f)), `${f} should exist`);
     }
-    // Per-agent files and design-distinctness ceremony removed.
-    for (const f of ['GEMINI.md', '.github/copilot-instructions.md', '.cursorrules', 'LAYOUT-REFERENCE.md', '.claude/hooks/design-review-before-stop.sh', '.claude/skills/webjs-design-review']) {
+    // NO per-agent rule files or vendor tool config. How a team runs its
+    // tools is the team's call, and the rules that protect the app are
+    // enforced agent-agnostically by `webjs check`, CI, and .hooks/pre-commit.
+    for (const f of [
+      'CLAUDE.md', 'CONVENTIONS.md', '.claude', '.claude.json', '.claude/settings.json',
+      'GEMINI.md', '.github/copilot-instructions.md', '.cursorrules', '.gemini', '.opencode',
+      'LAYOUT-REFERENCE.md',
+    ]) {
       assert.ok(!existsSync(join(appDir, f)), `${f} should NOT exist in the scaffold`);
     }
-    // Thin bridges (pointers to AGENTS.md / the skill).
-    for (const f of ['CLAUDE.md', 'CONVENTIONS.md']) {
-      const src = readFileSync(join(appDir, f), 'utf8');
-      assert.ok(src.length < 2200, `${f} is a thin bridge, not a full rule duplicate`);
-      assert.match(src, /AGENTS\.md|\.agents\/skills\/webjs/, `${f} points at AGENTS.md or the skill`);
-    }
+    // AGENTS.md must actually route to the skill, since nothing else does.
+    const agentsMd = readFileSync(join(appDir, 'AGENTS.md'), 'utf8');
+    assert.match(agentsMd, /\.agents\/skills\/webjs/, 'AGENTS.md points at the skill');
+    assert.match(agentsMd, /\.agents\/rules\/workflow\.md/, 'AGENTS.md points at the workflow rules');
 
     // #271: the opt-in progressive-enhancement service worker + its offline
     // fallback ship into the UI scaffold (full-stack; api has no UI),
@@ -229,41 +233,16 @@ test('scaffoldApp full-stack: writes the canonical full-stack app layout', async
       assert.ok(!/from '(\.\.\/){2,}/.test(src), `${f.slice(appDir.length)} must not keep a deep relative import`);
     }
 
-    // The require-tests hook still reaches the scaffolded app for Claude
-    // Code: the hook file is copied and the Claude settings wire it into
-    // PreToolUse. (The tool-agnostic test gate has moved to CI, see below.)
-    assert.ok(existsSync(join(appDir, '.claude/hooks/require-tests-with-src.sh')),
-      'require-tests hook is scaffolded');
-    const claudeSettings = JSON.parse(
-      readFileSync(join(appDir, '.claude/settings.json'), 'utf8'),
-    );
-    const preCommands = (claudeSettings.hooks?.PreToolUse ?? [])
-      .flatMap((g) => g.hooks.map((h) => h.command));
-    assert.ok(
-      preCommands.includes('.claude/hooks/require-tests-with-src.sh'),
-      'settings.json wires the require-tests hook into PreToolUse',
-    );
-
-    // Commit enforcement for Claude Code: CLAUDE.md overrides Claude Code's
-    // never-commit default, a Stop hook backstops end-of-turn, and a
-    // PostToolUse hook removes merged worktrees after `gh pr merge`.
-    const claudeMd = readFileSync(join(appDir, 'CLAUDE.md'), 'utf8');
-    assert.match(claudeMd, /OVERRIDES Claude Code/i,
-      'CLAUDE.md overrides Claude Code\'s never-commit default');
-    for (const h of ['commit-before-stop.sh', 'cleanup-merged-worktree.sh']) {
-      assert.ok(existsSync(join(appDir, '.claude/hooks', h)), `${h} is scaffolded`);
+    // The scaffold ships NO agent-specific enforcement hooks. What used to be
+    // a set of Claude PreToolUse/Stop hooks is now covered agent-agnostically,
+    // which is the point: it binds every agent rather than one.
+    //   - a server-only import in a browser module -> `webjs check`'s
+    //     no-server-import-in-browser-module rule, run in CI
+    //   - committing on main -> .hooks/pre-commit, a git-level block
+    //   - tests with source, commit cadence -> .agents/rules/workflow.md
+    for (const f of ['.claude', '.claude.json']) {
+      assert.ok(!existsSync(join(appDir, f)), `${f} must not ship`);
     }
-    const stopCommands = (claudeSettings.hooks?.Stop ?? [])
-      .flatMap((g) => g.hooks.map((h) => h.command));
-    assert.ok(stopCommands.includes('.claude/hooks/commit-before-stop.sh'),
-      'settings.json wires commit-before-stop into Stop');
-    const postCommands = (claudeSettings.hooks?.PostToolUse ?? [])
-      .flatMap((g) => g.hooks.map((h) => h.command));
-    assert.ok(postCommands.includes('.claude/hooks/cleanup-merged-worktree.sh'),
-      'settings.json wires cleanup-merged-worktree into PostToolUse');
-
-    // The design-review ceremony (a skill + a UserPromptSubmit router + a Stop
-    // hook) was retired in #969; only the protective hooks above ship now.
 
     // The local pre-commit hook is lightweight: it blocks commits to main
     // and nothing else. The test/convention gate runs in CI, not locally,
@@ -672,7 +651,7 @@ test('scaffoldApp: template placeholder substitution in copied files', async () 
     const appDir = join(cwd, 'PlaceholderTest');
 
     // Walk a few template-copied files and verify {{APP_NAME}} was replaced.
-    const filesToCheck = ['AGENTS.md', 'CONVENTIONS.md', 'CLAUDE.md'];
+    const filesToCheck = ['AGENTS.md', '.agents/rules/workflow.md'];
     for (const f of filesToCheck) {
       const p = join(appDir, f);
       if (!existsSync(p)) continue;
@@ -803,18 +782,13 @@ test('scaffoldApp: AGENTS.md build playbook is template-specific (#1076)', async
     assert.doesNotMatch(api, /Build components for interactivity|WebComponent/,
       'api: no component/reactive-props guidance');
 
-    // The sibling agent-doc surfaces (CONVENTIONS.md, .agents/rules/workflow.md)
-    // ship into BOTH apps, so they must be template-neutral: no opt-out phrasing,
-    // and they must acknowledge the api showcase rather than only the UI gallery.
-    const apiConv = readFileSync(join(cwd, 'api-app', 'CONVENTIONS.md'), 'utf8');
+    // The workflow rules ship into BOTH apps, so they must be template-neutral:
+    // no opt-out phrasing, and they must acknowledge the api showcase rather
+    // than only the UI gallery.
     const apiFlow = readFileSync(join(cwd, 'api-app', '.agents/rules/workflow.md'), 'utf8');
-    for (const [label, md] of [['CONVENTIONS.md', apiConv], ['workflow.md', apiFlow]]) {
-      assert.doesNotMatch(md, /only while exploring|do not have to read|only (if|when) a task needs/i,
-        `api ${label}: no opt-out phrasing`);
-    }
-    for (const [label, md] of [['CONVENTIONS.md', apiConv], ['workflow.md', apiFlow]]) {
-      assert.match(md, /app\/api\/features/, `api ${label}: acknowledges the api showcase`);
-    }
+    assert.doesNotMatch(apiFlow, /only while exploring|do not have to read|only (if|when) a task needs/i,
+      'api workflow.md: no opt-out phrasing');
+    assert.match(apiFlow, /app\/api\/features/, 'api workflow.md: acknowledges the api showcase');
   } finally {
     restore();
     await rm(cwd, { recursive: true, force: true });

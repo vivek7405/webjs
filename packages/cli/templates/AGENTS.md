@@ -21,7 +21,13 @@ This is what separates a working app from a broken one.
    playbook below says what ships and the exact order to follow. The workflow
    rules (git, tests, review) are in `.agents/rules/workflow.md`; follow them
    too.
-3. **Read the framework source for exact contracts.** WebJs is 100% buildless
+3. **Wire the WebJs MCP server into your agent (optional, recommended).** It
+   is read-only and version-matched to the app: `list_routes`, `list_actions`,
+   `list_components`, `list_elision`, `check`, `ui`, plus a docs and recipes
+   layer. Run it with `npx @webjsdev/mcp`, registered in whatever MCP config
+   your agent uses. This app ships no agent-specific config, so nothing is
+   wired for you.
+4. **Read the framework source for exact contracts.** WebJs is 100% buildless
    native ES modules, so the source you run IS the source you read. When you
    need a precise API signature or behavior, open the package source under
    `node_modules/@webjsdev/*` directly (each package ships its own `AGENTS.md`).
