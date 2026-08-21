@@ -55,25 +55,6 @@ for (const template of ['full-stack', 'api']) {
         assert.ok(!existsSync(join(skillsDir, monorepoOnly)),
           `${monorepoOnly} is a monorepo workflow skill and must not ship to a generated app`);
       }
-
-      // And no per-agent rule files or vendor tool config at all. AGENTS.md
-      // plus .agents/ is the whole agent surface, so the app does not carry
-      // one team's tool choices into another's repo. The monorepo keeps its
-      // own .claude/; none of it is scaffolded.
-      const appDir = join(cwd, 'demo');
-      for (const perAgent of [
-        'CLAUDE.md', 'CONVENTIONS.md', '.claude', '.claude.json',
-        '.cursorrules', '.cursor', 'GEMINI.md', '.gemini', '.opencode',
-        '.github/copilot-instructions.md', '.windsurfrules',
-      ]) {
-        assert.ok(!existsSync(join(appDir, perAgent)),
-          `${perAgent} is per-agent config and must not ship to a generated app`);
-      }
-      // AGENTS.md is what makes the single surface reachable: nothing reads
-      // .agents/ on its own, so it must route there.
-      const agentsMd = await readFile(join(appDir, 'AGENTS.md'), 'utf8');
-      assert.match(agentsMd, /\.agents\/skills\/webjs/, 'AGENTS.md routes to the skill');
-      assert.match(agentsMd, /\.agents\/rules\/workflow\.md/, 'AGENTS.md routes to the workflow rules');
     } finally {
       await rm(cwd, { recursive: true, force: true });
     }

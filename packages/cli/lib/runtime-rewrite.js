@@ -7,7 +7,7 @@
  * pure string transforms so they unit-test without touching the filesystem.
  *
  * Why a transform and not a second set of template files: the agent-config
- * markdown (AGENTS.md / .agents/rules/workflow.md) plus the deploy
+ * markdown (AGENTS.md / CONVENTIONS.md / .cursorrules / ...) plus the deploy
  * files (Dockerfile / ci.yml) are long and change often; a parallel bun copy
  * would silently drift from the node original. A transform keeps the node
  * template canonical and the bun output a deterministic function of it.

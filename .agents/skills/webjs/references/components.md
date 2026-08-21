@@ -3,7 +3,6 @@
 ## What This Covers
 
 - What a component owns (markup, state, listeners, styling), and the rules that follow from it: refs over selectors, no state on `<body>`, ARIA derived in `render()`
-- Why every component extends `WebComponent` and never raw `HTMLElement`
 - Declaring reactive properties through the `WebComponent({ ... })` factory and `prop()`, with options (`reflect`, `state`, `attribute`, `default`, `converter`, `hasChanged`)
 - Signals as the default state primitive for component-local and shared state, plus `effect` / `batch`
 - The Lit-aligned lifecycle and exactly which hooks SSR runs versus skips
@@ -139,17 +138,6 @@ The first version ships three modules instead of one: itself, plus `<spec-table>
 **How to tell, on a component you are about to write.** Walk its template and ask of each element: does a handler in this class touch it, does a state or property change alter it, or does it sit in a template hole? If the answer is no for all three, that element is a passenger. A template that is mostly passengers is an island that wants splitting, and the split is usually "hoist the static markup back to the page and keep the interactive fragment".
 
 **The exception, and it is a real one.** Markup that is static *today* but is the thing a near-term behaviour will read is fine to keep, because the alternative is a component that reaches outward for it later, which is what rule 1 forbids. Judge the behaviour you are building, not one you are speculating about. When those genuinely collide, ownership wins over bytes: a coherent component that ships a little extra markup beats a split feature that a selector holds together.
-
-## Extend `WebComponent`, never raw `HTMLElement`
-
-Every custom element in a WebJs app extends the framework base class, through the factory (`extends WebComponent({ ... })`) when it declares reactive properties or bare `extends WebComponent` when it does not. A plain `class X extends HTMLElement` is valid DOM and broken WebJs, in four ways that all fail quietly rather than loudly:
-
-- It is **invisible to the elision analyser**, so it ships unconditionally, defeats display-only elision for itself, and keeps any page or layout importing it from being import-only.
-- It gets **no SSR**. The renderer instantiates and renders `WebComponent` subclasses on the server; a raw element contributes nothing to the first paint.
-- It has **no reactive properties and no lifecycle**, so no `render()` re-runs, no `willUpdate`, no `updated`, and no attribute coercion.
-- It pushes its DOM work into `connectedCallback`, which is **client-only**, so the content does not exist with JS off. That is a progressive-enhancement bug, and progressive enhancement is the default architecture.
-
-No `webjs check` rule catches this today, so nothing fails when you write it. Treat it as a rule you hold yourself: if a file calls `customElements.define`, the class it defines extends `WebComponent`.
 
 ## Reactive properties: the base-class factory
 

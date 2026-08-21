@@ -113,7 +113,7 @@ export async function createPost(
       <li><code>AGENTS.md</code>, read natively by Cursor, opencode, Antigravity, and the Copilot coding agent</li>
       <li><code>.agents/skills/webjs/SKILL.md</code>, the shipped routing skill carrying the framework context</li>
       <li><code>.agents/rules/workflow.md</code>, the git, test, and review workflow rules</li>
-      <li>No per-agent rule files. <code>AGENTS.md</code> plus <code>.agents/</code> is the whole agent surface, so a scaffolded app does not carry one team's tool choices into another's repo</li>
+      <li>Thin bridges for tools that do not read <code>AGENTS.md</code> natively: <code>CLAUDE.md</code> (Claude Code), <code>GEMINI.md</code> (Gemini CLI), and <code>.github/copilot-instructions.md</code> (Copilot in VS Code), each pointing at <code>AGENTS.md</code></li>
     </ul>
     <p>Every agent gets the same rules from that one source: check the branch before coding, sync with parent before starting, auto-generate tests, auto-update docs, ask before merging (with delete/keep prompt), no AI attribution in commits.</p>
 

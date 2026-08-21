@@ -256,8 +256,8 @@ test('no scaffold template ships a conformance-error action="" or formaction=""'
         await walk(path);
         continue;
       }
-      // Markdown IS in scope: `webjs create` ships AGENTS.md and the
-      // .agents/ guidance into every generated app, and those are what
+      // Markdown IS in scope: `webjs create` ships AGENTS.md, CONVENTIONS.md,
+      // and the agent rule files into every generated app, and those are what
       // TEACH the idiom. The one exclusion is the generated skill bundle under
       // `.agents/skills/`, the single place prose legitimately writes the
       // attribute while explaining why not to use it. (`prepack` copies it in

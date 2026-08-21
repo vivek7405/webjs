@@ -59,10 +59,10 @@ Thumbs.db
 # test artifacts
 coverage/
 
-# AI assistants: local session state, scheduled-task locks, etc. The
-# scaffold ships no agent config of its own (AGENTS.md and .agents/ are
-# the guidance, and both are tracked), so whatever your tools write here
-# is yours and stays local.
-.claude/
-.cursor/
-.gemini/
+# AI assistants: local session state, scheduled-task locks, etc.
+# Repo-shared config (settings.json + hooks scripts) stays tracked so
+# every contributor and agent gets the same PreToolUse rules.
+.claude/*
+!.claude/settings.json
+!.claude/hooks/
+!.claude/hooks/**

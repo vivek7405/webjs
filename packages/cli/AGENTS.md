@@ -156,12 +156,11 @@ lib/
                          `test/runtime-rewrite/`.
 templates/               Verbatim files copied into every new app.
                          {{APP_NAME}} placeholder is substituted at
-                         copy time. AGENTS.md / .agents/rules/workflow.md
-                         / .editorconfig / .env.example / .hooks/pre-commit
-                         all live here. There are NO per-agent rule files
-                         and no vendor tool config: AGENTS.md is the open
-                         standard agents read natively, and it routes to
-                         .agents/, which is the whole agent surface. AGENTS.md ALSO gets a template-specific
+                         copy time. The AGENTS.md / CLAUDE.md /
+                         CONVENTIONS.md / .cursorrules / .agents/rules/workflow.md
+                         / .github/copilot-instructions.md / .editorconfig
+                         / .env.example / .claude.json / .claude/hooks/
+                         all live here. AGENTS.md ALSO gets a template-specific
                          {{PLAYBOOK}} injection: create.js substitutes the
                          full-stack or api build playbook from
                          templates/partials/agents-playbook-{fullstack,api}.md
@@ -236,9 +235,9 @@ verbatim.
    `webjs start`, #550/#725), so a `db:generate`'d migration applies on the
    next boot with no manual `db:migrate`.
    Apps must NEVER use JSON files for persistence. This is a project
-   convention (documented in the scaffold's AGENTS.md).
+   convention (documented in the scaffold's CONVENTIONS.md).
 4. **Template files are verbatim copies** with `{{APP_NAME}}` substitution.
-   When editing `templates/AGENTS.md` or `.agents/skills/webjs/`, remember they ship
+   When editing `templates/AGENTS.md`, `templates/CONVENTIONS.md`, or `.agents/skills/webjs/`, remember they ship
    into every scaffolded app. Write for the audience of an AI agent
    working inside a freshly-scaffolded WebJs project. `templates/AGENTS.md`
    is the one exception to "verbatim": it carries a `{{PLAYBOOK}}` marker
@@ -247,12 +246,8 @@ verbatim.
    never ships UI-only guidance. Keep the shared meta-rules (required
    context-gathering, strict typing, data) in `AGENTS.md` itself and only
    the template-divergent build steps in the partials.
-5. **The scaffold ships ONE agent surface: `AGENTS.md` plus `.agents/`.**
-   No `CLAUDE.md`, no `.cursorrules`, no `.gemini/`, no `.claude/` hooks or
-   settings. How a team runs its tools is the team's call, and the rules that
-   actually protect an app are enforced agent-agnostically: `webjs check`
-   (which CI runs) and `.hooks/pre-commit`. Do not add a per-agent bridge
-   back; if a rule matters, it belongs in the skill or in a check rule.
+5. **`templates/CLAUDE.md` uses Claude Code's `@import` syntax**
+   (`@AGENTS.md`, `@CONVENTIONS.md`). See https://code.claude.com/docs/en/claude-md.md#import-additional-files
 
 ## Tests
 

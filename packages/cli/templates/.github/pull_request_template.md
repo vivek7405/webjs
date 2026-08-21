@@ -16,14 +16,14 @@ a codebase rots. Walk every markdown file in the project (`git ls-files
 '*.md'`) and ask whether this PR changed behaviour, surface, or
 invariants it describes. For each row below, write `Updated <path>` or
 `N/A because <reason>`. Reviewers should reject the PR if this section
-is left as the template default. The workflow rules are in
-[`.agents/rules/workflow.md`](../.agents/rules/workflow.md).
+is left as the template default. See the **Definition of done** section
+in [`CONVENTIONS.md`](../CONVENTIONS.md) for the full guidance.
 
 - [ ] **Tests.** Unit coverage for logic. Real-browser coverage for
       user-facing behaviour.
 - [ ] **Every markdown file in the project** that describes the
       changed surface. Common cases (non-exhaustive): `AGENTS.md` (root
-      + nested), `README.md` (root + nested),
+      + nested), `CONVENTIONS.md`, `README.md` (root + nested),
       `CHANGELOG.md`, `docs/**/*.md`, `.agents/skills/webjs/**/*.md`,
       `.github/*.md`. The rule is generative: if a markdown file in
       this project mentions a thing this PR changed, it gets touched
