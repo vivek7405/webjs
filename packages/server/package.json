@@ -28,7 +28,6 @@
     "README.md"
   ],
   "dependencies": {
-    "@webjsdev/core": "^0.7.51",
     "ws": "^8.20.0"
   },
   "publishConfig": {
@@ -54,5 +53,11 @@
   },
   "optionalDependencies": {
     "amaro": "^1.1.10"
+  },
+  "peerDependencies": {
+    "@webjsdev/core": "^0.7.51"
+  },
+  "devDependencies": {
+    "@webjsdev/core": "^0.7.51"
   }
 }
