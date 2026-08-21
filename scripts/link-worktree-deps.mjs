@@ -34,19 +34,35 @@
  *
  * So this makes the suite RUNNABLE, not self-testing. If you are editing
  * `packages/core/src` or `packages/server/src` and need a bare-specifier
- * consumer to exercise YOUR copy, run a real `npm install` in the worktree, or
- * point the individual `@webjsdev/<pkg>` entries at this worktree instead. CI
- * always builds from the branch, so it is unaffected either way.
+ * consumer to exercise YOUR copy, delete EVERY `node_modules` SYMLINK first,
+ * not only the root one, because this script plants one per workspace that
+ * carries its own tree (`find . -maxdepth 5 -type l -name node_modules -delete`,
+ * they are only links and nothing else is lost) and then install, or point the
+ * individual `@webjsdev/<pkg>` entries at this worktree instead. CI always
+ * builds from the branch, so it is unaffected either way.
+ *
+ * NEVER install while the link is standing (#1442). Measured on npm 11.19.0 and
+ * bun 1.3.14: `npm ci` DELETES the primary's whole `node_modules` through the
+ * link before any lifecycle script runs, `bun install` writes packages into the
+ * primary through it, and `npm install` silently replaces the link with a real
+ * tree. All three land on a checkout you are not working in, so the failure
+ * surfaces in someone else's session with nothing naming the cause.
  *
  * Safety rules, all of which exist because the naive version of this script
  * broke a worktree while it was being written:
  *
- * - Never delete or overwrite anything. A path that already exists is left
+ * - Never delete or overwrite anything, with ONE exception: the repair pass over
+ *   `<primary>/node_modules/@webjsdev/` replaces a link that is ALREADY wrong
+ *   (dangling, or resolving outside the primary) and removes a DANGLING
+ *   `.name-HASH` npm staging entry. It never touches a real directory, never
+ *   touches a link that is already correct, and never removes a staging entry
+ *   that still resolves. Outside that pass, a path that already exists is left
  *   alone, so a worktree with a real `npm install` is untouched and re-running
  *   is a no-op.
  * - Never create a dangling link. A source that does not exist is skipped,
  *   because a dangling `node_modules` resolves more confusingly than a missing
- *   one.
+ *   one, and the repair pass declines to repoint when the corrected target is
+ *   missing.
  * - Never treat `<primary>/node_modules` itself as a search root. Descending
  *   into it yields thousands of nested `node_modules` belonging to third-party
  *   packages, none of which should be linked.
@@ -55,10 +71,12 @@
  *
  *   node scripts/link-worktree-deps.mjs           # link from the default primary
  *   node scripts/link-worktree-deps.mjs <primary> # or name it explicitly
+ *   node scripts/link-worktree-deps.mjs --check   # report repairs, change nothing
  *   npm run worktree:link
+ *   npm run check:worktree-links
  */
-import { existsSync, lstatSync, mkdirSync, readdirSync, symlinkSync } from 'node:fs';
-import { dirname, join, relative, resolve } from 'node:path';
+import { existsSync, lstatSync, mkdirSync, readdirSync, readFileSync, readlinkSync, realpathSync, renameSync, rmSync, symlinkSync } from 'node:fs';
+import { dirname, isAbsolute, join, relative, resolve, sep } from 'node:path';
 import { execFileSync, spawnSync } from 'node:child_process';
 
 /** Directory names never worth descending into when hunting for nested trees. */
@@ -108,6 +126,158 @@ function link(src, dst, label) {
   symlinkSync(src, dst, 'junction');
   console.log(`  linked ${label}`);
   return 'linked';
+}
+
+/**
+ * Map every workspace package NAME to its directory, relative to `primary`.
+ *
+ * The mapping cannot be derived from the entry name. `@webjsdev/example-blog`
+ * lives at `examples/blog`, `@webjsdev/ui-registry` at
+ * `packages/ui/packages/registry`, and `@webjsdev/intellisense` at
+ * `packages/editors/intellisense`, so a `packages/<name>` guess would repoint
+ * half the tree at directories that do not exist.
+ *
+ * @param {string} primary
+ * @returns {Map<string, string>} package name to directory relative to `primary`
+ */
+function workspacePackageDirs(primary) {
+  /** @type {Map<string, string>} */
+  const out = new Map();
+  /** @type {string[]} */
+  let patterns = [];
+  try {
+    patterns = JSON.parse(readFileSync(join(primary, 'package.json'), 'utf8')).workspaces || [];
+  } catch { return out; }
+
+  /** @type {string[]} */
+  const dirs = [];
+  for (const pattern of patterns) {
+    if (!pattern.endsWith('/*')) { dirs.push(pattern); continue; }
+    const parent = pattern.slice(0, -2);
+    let entries;
+    try { entries = readdirSync(join(primary, parent), { withFileTypes: true }); } catch { continue; }
+    for (const e of entries) if (e.isDirectory()) dirs.push(`${parent}/${e.name}`);
+  }
+
+  for (const rel of dirs) {
+    try {
+      const name = JSON.parse(readFileSync(join(primary, rel, 'package.json'), 'utf8')).name;
+      if (typeof name === 'string' && name) out.set(name, rel);
+    } catch { /* not a package, skip */ }
+  }
+  return out;
+}
+
+/** npm's staging name for a package it is mid-reify on, `.name-HASH`. */
+const STAGING = /^\.(.+)-[A-Za-z0-9_-]{8}$/;
+
+/**
+ * Repair `<primary>/node_modules/@webjsdev/`, which an install run inside a
+ * LINKED worktree corrupts (#1442).
+ *
+ * Three defect classes, all produced by the same accident and all repaired to
+ * the same relative form the healthy tree uses:
+ *
+ * - a link that DANGLES, usually into a worktree that has since been removed;
+ * - a link that resolves OUTSIDE the primary, into a live foreign checkout,
+ *   which is the worst case because it resolves fine and silently runs another
+ *   branch's framework source;
+ * - a link that resolves inside the primary but is ABSOLUTE where every sibling
+ *   is relative, which is the same corruption pattern pointing at the right
+ *   place by accident.
+ *
+ * A LIVE `.name-HASH` staging entry is left strictly alone. Most of them resolve
+ * to real in-repo directories, nothing imports `@webjsdev/.ui-tVBcnl39`, at least
+ * one predates a package rename so its name maps to no current workspace, and
+ * deleting a live entry risks racing an install that is mid-reify. Only an
+ * UNUSABLE one, meaning staging-shaped AND dangling, is removed.
+ *
+ * Writes are atomic (symlink to a temp name, then rename over), because
+ * `npm test` resolves `@webjsdev/*` from many processes at once and an entry
+ * that briefly does not exist would fail one of them.
+ *
+ * @param {string} primary
+ * @param {{ check?: boolean }} [opts] `check` reports without changing anything
+ * @returns {{ repaired: string[], removed: string[], reported: string[] }}
+ */
+function repairPrimaryFrameworkLinks(primary, opts = {}) {
+  const check = opts.check === true;
+  const scope = join(primary, 'node_modules', '@webjsdev');
+  /** @type {{ repaired: string[], removed: string[], reported: string[] }} */
+  const out = { repaired: [], removed: [], reported: [] };
+
+  let entries;
+  try { entries = readdirSync(scope, { withFileTypes: true }); } catch { return out; }
+
+  let primaryReal = primary;
+  try { primaryReal = realpathSync(primary); } catch { /* use it as given */ }
+  const workspaces = workspacePackageDirs(primary);
+  const removeVerb = check ? 'would remove' : 'removed';
+  const pointVerb = check ? 'would repoint' : 'repointed';
+
+  for (const e of entries) {
+    // A real directory here is somebody's deliberate install, never ours to touch.
+    if (!e.isSymbolicLink()) continue;
+
+    const entry = join(scope, e.name);
+    let target;
+    try { target = readlinkSync(entry); } catch { continue; }
+    const absTarget = resolve(scope, target);
+    const dangling = !existsSync(absTarget);
+
+    if (STAGING.test(e.name)) {
+      if (!dangling) continue;
+      if (!check) { try { rmSync(entry, { force: true }); } catch { continue; } }
+      out.removed.push(e.name);
+      console.log(`[link-worktree-deps] ${removeVerb} dangling npm staging entry @webjsdev/${e.name}`);
+      continue;
+    }
+
+    const rel = workspaces.get(`@webjsdev/${e.name}`);
+    if (!rel) {
+      if (!dangling) continue;
+      out.reported.push(e.name);
+      console.log(`[link-worktree-deps] @webjsdev/${e.name} dangles and matches no workspace package; left alone.`);
+      continue;
+    }
+
+    const correct = join(primary, rel);
+    const desired = relative(scope, correct);
+    if (target === desired) continue;
+
+    let outside = false;
+    try { outside = !realpathSync(absTarget).startsWith(primaryReal + sep); } catch { outside = true; }
+    if (!dangling && !outside && !isAbsolute(target)) continue;
+
+    // A race guard, not a normal path: `workspacePackageDirs()` only maps a
+    // package whose `package.json` it just read, so `correct` exists unless the
+    // directory went away in between. Repointing at a missing path would trade
+    // one dangling link for another, which the safety rules forbid outright.
+    if (!existsSync(correct)) {
+      out.reported.push(e.name);
+      console.log(`[link-worktree-deps] @webjsdev/${e.name} points at ${target}, but ${rel} is missing here; left alone.`);
+      continue;
+    }
+
+    if (!check) {
+      const tmp = `${entry}.tmp-${process.pid}`;
+      try {
+        rmSync(tmp, { force: true });
+        symlinkSync(desired, tmp);
+        renameSync(tmp, entry);
+      } catch {
+        try { rmSync(tmp, { force: true }); } catch { /* nothing staged */ }
+        out.reported.push(e.name);
+        console.log(`[link-worktree-deps] could not repair @webjsdev/${e.name}; left alone.`);
+        continue;
+      }
+    }
+    out.repaired.push(e.name);
+    const why = dangling ? 'dangling' : (outside ? 'foreign' : 'absolute');
+    console.log(`[link-worktree-deps] ${pointVerb} ${why} @webjsdev/${e.name} -> ${desired}`);
+  }
+
+  return out;
 }
 
 /** @returns {string} absolute path of the primary checkout */
@@ -223,15 +393,47 @@ async function seedBlogDatabase(blogDir) {
 }
 
 const here = process.cwd();
-const primary = resolve(process.argv[2] || defaultPrimary());
+const CHECK = process.argv.includes('--check');
+// Filter the flag out of the positional argument, or `resolve('--check')` is
+// read as the primary path and the script reports on a directory named `--check`.
+const positional = process.argv.slice(2).filter((a) => a !== '--check');
+const primary = resolve(positional[0] || defaultPrimary());
+
+// The checkout check sits ABOVE the primary-is-here guard, because the repair
+// below targets the PRIMARY and must run whether or not this checkout is it.
+if (!existsSync(join(primary, 'package.json'))) {
+  console.error(`[link-worktree-deps] not a checkout: ${primary}`);
+  process.exit(1);
+}
+
+// FIRST, so `npm run worktree:link` heals the primary from a worktree AND a bare
+// run or `--check` heals it from the primary itself. `WEBJS_NO_WORKTREE_REPAIR=1`
+// is why the `defaultPrimary()` test can run this against the real checkout
+// without mutating it, exactly as `WEBJS_NO_WORKTREE_SEED=1` does for seeding.
+let touched = 0;
+// The hatch suppresses the repair WRITE. `--check` never writes, so there is
+// nothing for it to suppress there, and skipping the inspection too would make
+// `check:worktree-links` exit 0 reporting a clean tree it never looked at.
+if (process.env.WEBJS_NO_WORKTREE_REPAIR === '1' && !CHECK) {
+  console.log('[link-worktree-deps] framework-link repair skipped (WEBJS_NO_WORKTREE_REPAIR=1).');
+} else {
+  const repair = repairPrimaryFrameworkLinks(primary, { check: CHECK });
+  touched = repair.repaired.length + repair.removed.length;
+  if (CHECK) {
+    console.log(`[link-worktree-deps] --check: ${touched} entr${touched === 1 ? 'y' : 'ies'} to repair, ${repair.reported.length} reported.`);
+  }
+}
+
+// `--check` is READ-ONLY and TERMINAL, unconditionally. This exit sits OUTSIDE
+// the branch above on purpose: nested inside the `else`, a run with BOTH
+// `--check` and `WEBJS_NO_WORKTREE_REPAIR=1` fell through to the linking loop
+// and the seed step, so the one combination documented as changing nothing was
+// the one that wrote. Linking is a mutation, so `--check` must never reach it.
+if (CHECK) process.exit(touched > 0 ? 1 : 0);
 
 if (primary === here) {
   console.log('[link-worktree-deps] this IS the primary checkout, nothing to link.');
   process.exit(0);
-}
-if (!existsSync(join(primary, 'package.json'))) {
-  console.error(`[link-worktree-deps] not a checkout: ${primary}`);
-  process.exit(1);
 }
 
 console.log(`[link-worktree-deps] linking from ${primary}`);

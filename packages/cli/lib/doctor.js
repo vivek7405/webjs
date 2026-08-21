@@ -53,5 +53,5 @@
 export { DOCTOR_SEVERITIES, DOCTOR_CODES, codeForName } from './doctor/codes.js';
 export { readDoctorPolicy, applyDoctorPolicy } from './doctor/policy.js';
 export { readAppBasePath } from './doctor/route-modules.js';
-export { frameworkResolves, checkFrameworkResolves } from './doctor/probes/framework-resolves.js';
+export { frameworkResolves, checkFrameworkResolves, inspectFrameworkLink, checkFrameworkLinks } from './doctor/probes/framework-resolves.js';
 export { runDoctorChecks } from './doctor/runner.js';

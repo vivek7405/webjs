@@ -15,7 +15,7 @@
 import { test, describe } from 'node:test';
 import assert from 'node:assert/strict';
 import { execFileSync, spawnSync } from 'node:child_process';
-import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, rmSync, symlinkSync, lstatSync, readlinkSync, existsSync } from 'node:fs';
+import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, readdirSync, rmSync, symlinkSync, lstatSync, readlinkSync, existsSync } from 'node:fs';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import { fileURLToPath } from 'node:url';
@@ -69,6 +69,10 @@ function makeWorktree({ blog = false } = {}) {
  * seed tests below assert that seeding HAPPENS, and would silently invert into
  * failures for that person. Only the test that opts in passes it explicitly.
  *
+ * `WEBJS_NO_WORKTREE_REPAIR=1` is stripped for the same reason: the repair tests
+ * below assert that repair HAPPENS, and an exported opt-out would turn every one
+ * of them into a vacuous pass.
+ *
  * `DATABASE_URL` is stripped for the same reason: the script now resolves the
  * database path the way the blog does, so an exported value would point the
  * probe outside the synthetic worktree these tests build.
@@ -77,7 +81,7 @@ function makeWorktree({ blog = false } = {}) {
  * @returns {NodeJS.ProcessEnv}
  */
 function cleanEnv(env = {}) {
-  const { WEBJS_NO_WORKTREE_SEED: _seed, DATABASE_URL: _db, ...rest } = process.env;
+  const { WEBJS_NO_WORKTREE_SEED: _seed, WEBJS_NO_WORKTREE_REPAIR: _repair, DATABASE_URL: _db, ...rest } = process.env;
   return { ...rest, ...env };
 }
 
@@ -177,15 +181,18 @@ describe('link-worktree-deps (#1287)', () => {
     // git-derived default branch never executes at all.
     //
     // This is the ONE test that runs the script against a real checkout, so it
-    // must not seed. Run from the primary the `primary === here` guard stops it,
-    // but run from a linked worktree (the mandated workflow) that guard does not
-    // fire, and the script would migrate and seed that worktree's blog database
-    // as a side effect of `npm test`, concurrently with `blog-http.test.mjs`
-    // reading the same file. The escape hatch is what actually keeps it out.
+    // must neither seed nor repair. Run from the primary the `primary === here`
+    // guard stops the seeding, but run from a linked worktree (the mandated
+    // workflow) that guard does not fire, and the script would migrate and seed
+    // that worktree's blog database as a side effect of `npm test`, concurrently
+    // with `blog-http.test.mjs` reading the same file. The repair pass sits ABOVE
+    // that guard by design, so it runs in BOTH positions and would rewrite the
+    // real primary's `@webjsdev/*` links here. The two escape hatches are what
+    // actually keep this test off the developer's checkout.
     const out = execFileSync(process.execPath, [SCRIPT], {
       cwd: process.cwd(),
       encoding: 'utf8',
-      env: { ...process.env, WEBJS_NO_WORKTREE_SEED: '1' },
+      env: { ...process.env, WEBJS_NO_WORKTREE_SEED: '1', WEBJS_NO_WORKTREE_REPAIR: '1' },
     });
     // Run from the repo itself, so it must recognise the primary and no-op
     // rather than linking anything.
@@ -351,3 +358,247 @@ describe('link-worktree-deps (#1287)', () => {
   });
 });
 
+
+/**
+ * The repair pass over `<primary>/node_modules/@webjsdev/` (#1442).
+ *
+ * An install run inside a LINKED worktree acts on the PRIMARY, and leaves links
+ * that dangle, resolve into a foreign checkout, or resolve inside the primary
+ * but absolutely where every sibling is relative. All three are repaired to the
+ * relative form. A LIVE `.name-HASH` npm staging entry is deliberately NOT
+ * touched, because most of them resolve fine and deleting one risks racing an
+ * install that is mid-reify.
+ */
+describe('framework-link repair (#1442)', () => {
+  /**
+   * A primary whose `packages/` holds real workspace packages, so
+   * `workspacePackageDirs()` has something to map, plus a `@webjsdev` scope to
+   * plant broken links in.
+   */
+  function makeRepairPrimary() {
+    const root = mkdtempSync(join(tmpdir(), 'wjrepair-'));
+    writeFileSync(join(root, 'package.json'), JSON.stringify({
+      name: 'fake-primary',
+      workspaces: ['packages/*', 'examples/*'],
+    }));
+    mkdirSync(join(root, 'node_modules/@webjsdev'), { recursive: true });
+    for (const [dir, name] of [
+      ['packages/core', '@webjsdev/core'],
+      ['packages/server', '@webjsdev/server'],
+      ['packages/cli', '@webjsdev/cli'],
+      ['packages/ui', '@webjsdev/ui'],
+      ['examples/blog', '@webjsdev/example-blog'],
+    ]) {
+      mkdirSync(join(root, dir), { recursive: true });
+      writeFileSync(join(root, dir, 'package.json'), JSON.stringify({ name }));
+    }
+    return root;
+  }
+
+  const scopeOf = (primary) => join(primary, 'node_modules/@webjsdev');
+  const plant = (primary, name, target) => symlinkSync(target, join(scopeOf(primary), name));
+
+  test('repoints a DANGLING link to the relative in-primary path', () => {
+    const primary = makeRepairPrimary();
+    const wt = makeWorktree();
+    try {
+      plant(primary, 'core', '/nonexistent/gone-worktree/packages/core');
+      run(wt, primary);
+      // COUNTERFACTUAL: without the repair pass this still reads the dead
+      // absolute path, so `existsSync` on the resolved entry is false.
+      assert.equal(readlinkSync(join(scopeOf(primary), 'core')), '../../packages/core');
+      assert.ok(existsSync(join(scopeOf(primary), 'core')), 'the repaired link resolves');
+    } finally { rmSync(primary, { recursive: true, force: true }); rmSync(wt, { recursive: true, force: true }); }
+  });
+
+  test('repoints a link that resolves OUTSIDE the primary, into a live foreign checkout', () => {
+    const primary = makeRepairPrimary();
+    const foreign = makeRepairPrimary();
+    const wt = makeWorktree();
+    try {
+      plant(primary, 'server', join(foreign, 'packages/server'));
+      run(wt, primary);
+      assert.equal(readlinkSync(join(scopeOf(primary), 'server')), '../../packages/server');
+    } finally {
+      rmSync(primary, { recursive: true, force: true });
+      rmSync(foreign, { recursive: true, force: true });
+      rmSync(wt, { recursive: true, force: true });
+    }
+  });
+
+  test('normalises an ABSOLUTE in-primary link to the relative form', () => {
+    const primary = makeRepairPrimary();
+    const wt = makeWorktree();
+    try {
+      plant(primary, 'cli', join(primary, 'packages/cli'));
+      run(wt, primary);
+      assert.equal(readlinkSync(join(scopeOf(primary), 'cli')), '../../packages/cli');
+    } finally { rmSync(primary, { recursive: true, force: true }); rmSync(wt, { recursive: true, force: true }); }
+  });
+
+  test('maps a package whose directory is NOT packages/<name>', () => {
+    const primary = makeRepairPrimary();
+    const wt = makeWorktree();
+    try {
+      plant(primary, 'example-blog', '/nonexistent/gone/examples/blog');
+      run(wt, primary);
+      assert.equal(readlinkSync(join(scopeOf(primary), 'example-blog')), '../../examples/blog');
+    } finally { rmSync(primary, { recursive: true, force: true }); rmSync(wt, { recursive: true, force: true }); }
+  });
+
+  test('removes a DANGLING .name-HASH npm staging entry', () => {
+    const primary = makeRepairPrimary();
+    const wt = makeWorktree();
+    try {
+      plant(primary, '.core-mTPzu12Q', '/nonexistent/gone-worktree/packages/core');
+      run(wt, primary);
+      assert.ok(!existsSync(join(scopeOf(primary), '.core-mTPzu12Q')), 'dangling staging entry removed');
+      assert.throws(() => lstatSync(join(scopeOf(primary), '.core-mTPzu12Q')));
+    } finally { rmSync(primary, { recursive: true, force: true }); rmSync(wt, { recursive: true, force: true }); }
+  });
+
+  test('leaves a LIVE .name-HASH staging entry strictly alone', () => {
+    const primary = makeRepairPrimary();
+    const wt = makeWorktree();
+    try {
+      plant(primary, '.ui-tVBcnl39', '../../packages/ui');
+      run(wt, primary);
+      assert.equal(readlinkSync(join(scopeOf(primary), '.ui-tVBcnl39')), '../../packages/ui');
+    } finally { rmSync(primary, { recursive: true, force: true }); rmSync(wt, { recursive: true, force: true }); }
+  });
+
+  test('leaves a link that is already correct untouched, and reports nothing', () => {
+    const primary = makeRepairPrimary();
+    const wt = makeWorktree();
+    try {
+      plant(primary, 'core', '../../packages/core');
+      const out = run(wt, primary);
+      assert.equal(readlinkSync(join(scopeOf(primary), 'core')), '../../packages/core');
+      assert.doesNotMatch(out, /repointed/);
+    } finally { rmSync(primary, { recursive: true, force: true }); rmSync(wt, { recursive: true, force: true }); }
+  });
+
+  test('never touches a REAL directory sitting in @webjsdev', () => {
+    const primary = makeRepairPrimary();
+    const wt = makeWorktree();
+    try {
+      mkdirSync(join(scopeOf(primary), 'core'), { recursive: true });
+      writeFileSync(join(scopeOf(primary), 'core/package.json'), '{"name":"@webjsdev/core"}');
+      run(wt, primary);
+      assert.ok(lstatSync(join(scopeOf(primary), 'core')).isDirectory(), 'a deliberate install is left alone');
+      assert.equal(readFileSync(join(scopeOf(primary), 'core/package.json'), 'utf8'), '{"name":"@webjsdev/core"}');
+    } finally { rmSync(primary, { recursive: true, force: true }); rmSync(wt, { recursive: true, force: true }); }
+  });
+
+  test('reports and LEAVES a dangling link whose package is in no workspace', () => {
+    const primary = makeRepairPrimary();
+    const wt = makeWorktree();
+    try {
+      plant(primary, 'ghost', '/nonexistent/gone/packages/ghost');
+      const out = run(wt, primary);
+      assert.equal(readlinkSync(join(scopeOf(primary), 'ghost')), '/nonexistent/gone/packages/ghost');
+      assert.match(out, /matches no workspace package/);
+    } finally { rmSync(primary, { recursive: true, force: true }); rmSync(wt, { recursive: true, force: true }); }
+  });
+
+  test('a repair never trades one dangling link for another', () => {
+    const primary = makeRepairPrimary();
+    const wt = makeWorktree();
+    try {
+      // A package that no longer has a directory is unmappable, so it is left as
+      // it is rather than repointed. This is the reachable half of the
+      // never-create-a-dangling-link rule; the `existsSync(correct)` guard in the
+      // script covers the TOCTOU race, which is not reproducible from a test.
+      rmSync(join(primary, 'packages/ui'), { recursive: true, force: true });
+      plant(primary, 'ui', '/nonexistent/gone/packages/ui');
+      plant(primary, 'core', '/nonexistent/gone/packages/core');
+      run(wt, primary);
+
+      assert.equal(
+        readlinkSync(join(scopeOf(primary), 'ui')),
+        '/nonexistent/gone/packages/ui',
+        'an unmappable entry is left exactly as it was',
+      );
+      // Every entry the pass DID rewrite must resolve.
+      for (const name of readdirSync(scopeOf(primary))) {
+        const entry = join(scopeOf(primary), name);
+        if (name === 'ui') continue;
+        assert.ok(existsSync(entry), `${name} resolves after the repair`);
+      }
+    } finally { rmSync(primary, { recursive: true, force: true }); rmSync(wt, { recursive: true, force: true }); }
+  });
+
+  test('repairs from the PRIMARY too, above the primary-is-here guard', () => {
+    const primary = makeRepairPrimary();
+    try {
+      plant(primary, 'core', '/nonexistent/gone-worktree/packages/core');
+      const out = run(primary, primary);
+      assert.equal(readlinkSync(join(scopeOf(primary), 'core')), '../../packages/core');
+      assert.match(out, /this IS the primary checkout/);
+    } finally { rmSync(primary, { recursive: true, force: true }); }
+  });
+
+  test('--check reports without changing anything, and exits 1 only when there is work', () => {
+    const primary = makeRepairPrimary();
+    try {
+      plant(primary, 'core', '/nonexistent/gone-worktree/packages/core');
+      const dirty = spawnSync(process.execPath, [SCRIPT, primary, '--check'], {
+        cwd: primary, encoding: 'utf8', env: cleanEnv(),
+      });
+      assert.equal(dirty.status, 1);
+      assert.match(dirty.stdout, /would repoint/);
+      assert.equal(
+        readlinkSync(join(scopeOf(primary), 'core')),
+        '/nonexistent/gone-worktree/packages/core',
+        '--check must not write',
+      );
+
+      // Repair for real, then a second --check must be clean and exit 0.
+      run(primary, primary);
+      const clean = spawnSync(process.execPath, [SCRIPT, primary, '--check'], {
+        cwd: primary, encoding: 'utf8', env: cleanEnv(),
+      });
+      assert.equal(clean.status, 0);
+    } finally { rmSync(primary, { recursive: true, force: true }); }
+  });
+
+  test('--check with WEBJS_NO_WORKTREE_REPAIR=1 still INSPECTS, and still writes nothing', () => {
+    // Two separate bugs met here. The exit for `--check` used to live INSIDE the
+    // repair `else`, so this pair fell through to the linking loop and the seed
+    // step, and the flag pair documented as changing nothing was the pair that
+    // wrote. Moving the exit out fixed the write but left `touched` at its
+    // initializer, so the run then exited 0 reporting a clean tree it had never
+    // looked at. The hatch suppresses the repair WRITE; `--check` never writes,
+    // so it must still inspect.
+    const primary = makeRepairPrimary();
+    const wt = makeWorktree();
+    try {
+      plant(primary, 'core', '/nonexistent/gone-worktree/packages/core');
+      const r = spawnSync(process.execPath, [SCRIPT, primary, '--check'], {
+        cwd: wt,
+        encoding: 'utf8',
+        env: cleanEnv({ WEBJS_NO_WORKTREE_REPAIR: '1' }),
+      });
+      assert.equal(r.status, 1, 'a broken link is still reported as work to do');
+      assert.match(r.stdout, /would repoint/, 'it actually inspected');
+      assert.doesNotMatch(r.stdout, /linked node_modules/, '--check must never link');
+      assert.ok(!existsSync(join(wt, 'node_modules')), '--check must not create the symlink');
+      assert.equal(
+        readlinkSync(join(scopeOf(primary), 'core')),
+        '/nonexistent/gone-worktree/packages/core',
+        '--check must not repair either',
+      );
+    } finally { rmSync(primary, { recursive: true, force: true }); rmSync(wt, { recursive: true, force: true }); }
+  });
+
+  test('WEBJS_NO_WORKTREE_REPAIR=1 skips the pass entirely', () => {
+    const primary = makeRepairPrimary();
+    const wt = makeWorktree();
+    try {
+      plant(primary, 'core', '/nonexistent/gone-worktree/packages/core');
+      const r = runWithResult(wt, primary, { WEBJS_NO_WORKTREE_REPAIR: '1' });
+      assert.match(r.stdout, /repair skipped/);
+      assert.equal(readlinkSync(join(scopeOf(primary), 'core')), '/nonexistent/gone-worktree/packages/core');
+    } finally { rmSync(primary, { recursive: true, force: true }); rmSync(wt, { recursive: true, force: true }); }
+  });
+});
