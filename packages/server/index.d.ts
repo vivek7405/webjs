@@ -25,7 +25,8 @@ import type { LayoutProps, PageProps, RouteHandlerContext } from '@webjsdev/core
 
 // The `./testing` subpath types are re-exported wholesale (the helpers ship
 // from both the main entry and the subpath; this avoids duplicating them).
-export * from './src/testing.d.ts';
+import type { Handle } from './src/testing.js';
+export * from './src/testing.js';
 
 // ---------------------------------------------------------------------------
 // Shared local types
@@ -34,8 +35,10 @@ export * from './src/testing.d.ts';
 /** A webjs middleware: receives the request + a `next()` continuation. */
 export type Middleware = (req: Request, next: () => Promise<Response>) => Promise<Response> | Response;
 
-// `Handle` is re-exported from ./src/testing.d.ts (the `export *` above), so it
-// is not re-declared here. `RequestHandler.handle` / `Handle` reference it.
+// `Handle` is re-exported from ./src/testing.js (the `export *` above), so it
+// is not re-declared here. It is IMPORTED as well, because `export *` re-exports
+// a name without creating a local binding, so `RequestHandler.handle` below
+// could not otherwise see it.
 
 /**
  * The `ActionResult<T>` envelope a server action / page action returns.

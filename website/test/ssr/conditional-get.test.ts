@@ -29,7 +29,7 @@ let handle: (path: string, headers?: Record<string, string>) => Promise<Response
 before(async () => {
   const app = await createRequestHandler({ appDir: WEBSITE_ROOT, dev: false });
   await app.warmup?.();
-  handle = (path, headers = {}) => app.handle(new Request('http://localhost' + path, { headers }));
+  handle = async (path, headers = {}) => app.handle(new Request('http://localhost' + path, { headers }));
 });
 
 for (const route of ['/', '/docs/getting-started']) {

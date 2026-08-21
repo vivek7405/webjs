@@ -8,7 +8,7 @@
  * inference helpers. Zero runtime cost.
  */
 
-export * from './src/component.d.ts';
+export * from './src/component.js';
 export type {
   Metadata,
   MetadataContext,

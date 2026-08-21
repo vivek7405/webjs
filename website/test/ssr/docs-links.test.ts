@@ -29,7 +29,7 @@ let handle: (path: string) => Promise<Response>;
 before(async () => {
   const app = await createRequestHandler({ appDir: WEBSITE_ROOT, dev: false });
   await app.warmup?.();
-  handle = (path) => app.handle(new Request('http://localhost' + path));
+  handle = async (path) => app.handle(new Request('http://localhost' + path));
 });
 
 /**

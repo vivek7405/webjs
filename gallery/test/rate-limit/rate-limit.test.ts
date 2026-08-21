@@ -5,6 +5,7 @@ import { dirname, resolve } from 'node:path';
 
 import { createRequestHandler } from '@webjsdev/server';
 import { testRequest } from '@webjsdev/server/testing';
+import type { Handle } from '@webjsdev/server/testing';
 
 const appDir = resolve(dirname(fileURLToPath(import.meta.url)), '..', '..');
 
@@ -22,7 +23,7 @@ const MAX = 5;
 // X-Forwarded-For that DISAGREES, standing in for the CDN egress address the
 // real deploy puts there, so a test that passes only because the two agree
 // cannot exist.
-function ping(handle: (req: Request) => Promise<Response>, visitor: string, cdnEgress = '172.68.1.9') {
+function ping(handle: Handle, visitor: string, cdnEgress = '172.68.1.9') {
   return testRequest(handle, PING, {
     headers: { 'cf-connecting-ip': visitor, 'x-forwarded-for': cdnEgress },
   });

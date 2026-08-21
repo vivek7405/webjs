@@ -301,7 +301,7 @@ fastify.listen({ port: 8080 });</code-block>
   },
   "devDependencies": {
     "drizzle-kit": "^1.0.0-rc.3",
-    "typescript": "^5.7.0"
+    "typescript": "^6.0.3"
   }
 }</code-block>
 

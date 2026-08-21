@@ -448,7 +448,14 @@ export async function scaffoldApp(name, cwd, opts = {}) {
       // The TypeScript compiler, for `npm run typecheck` (webjs typecheck runs
       // tsc --noEmit). Not needed at runtime (Node strips types in place), only
       // to type-check the app.
-      typescript: '^5.6.0',
+      // Must not resolve below the floor the tsconfig this same generator
+      // writes requires: `erasableSyntaxOnly` landed in TypeScript 5.8, and a
+      // 5.6 or 5.7 resolution refuses the whole config with
+      // `TS5023: Unknown compiler option`. Kept on the major the repo's own
+      // apps use, so an app and the framework that generated it type-check
+      // under the same compiler. Guarded by
+      // test/scaffolds/scaffold-typescript-floor.test.js.
+      typescript: '^6.0.3',
       '@types/node': '^24.0.0',
       '@web/test-runner': '^0.20.0',
       '@web/test-runner-playwright': '^0.11.0',
