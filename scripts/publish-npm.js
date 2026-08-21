@@ -103,7 +103,12 @@ if (treeView.status === 0) {
     const parsed = JSON.parse(treeView.stdout);
     // `npm pkg get --workspace=` answers `{"<name>": "<version>"}`; a bare
     // string is accepted too in case that shape ever changes.
-    treeVersion = typeof parsed === 'string' ? parsed : parsed[pkgName];
+    const v = typeof parsed === 'string' ? parsed : parsed[pkgName];
+    // Anything else parseable means the output shape drifted. Treat it like
+    // unparseable output (fail open, let the publish decide) rather than
+    // letting a non-string value trip the mismatch branch below, which would
+    // silently skip every publish while the workflow stays green.
+    treeVersion = typeof v === 'string' ? v : null;
   } catch {
     // Unparseable output is not proof of a mismatch, so fall through and let
     // the publish itself decide. Failing open here keeps a workspace-resolution

@@ -49,7 +49,26 @@ function runFor(version) {
     `---\npackage: "@webjsdev/core"\nversion: ${version}\ndate: 2026-01-01T00:00:00.000Z\ncommit_count: 1\n---\n## Fixes\n\n- something\n`,
   );
   try {
-    return spawnSync('node', [SCRIPT, file], { cwd: ROOT, encoding: 'utf8' });
+    return spawnSync('node', [SCRIPT, file], {
+      cwd: ROOT,
+      encoding: 'utf8',
+      // The deny-live-hosts preload does not reach a spawned child, and on a
+      // release branch (where the tree version is not on the registry yet)
+      // the script would fall through the view check into a real
+      // `npm publish` with whatever auth is ambient on the machine. An
+      // unroutable registry fails both npm calls fast, keeping this
+      // genuinely offline. `npm pkg get` is a purely local read, so the
+      // guard under test is unaffected.
+      //
+      // fetch-retries MUST be 0: npm's default of 2 retries with exponential
+      // backoff turns an instant connection-refused into a ~72 second test.
+      env: {
+        ...process.env,
+        npm_config_registry: 'http://127.0.0.1:1',
+        npm_config_fetch_retries: '0',
+        npm_config_fetch_timeout: '2000',
+      },
+    });
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }
