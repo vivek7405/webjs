@@ -3119,14 +3119,21 @@ test('performNavigation and performSubmission each drop a pending mark (#1437)',
   }
 });
 
-test('onPopState: a changed pathname is still a navigation (#1437)', async () => {
-  // The narrowness proof, and what stops the guard swallowing a real traversal.
-  const { fetched } = await popTo('http://localhost/p', 'http://localhost/other');
+test('onPopState: a mark cannot absorb a popstate on a different PATH (#1437)', async () => {
+  // The tracker cross-check behind the mark. A mark left while the page was
+  // elsewhere must not absorb a popstate here, so the marked href alone is not
+  // enough: the destination has to match the page the router believes it is on.
+  // Marked and matching by href, but the tracker is on another path.
+  const { fetched } = await popTo('http://localhost/p', 'http://localhost/other#x',
+    { viaFragmentClick: 'http://localhost/other#x' });
   assert.equal(fetched, true, 'a different document must still be fetched');
 });
 
-test('onPopState: a changed search is still a navigation (#1437)', async () => {
-  const { fetched } = await popTo('http://localhost/p?a=1', 'http://localhost/p?a=2');
+test('onPopState: a mark cannot absorb a popstate on a different SEARCH (#1437)', async () => {
+  // Same cross-check on the query, which is a different server response even
+  // though the path matches.
+  const { fetched } = await popTo('http://localhost/p?a=1', 'http://localhost/p?a=2#x',
+    { viaFragmentClick: 'http://localhost/p?a=2#x' });
   assert.equal(fetched, true, 'a different query is a different server response');
 });
 

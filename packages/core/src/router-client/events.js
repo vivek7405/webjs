@@ -50,9 +50,10 @@ export function onClick(e) {
   // Checked AFTER the fragment bow-out on purpose. `data-no-router` opts out of
   // ROUTING, and the bow-out above routes nothing either way, but the browser
   // still performs the native jump and still fires the popstate that has to be
-  // recognised. Returning here first would leave a repeat click of a
-  // `data-no-router` in-page anchor unmarked, so it would arrive with an
-  // unchanged url and be re-navigated destructively (#1437).
+  // recognised. Returning here first would leave EVERY click of a
+  // `data-no-router` in-page anchor unmarked, first and repeat alike, since the
+  // mark is the only thing that absorbs one, so each would be re-navigated
+  // destructively (#1437).
   if (anchor.hasAttribute('data-no-router')) return;
   if (NON_HTML_EXTENSIONS.test(url.pathname)) return;
 
@@ -67,13 +68,13 @@ export function onClick(e) {
 
 /** @param {PopStateEvent} _e */
 export function onPopState(_e) {
-  // A popstate that stays on this pathname and search is not a navigation:
-  // same document, same server response, and the browser has already done
-  // whatever the traversal needed. Absorb it (which also records the new url)
-  // rather than re-fetching and re-swapping the page out from under the reader
-  // (#1437). This is the popstate sibling of the same-page bow-out on the click
-  // path above, and it covers the REPEAT click of one anchor, which replaces
-  // rather than pushes and so arrives here with an unchanged href.
+  // The popstate an in-page fragment CLICK produces is not a navigation: the
+  // browser has already done the jump, so re-fetching and re-swapping would
+  // destroy live DOM identity and undo it (#1437). Absorbed only when the
+  // router MARKED that click on its way out (the bow-out above); a popstate
+  // with no mark behind it is a traversal and stays on the normal path,
+  // whatever its url. The callee's docstring has the full reasoning, including
+  // why no url comparison can stand in for the mark.
   if (absorbSameDocumentTraversal(location.href)) return;
   // popstate has no DOM anchor, so no frame context: restore via cache or
   // refetch the whole document.

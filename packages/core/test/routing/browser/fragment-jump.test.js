@@ -346,6 +346,33 @@ suite('Client router: a same-document fragment jump is the browser\'s (#1437)', 
     } finally { await teardown(); }
   });
 
+  test('a data-no-router in-page anchor is left to the browser, every click', async () => {
+    setup();
+    try {
+      // `data-no-router` opts out of ROUTING, and the fragment bow-out routes
+      // nothing either way, but the browser still performs the native jump and
+      // still fires the popstate. Since the mark is now the ONLY thing that
+      // absorbs one, checking that attribute before the bow-out would leave
+      // every click of such an anchor unmarked, first and repeat alike, and
+      // each would be re-navigated destructively. This is the coverage for that
+      // ordering in `events.js`.
+      assert.ok(targetTop() > 100, 'the target starts below the viewport top');
+
+      clickIt('wj-noroute');
+      await settle();
+      assert.deepEqual(fetched, [], 'first click: absorbed on the mark');
+      assert.ok(Math.abs(targetTop()) <= 2, 'and the browser jumped natively');
+
+      clickIt('wj-noroute');
+      await settle();
+      assert.deepEqual(fetched, [], 'repeat click: absorbed on the mark too');
+
+      assert.ok(injected.isConnected, 'the live DOM is untouched throughout');
+      assert.equal(document.getElementById('wj-frag-injected'), injected);
+      assert.deepEqual(fallbacks, []);
+    } finally { await teardown(); }
+  });
+
   test('a genuine cross-document popstate still re-navigates', async () => {
     setup();
     try {
