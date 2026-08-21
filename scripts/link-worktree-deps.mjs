@@ -36,7 +36,7 @@
  * `packages/core/src` or `packages/server/src` and need a bare-specifier
  * consumer to exercise YOUR copy, delete EVERY `node_modules` SYMLINK first,
  * not only the root one, because this script plants one per workspace that
- * carries its own tree (`find . -maxdepth 4 -type l -name node_modules -delete`,
+ * carries its own tree (`find . -maxdepth 5 -type l -name node_modules -delete`,
  * they are only links and nothing else is lost) and then install, or point the
  * individual `@webjsdev/<pkg>` entries at this worktree instead. CI always
  * builds from the branch, so it is unaffected either way.

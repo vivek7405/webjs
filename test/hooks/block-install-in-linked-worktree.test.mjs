@@ -466,10 +466,43 @@ test('a NESTED node_modules symlink blocks, not only the root one', () => {
     const r = runHook('npm install', worktree);
     assert.equal(r.status, 2, `expected block, got ${r.status}: ${r.stderr}`);
     assert.match(r.stderr, /packages\/server\/node_modules is a SYMLINK/);
-    assert.match(r.stderr, /find \. -maxdepth 4 -type l -name node_modules -delete/, 'the remedy removes them ALL');
+    assert.match(r.stderr, /find \. -maxdepth 5 -type l -name node_modules -delete/, 'the remedy removes them ALL');
     // COUNTERFACTUAL: the same layout with a real nested directory passes.
     rmSync(join(worktree, 'packages', 'server', 'node_modules'));
     mkdirSync(join(worktree, 'packages', 'server', 'node_modules'));
     assert.equal(runHook('npm install', worktree).status, 0);
+  } finally { rmSync(root, { recursive: true, force: true }); }
+});
+
+test('sees a nested symlink at PATH DEPTH 5, where the link script can plant one', () => {
+  // findNodeModules walks directories to depth 4 and pushes <dir>/node_modules,
+  // one level deeper, so `packages/ui/packages/registry/node_modules` is a real
+  // planted shape. The probe used -maxdepth 4 and was blind to it; the two
+  // depths must come from the same fact.
+  const root = mkdtempSync(join(tmpdir(), 'install-gate-depth5-'));
+  const primary = join(root, 'primary');
+  const worktree = join(root, 'worktree');
+  mkdirSync(join(primary, 'packages', 'ui', 'packages', 'registry', 'node_modules'), { recursive: true });
+  mkdirSync(join(worktree, 'packages', 'ui', 'packages', 'registry'), { recursive: true });
+  mkdirSync(join(worktree, 'node_modules'), { recursive: true }); // REAL root tree
+  writeFileSync(join(worktree, 'package.json'), '{"name":"w"}\n');
+  symlinkSync(
+    join(primary, 'packages', 'ui', 'packages', 'registry', 'node_modules'),
+    join(worktree, 'packages', 'ui', 'packages', 'registry', 'node_modules'),
+  );
+  try {
+    assert.equal(runHook('npm install', worktree).status, 2);
+  } finally { rmSync(root, { recursive: true, force: true }); }
+});
+
+test('a HERE-STRING is not a heredoc opener', () => {
+  // `<<<foo` matched the heredoc regex from its second `<`, so the scrubber
+  // swallowed every following line until one equalled `foo`, and an install on
+  // the next line failed open.
+  const { root, worktree } = makeLinkedPair();
+  try {
+    assert.equal(runHook('grep x <<<foo\nnpm ci', worktree).status, 2);
+    // The real heredoc behaviour is unchanged.
+    assert.equal(runHook("cat > doc.md <<'EOF'\nnpm install\nEOF", worktree).status, 0);
   } finally { rmSync(root, { recursive: true, force: true }); }
 });

@@ -151,7 +151,7 @@ function linkAwareReinstallFix(appDir) {
       'node_modules here is a SYMLINK at another checkout, so do NOT run `npm install`: it would act ' +
       'on that checkout, not this one (#1442). Either reinstall in the checkout that owns the tree, ' +
       'or remove every node_modules symlink first, nested ones included ' +
-      '(`find . -maxdepth 4 -type l -name node_modules -delete`), and install here.' + linkScriptHint(appDir)
+      '(`find . -maxdepth 5 -type l -name node_modules -delete`), and install here.' + linkScriptHint(appDir)
     );
   }
   return 'Reinstall dependencies (`npm install`, or remove node_modules and reinstall).';

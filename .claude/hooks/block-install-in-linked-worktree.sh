@@ -112,6 +112,10 @@ scrubbed=$(printf '%s' "$cmd" | awk '
       if ((inS || inD) && (c == "&" || c == "|" || c == ";" || c == "(" || c == ")")) { out = out "\001"; continue }
       out = out c
     }
+    # A HERE-STRING is not a heredoc: `<<<word` would otherwise match the
+    # heredoc regex from its second `<` and swallow every following line until
+    # one equals `word`. Blank the operator and its word first.
+    gsub(/<<<[^[:space:]]*/, " ", out)
     if (match(out, /<<-?[[:space:]]*[A-Za-z_][A-Za-z0-9_]*/)) {
       tag = substr(out, RSTART, RLENGTH)
       sub(/^<<-?[[:space:]]*/, "", tag)
@@ -157,6 +161,10 @@ while IFS= read -r seg; do
         # the bare-yarn branch. `command`, `exec`, `bash` and `sh` are NOT
         # wrappers for that reason, so `command -v yarn` stays allowed and
         # `bash -c "npm ci"` is an accepted gap rather than a nested-shell parser.
+        # A QUOTED command substitution, `git commit -m "$(npm ci)"`, is the same
+        # accepted class: it executes, and the quote pass defuses it, and parsing
+        # nested execution contexts is the road this hook stays off. The unquoted
+        # form already blocks, since its parens split it into command position.
         if [ "$wrapper_seen" = "1" ] && [ "$prev_flag" = "1" ]; then prev_flag=0; strip=1; fi ;;
     esac
     [ "$strip" = "1" ] || break
@@ -271,7 +279,11 @@ for dir in "$target" "$top"; do
   if [ -L "$dir/node_modules" ]; then
     hit="$dir/node_modules"
   else
-    hit=$(find "$dir" -maxdepth 4 \( -type d \( -name .git -o -name node_modules \) \) -prune -o -type l -name node_modules -print 2>/dev/null | head -1)
+    # Depth 5, NOT 4: the link script walks directories to depth 4 and plants
+    # <dir>/node_modules, one level deeper. packages/ui/packages/registry is the
+    # live shape. These two depths must agree or the gate is blind to links the
+    # script itself creates.
+    hit=$(find "$dir" -maxdepth 5 \( -type d \( -name .git -o -name node_modules \) \) -prune -o -type l -name node_modules -print 2>/dev/null | head -1)
   fi
   [ -n "$hit" ] || continue
   owner=$(cd "$(dirname "$hit")" 2>/dev/null && cd "$(readlink "$(basename "$hit")")" 2>/dev/null && pwd -P) || owner="the checkout it points at"
@@ -286,7 +298,7 @@ for dir in "$target" "$top"; do
     echo "  npm run worktree:link          links a fresh worktree; it never installs"
     echo "  a real install with NO symlink in the way. The link script plants NESTED"
     echo "  node_modules links too (packages/server, website, ...), so remove them ALL first:"
-    echo "    find . -maxdepth 4 -type l -name node_modules -delete"
+    echo "    find . -maxdepth 5 -type l -name node_modules -delete"
     echo "  (they are only links, nothing else is lost), or install in the PRIMARY checkout."
     echo "A GLOBAL install (-g) is not affected by this and is never blocked."
     echo "Escape hatch for a deliberate exception: WEBJS_NO_WORKTREE_INSTALL_GATE=1."
