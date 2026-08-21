@@ -178,7 +178,7 @@ test('webjs-instagram-post stays quiet without instagram intent', () => {
   assert.ok(!routed(ctx, 'webjs-instagram-post'), 'non-instagram publish must not route to instagram');
 });
 
-test('code-review routes on review phrases', () => {
+test('pr-review routes on review phrases', () => {
   for (const p of [
     'review the PR',
     'review my changes',
@@ -187,8 +187,41 @@ test('code-review routes on review phrases', () => {
     'review the branch',
   ]) {
     const { ctx } = run(p);
-    assert.ok(routed(ctx, 'code-review'), `expected code-review route for: ${p}`);
+    assert.ok(routed(ctx, 'pr-review'), `expected pr-review route for: ${p}`);
   }
+});
+
+// The routing test above only proves a skill NAMED pr-review is reached. It
+// says nothing about what the injected directive tells the model to DO, and
+// the rules below are the whole point of the skill: reviews happen inline,
+// the reviewer only reviews, and it never blocks on CI. Nothing else in the
+// suite would notice if a round count, a reviewer subagent, or a CI wait
+// were put back, so both carriers of those rules are pinned here.
+//
+// This replaces test/hooks/review-loop-exit.test.mjs, which guarded the
+// previous review cycle's load-bearing wording across the same two files and
+// caught them drifting apart once.
+test('the pr-review directive and skill both keep the review contract', () => {
+  const { ctx } = run('review the PR');
+  const directive = ctx.split('\n').find((l) => l.startsWith('- pr-review:'));
+  assert.ok(directive, 'expected a pr-review directive line');
+  const skill = readFileSync(resolve(REPO, '.claude/skills/pr-review/SKILL.md'), 'utf8');
+
+  // Inline, never delegated: a subagent reviewer is what this replaced.
+  assert.match(directive, /NEVER spawn a reviewer subagent/);
+  assert.match(skill, /Never spawn a reviewer subagent/i);
+  // One read, not a cycle. A round count coming back is the regression.
+  assert.match(directive, /NEVER run a multi-round review cycle/);
+  assert.match(skill, /never run a multi-round\s+review cycle/i);
+  // Review only: fixing the findings is the author's job, on a separate ask.
+  assert.match(directive, /does not fix findings/);
+  assert.match(skill, /\*\*Review only\.\*\* The reviewer never fixes what it finds/);
+  // Never blocks on CI, which is the merge gate's business.
+  assert.match(directive, /never waits on or reports CI/);
+  assert.match(skill, /\*\*No CI\.\*\* Never wait on, read, or report CI/);
+  // The output is a real GitHub review object, not a chat-only reply.
+  assert.match(directive, /post the review through the GitHub review API as ONE review object/);
+  assert.match(skill, /pulls\/<N>\/reviews/);
 });
 
 test('verify routes on verify / dogfood phrases', () => {
@@ -234,13 +267,14 @@ test('every skill the hook can route to is committed in-repo (no dangling refere
   // The hook names skills it routes to; each PROJECT skill MUST have a
   // committed `.claude/skills/<name>/SKILL.md`, or a fresh clone routes a
   // prompt at a skill that does not exist (the #543 portability bug). The
-  // regex matches only project-skill names (webjs-* and use-railway);
-  // built-in Claude Code skills the hook also routes (code-review, verify)
-  // ship with the CLI for everyone, so they are intentionally exempt.
+  // regex matches only project-skill names (webjs-*, use-railway,
+  // pr-review); the built-in Claude Code skill the hook also routes
+  // (verify) ships with the CLI for everyone, so it is intentionally
+  // exempt.
   // Extract the project-skill names from the hook source and assert each is
   // present in the repo.
   const hookSrc = readFileSync(HOOK, 'utf8');
-  const names = [...new Set((hookSrc.match(/\b(?:webjs-[a-z-]+|use-railway)\b/g) || []))];
+  const names = [...new Set((hookSrc.match(/\b(?:webjs-[a-z-]+|use-railway|pr-review)\b/g) || []))];
   assert.ok(names.length >= 4, `expected the hook to reference its skills; found ${names.join(', ')}`);
   for (const name of names) {
     const skillFile = resolve(REPO, '.claude/skills', name, 'SKILL.md');

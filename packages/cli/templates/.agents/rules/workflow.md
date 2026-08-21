@@ -59,9 +59,10 @@ Read `AGENTS.md` first. Full hosted docs are at https://webjs.dev/docs.
    tsconfig), either of which would 500 the app at runtime. Everything else it
    reports is a warning that cannot fail the build. Widen or narrow the gate in
    `package.json` rather than in the workflow.
-5. Pre-merge self-review: before saying a PR is ready, run fresh-context review
-   rounds until one round finds zero issues (minimum two rounds, rotate focus).
-   Skip only for a one-line trivial change.
+
+How a PR gets REVIEWED is deliberately not specified here. Use whatever your
+team already does. WebJs has opinions about the code (the conventions above,
+`webjs check`, the test layers) and none about your review process.
 
 ## Git rules
 

@@ -192,22 +192,20 @@ if printf '%s' "$lc" | grep -q 'instagram' \
   add_match "webjs-instagram-post: the request is to publish to the WebJs Instagram account. Invoke the webjs-instagram-post skill. Every post is SEO-only, so ALWAYS create a fresh branded image plus a keyword-rich caption, host the JPEG at a public HTTPS URL, and CONFIRM the image and caption with the user before the public publish. Never print or commit the access token."
 fi
 
-# --- code-review: review the diff before a PR is ready ------------------
+# --- pr-review: review a PR inline, posted via the GitHub API -----------
 # Triggers: review the PR/diff/branch/changes, code review, look it over
-# for bugs. Reviewing every change before it is marked ready is a standing
-# expectation, and a review is the CYCLE the webjs-start-work skill
-# defines: one reviewer over the whole diff, a minor-or-must-fix call, and
-# at most one delta round on the fixes, escalating to delta rounds plus a
-# final whole-diff review only when the change shows it needs them. This
-# directive and the skill must not resolve a case differently, which they
-# once did for the final fix-check; test/hooks/review-loop-exit.test.mjs
-# asserts the shared wording of the rules that decide when the cycle ends.
-# code-review is a built-in Claude Code skill (no in-repo SKILL.md, so the
-# portability test that guards project skills does not cover it).
+# for bugs. The owner reviews every PR themselves before merge; when they
+# ask THIS agent for a review, the pr-review skill runs it like a human
+# reviewer working over the GitHub API instead of the dashboard: one
+# inline read, one posted review object (summary plus line-anchored
+# comments with suggestion blocks). Review only: no reviewer subagent,
+# no multi-round cycle, no fixing findings, no waiting on CI. The skill
+# is agent-agnostic (plain gh/REST) and committed at
+# .claude/skills/pr-review, exposed cross-agent via .agents/skills/.
 if has '(review|audit) (the |my |this )?(pr|diff|branch|change|changes|code|commit)' \
    || has 'code ?review' \
    || has '(review|look) .{0,20}(over )?for (bug|issue|correctness|regression)'; then
-  add_match "code-review: the request is to review code. Invoke the code-review skill (it reviews the diff for correctness bugs plus reuse and simplification). A review of a PR runs the webjs-start-work review cycle, which is ONE fresh reviewer over the whole diff, never a fleet, and which defaults to its FAST shape because every round costs about 10 minutes and the owner should not have to ask for a short cycle. Fast shape: round 1 reads the whole diff; only a MUST-FIX fix buys a round and it buys exactly ONE, delta-scoped to those fix commits alone; a round whose fixes were all minor ends the cycle instead; then stop. A clean or minor-only round 1 therefore finishes with ONE review, which is the intended common case. Speed comes from running fewer rounds, never from lowering the bar inside a round. Escalate to the THOROUGH shape when the owner asks for a thorough or full review, or round 1 produced two or more must-fix findings or the one delta round produced any, or the diff touches the serializer, SSR or action dispatch, auth or session, the client router, or the elision analyser. Thorough shape: each later round is delta-scoped to the previous round's fix commits, and the first round that produces no fixes, whether it found nothing must-fix or everything it found was rejected or deferred, buys a FINAL review over the whole diff again. The code-review skill's findings feed that cycle as auxiliary input, not as a round of it. Every reviewer is spawned with the Agent tool as subagent_type general-purpose, model opus (Opus 5, never fable), run_in_background true, and isolation worktree. Judge each finding MINOR or MUST-FIX by SURFACE, never by importance: must-fix when it touches source, a test's ability to observe the defect it claims to cover, or a factual claim about runtime behavior in docs; minor for wording, naming, comment style, and nits about the review artifacts; when it could go either way it is must-fix. Only a FIX buys another round, since only a fix changed the branch, and a delta chain that keeps producing fixes stops after the fifth delta round, unfinished, rather than continuing; a rejection buys one refuter instead, and a deferral and a minor finding buy nothing. After the final review, a must-fix finding is fixed and gets ONE delta check of that fix alone; the cycle ends when nothing must-fix is left open, meaning the check came back with nothing or there was no fix to check because every must-fix finding the final review raised was rejected or deferred; a check that does find something must-fix gets that fixed and one more check of the same shape, and only if that one also finds something must-fix do you stop and report the PR unfinished. Do not file follow-up issues for review findings that are out of scope; report them to the owner, who decides, and fold a small same-file tweak into the PR. Never report the PR ready off a round that found something must-fix."
+  add_match "pr-review: the request is to review code. Invoke the pr-review skill and perform the review YOURSELF, inline in this session. NEVER spawn a reviewer subagent and NEVER run a multi-round review cycle. When the target is a pull request, post the review through the GitHub review API as ONE review object, a summary plus line-anchored comments that highlight the code to fix and carry suggestion blocks where a concrete replacement is obvious, exactly as the skill specifies. The reviewer ONLY reviews: it does not fix findings, does not resolve threads, and never waits on or reports CI. For a local diff with no PR, review inline and report the findings in the conversation instead. The owner decides what gets fixed, and fixing is separate work on a separate ask."
 fi
 
 # --- verify: prove the change works by running the app ------------------
