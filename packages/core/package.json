@@ -1,6 +1,6 @@
 {
   "name": "@webjsdev/core",
-  "version": "0.7.52",
+  "version": "0.7.53",
   "type": "module",
   "description": "The runtime for WebJs, a full-stack JavaScript framework built on web components with server-side rendering and no build step. Ships the html and css template tags, the WebComponent base class, signals, directives, and the isomorphic renderers.",
   "types": "./index.d.ts",
