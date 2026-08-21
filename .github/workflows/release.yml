@@ -48,6 +48,10 @@ on:
         description: 'Only (re)publish the unscoped wrappers (create-webjs, webjsdev) at the current @webjsdev/cli version. Use to recover a release whose wrapper publish did not land.'
         type: boolean
         default: false
+      republish_paths:
+        description: 'Space or comma separated changelog paths to (re)publish to npm, e.g. "changelog/core/0.7.52.md changelog/server/0.8.66.md". Recovery path for a release whose npm publish failed. Leave empty for a normal run.'
+        type: string
+        default: ''
 
 permissions:
   contents: write   # gh release create needs write access to the repo
@@ -89,14 +93,46 @@ jobs:
         id: diff
         run: |
           set -euo pipefail
-          # Two modes:
+          # Three modes:
           #   1. push event: diff HEAD~1..HEAD for newly added changelog files.
           #   2. workflow_dispatch with bootstrap_github_packages=true: list
           #      every changelog/**.md file currently in the tree. The
           #      publish-github-packages.js step is idempotent (skips
           #      already-published versions) so a re-run is safe.
+          #   3. workflow_dispatch with republish_paths set: publish exactly
+          #      the named files. This is the recovery path for a release
+          #      whose npm publish failed, and it exists because RE-RUNNING
+          #      the failed run does NOT work: a re-run replays the workflow
+          #      file from its ORIGINAL commit, so a run that predates a fix
+          #      to this file never sees the fix. Every publish script is
+          #      idempotent, so naming an already-published version is a
+          #      no-op rather than an error.
           BOOTSTRAP='${{ inputs.bootstrap_github_packages }}'
-          if [ "$BOOTSTRAP" = 'true' ]; then
+          REPUBLISH='${{ inputs.republish_paths }}'
+          if [ -n "$REPUBLISH" ]; then
+            # Validate every path BEFORE publishing anything: a typo that
+            # silently published nothing would look identical to success.
+            mapfile -t REQUESTED < <(printf '%s' "$REPUBLISH" | tr ', ' '\n\n' | grep -v '^$')
+            for f in "${REQUESTED[@]}"; do
+              if [ ! -f "$f" ]; then
+                echo "republish_paths: no such changelog file: $f" >&2
+                exit 1
+              fi
+            done
+            # Sort the requested set by `date:` ASC exactly as the push path
+            # does, so core still publishes before server and the npm
+            # `latest` tag lands on the newest version rather than whichever
+            # was typed last.
+            mapfile -t NEW < <(
+              printf '%s\n' "${REQUESTED[@]}" \
+                | while read -r f; do
+                    ts=$(awk '/^date:/ { print $2; exit }' "$f")
+                    printf '%s\t%s\n' "$ts" "$f"
+                  done \
+                | sort -k1,1 -k2,2r \
+                | cut -f2-
+            )
+          elif [ "$BOOTSTRAP" = 'true' ]; then
             mapfile -t NEW < <(
               find changelog -name '*.md' -not -name 'README.md' \
                 | while read -r f; do

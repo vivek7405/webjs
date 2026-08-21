@@ -316,6 +316,14 @@ Three things this couples, all of which break every publish if changed carelessl
 
 A brand-new package generally cannot be created by trusted publishing, so its FIRST publish may need a one-off manual one before its Trusted Publisher configuration takes over.
 
+**Recovering a release whose npm publish failed: use the `republish_paths` dispatch input, NOT a re-run.** Re-running the failed run does not work, and the reason is easy to miss: a re-run replays the workflow file from its ORIGINAL commit, so a run that predates a fix to `release.yml` never sees the fix, however long ago it was merged. Merging a fix does not re-trigger anything either, since the workflow fires only on a push touching `changelog/**`. So run the workflow from the Actions tab with `republish_paths` set to the changelog files to publish:
+
+```
+changelog/core/0.7.52.md changelog/core/0.7.53.md changelog/server/0.8.66.md
+```
+
+Space or comma separated. Every path is validated to exist before anything publishes, because a typo that silently published nothing would look exactly like success. The set is then sorted by its `date:` frontmatter ASC, the same ordering the push path uses, so core still publishes before server and npm's `latest` tag lands on the newest version rather than on whichever path was typed last. Every publish script is idempotent, so naming an already-published version is a no-op. Listing a `cli` changelog also republishes the two unscoped wrappers at that cli version.
+
 This replaced a `NPM_TOKEN` repo secret that expired at npm's 90-day cap on granular write tokens and silently failed two consecutive releases (#1456). Tokens were a dead end regardless: npm removes direct publishing for bypass-2FA tokens around January 2027, leaving only OIDC or a staged publish that a human approves with 2FA.
 
 **When `server` or the scaffold consumes a NEW `@webjsdev/core` export, core MUST publish first.** `packages/server/src/dev/handler.js` and `context.js` import core symbols statically (`setAssetUrlProvider`, `setCspNonceProvider`), and `webjs create` emits an app that imports them too. A server published against an older core dies at module load with `does not provide an export named ...`, and a cli published first makes every freshly scaffolded app 500 on every route. Two things force the right order:
