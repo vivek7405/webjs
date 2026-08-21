@@ -68,7 +68,8 @@ guessing.
 All over REST (in repos that budget GraphQL, these cost nothing there):
 
 ```sh
-gh api repos/<owner>/<repo>/pulls/<N> --jq '.title, .body, .head.sha, .user.login'
+gh api repos/<owner>/<repo>/pulls/<N> \
+  --jq '.title, .body, .head.sha, .head.repo.full_name, .user.login'
 gh api repos/<owner>/<repo>/pulls/<N> -H "Accept: application/vnd.github.diff"
 ```
 
@@ -77,11 +78,17 @@ so each edit is judged in context. Read locally if the branch happens to
 be checked out, else through the contents API:
 
 ```sh
-gh api "repos/<owner>/<repo>/contents/<path>?ref=<head-branch>" --jq .content | base64 -d
+gh api "repos/<head-repo>/contents/<path>?ref=<head-sha>" --jq .content | base64 -d
 ```
 
-Capture `head.sha` from the first call. The review is posted against it
-(`commit_id`), which pins every comment to the exact code you read.
+Address the HEAD repo at the HEAD sha, not the base repo at a branch
+name. A fork PR's branch does not exist in the base repo, so a
+branch-name ref there 404s, and a sha pins every read to the exact
+commit the review is posted against. Both values come from the first
+call (`.head.repo.full_name`, `.head.sha`); on a same-repo PR the head
+repo IS `<owner>/<repo>`, so one form covers both cases.
+
+Capture `head.sha` from the first call for `commit_id` too.
 
 ### 3. Review the whole diff, yourself
 
