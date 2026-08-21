@@ -58,7 +58,10 @@ for (const template of TEMPLATES) {
     try {
       await scaffoldApp('demo', cwd, { template, install: false });
       const pkg = JSON.parse(await readFile(join(cwd, 'demo', 'package.json'), 'utf8'));
-      // The generated tsconfig carries comments, so it is JSONC rather than JSON.
+      // The generator emits plain JSON today (JSON.stringify, no comments),
+      // but tsconfig.json is JSONC by convention, so parse defensively: a
+      // comment added to the output later must red an assertion here, never
+      // crash the parse.
       const tsconfigRaw = await readFile(join(cwd, 'demo', 'tsconfig.json'), 'utf8');
       const options = Object.keys(JSON.parse(stripJsonComments(tsconfigRaw)).compilerOptions);
 
@@ -123,8 +126,10 @@ function compare(a, b) {
 }
 
 /**
- * Strip `//` and block comments from JSONC. Deliberately string-aware, so a
- * `//` inside a value (a url in a comment-free option) is not eaten.
+ * Strip `//` and block comments from JSONC. The generated tsconfig has none
+ * today, so this is a no-op on it; it exists so a comment added to the output
+ * later degrades to a failed assertion instead of a parse crash. String-aware,
+ * so a `//` inside a value is not eaten.
  */
 function stripJsonComments(text) {
   let out = '';
