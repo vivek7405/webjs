@@ -9,6 +9,14 @@
  * check whether that version is already on the npm registry, skip
  * if yes, publish if no.
  *
+ * It ALSO skips when the workspace's package.json has moved past the
+ * version this file names, because `npm publish` ships the tree's
+ * version rather than the changelog's. That only matters on the
+ * `republish_paths` recovery path in .github/workflows/release.yml,
+ * where an older changelog file can be named deliberately; on the
+ * normal release path the bump and its changelog land in one commit,
+ * so the two are always equal.
+ *
  * Auth: relies on the standard `npm publish` token resolution
  * (NODE_AUTH_TOKEN env var via setup-node's .npmrc on CI, or
  * `npm login` locally). The script does not write any .npmrc.
@@ -66,6 +74,56 @@ if (!pkgName || !version) {
   process.exit(2);
 }
 
+// The version `npm publish` actually ships is the one in the WORKSPACE's
+// package.json, never the one this changelog file is named for. Those agree
+// on the normal release path, where the bump and its generated changelog land
+// in the same commit, so nothing here ever noticed they were two different
+// numbers. They diverge the moment an OLDER changelog file is republished,
+// and the old code published the tree's version while logging the changelog's:
+// republishing changelog/core/0.7.52.md shipped 0.7.53 under the line
+// `published @webjsdev/core@0.7.52`, and the next file in the batch then died
+// with `E403 cannot publish over the previously published versions: 0.7.53`,
+// taking every remaining package with it under `set -e`.
+//
+// So refuse to publish when the tree has moved on. Resolve the version through
+// the SAME `--workspace=` lookup `npm publish` uses, rather than guessing the
+// directory from the package name, so this compares exactly what would be sent
+// (`packages/<pkg>` for most, `packages/editors/intellisense` and
+// `packages/wrappers/*` for the rest).
+//
+// This runs BEFORE the registry check, so it needs no network: a version whose
+// source is gone cannot be published whatever the registry says.
+const treeView = spawnSync(
+  'npm', ['pkg', 'get', 'version', `--workspace=${pkgName}`],
+  { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] },
+);
+let treeVersion = null;
+if (treeView.status === 0) {
+  try {
+    const parsed = JSON.parse(treeView.stdout);
+    // `npm pkg get --workspace=` answers `{"<name>": "<version>"}`; a bare
+    // string is accepted too in case that shape ever changes.
+    const v = typeof parsed === 'string' ? parsed : parsed[pkgName];
+    // Anything else parseable means the output shape drifted. Treat it like
+    // unparseable output (fail open, let the publish decide) rather than
+    // letting a non-string value trip the mismatch branch below, which would
+    // silently skip every publish while the workflow stays green.
+    treeVersion = typeof v === 'string' ? v : null;
+  } catch {
+    // Unparseable output is not proof of a mismatch, so fall through and let
+    // the publish itself decide. Failing open here keeps a workspace-resolution
+    // quirk from blocking a release that would otherwise be fine.
+  }
+}
+if (treeVersion && treeVersion !== version) {
+  console.log(
+    `[publish-npm] skip ${pkgName}@${version}: the workspace holds ${treeVersion}, ` +
+    `so ${version} can no longer be published from this tree ` +
+    `(publishing would ship ${treeVersion} under the wrong name)`,
+  );
+  process.exit(0);
+}
+
 // Idempotency: is this version already on the registry?
 // `npm view <pkg>@<version> version` prints the version on success,
 // non-zero exit on 404. We swallow stderr to avoid noisy "E404" log.
@@ -89,4 +147,8 @@ if (pub.status !== 0) {
   console.error(`[publish-npm] npm publish failed for ${pkgName}@${version}`);
   process.exit(pub.status || 1);
 }
-console.log(`[publish-npm] published ${pkgName}@${version} (${basename(file)})`);
+// Report the version that was actually SHIPPED, not the one this file is named
+// for. The guard above makes them equal, so this is belt and braces: the old
+// line took its number from the changelog filename unconditionally, which is
+// what let a publish of the wrong version read as a success in the log.
+console.log(`[publish-npm] published ${pkgName}@${treeVersion ?? version} (${basename(file)})`);
