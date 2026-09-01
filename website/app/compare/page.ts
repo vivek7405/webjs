@@ -21,7 +21,7 @@ export default async function Compare() {
   const comparisons = await listComparisons();
   return html`
     <main id="main" tabindex="-1" class="${READING} py-12 focus:outline-none">
-      ${pageHeader('How WebJs compares', 'Honest head-to-head write-ups: where WebJs agrees with each framework, where it genuinely differs, and who should pick which. No trashing the alternative, and each one says where the other tool is the better call.', 'Compare')}
+      ${pageHeader('How WebJs compares', 'Honest head-to-head write-ups: where WebJs agrees with each framework, where it genuinely differs, and who should pick which. No trashing the alternative, and each one says where the other tool is the better call.')}
 
       ${comparisons.length === 0
         ? html`<p class="text-fg-subtle italic">No comparisons yet.</p>`
