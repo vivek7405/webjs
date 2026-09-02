@@ -83,6 +83,13 @@ export const BASE_CSS = `
     display:flex; flex-direction:column;
   }
   .top{ display:flex; align-items:center; justify-content:space-between; }
+  /* The middle block is spaced from BOTH neighbours here rather than in each
+     card. When the cards owned it, buying clearance above the footer was paid
+     for out of the gap under the lockup, and the headline collided with it. */
+  .mid{
+    flex:1; display:flex; flex-direction:column; justify-content:center;
+    gap:26px; padding-top:30px;
+  }
   .brand{ display:flex; align-items:center; }
   .brand svg{ height:40px; width:auto; display:block; }
   /* The kicker sits opposite the lockup on every card. It is the one line that
@@ -100,7 +107,13 @@ export const BASE_CSS = `
   }
   .foot .tags{ display:flex; align-items:center; gap:10px; text-transform:uppercase; }
   .dot{ width:7px; height:7px; border-radius:50%; background:${T.accent}; }
-  hr{ border:0; border-top:1px solid ${T.border}; margin-bottom:24px; }
+  /* Both sides, not just the one. With margin-bottom alone the rule kept its
+     distance from the footer text and none at all from whatever the middle
+     block ended on, so a card whose middle ends in a bordered panel had two
+     lines nearly touching. The middle block is flex:1, so this space is taken
+     from it rather than added to the card, and the fit pass absorbs the
+     difference. */
+  hr{ border:0; border-top:1px solid ${T.border}; margin-top:28px; margin-bottom:24px; }
 `;
 
 /**
@@ -188,20 +201,39 @@ export async function renderCard({ css, body, tags, out, kicker = 'Built for the
     // every unfurl, with nothing in the render to signal it. Stepping down in
     // ones keeps a short headline exactly as it was drawn and costs a longer
     // one as little size as it can.
+    //
+    // The test is the FOOTER's bottom against the frame's padding box, not
+    // scrollHeight against clientHeight. That earlier test could never fail:
+    // the frame is a fixed-height flex container and body is overflow:hidden,
+    // so its scrollHeight is pinned to its clientHeight however far the content
+    // spills. The loop returned on its first iteration every time, and the
+    // cards had been quietly rendering their footers outside the bottom padding
+    // (605px against a 566px limit on the fullest one) with nothing to say so.
     titlePx = await page.evaluate(({ from, to }) => {
       const h1 = document.querySelector('h1');
       const frame = document.querySelector('.frame');
+      const foot = document.querySelector('.foot');
+      const limit =
+        frame.getBoundingClientRect().bottom - parseFloat(getComputedStyle(frame).paddingBottom);
       for (let px = from; px >= to; px -= 1) {
         h1.style.fontSize = px + 'px';
-        if (frame.scrollHeight <= frame.clientHeight) return px;
+        // Half a pixel of tolerance, since both sides are fractional.
+        if (foot.getBoundingClientRect().bottom <= limit + 0.5) return px;
       }
-      return to;
+      return null;
     }, fit);
     await page.screenshot({ path: big, clip: { x: 0, y: 0, width: 1200, height: 630 } });
   } finally {
     await browser.close();
   }
-  if (titlePx < fit.from) console.log(`Headline set at ${titlePx}px to fit the card.`);
+  // A null means even the smallest step overflowed, so the card needs less
+  // CONTENT rather than smaller type. Loud, because the render still produces a
+  // plausible-looking png with its footer cut off.
+  if (titlePx === null) {
+    console.warn(`WARNING: ${out} overflows at ${fit.to}px. Shorten the copy; the footer is clipped.`);
+  } else if (titlePx < fit.from) {
+    console.log(`Headline set at ${titlePx}px to fit the card.`);
+  }
 
   // Downscale the 2400x1260 capture to an exact 1200x630 for crisp text, strip
   // metadata, and use max PNG compression. PNG rather than WebP because it is

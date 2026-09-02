@@ -55,8 +55,7 @@ await renderCard({
   out: resolve(process.argv[2] || 'public/og.png'),
   fit: { from: 52, to: 30 },
   css: `${PANEL_CSS}
-  .frame{ padding:64px 76px; }
-  .mid{ flex:1; display:flex; flex-direction:column; justify-content:center; gap:30px; padding-top:34px; }
+  .frame{ padding:56px 76px; }
   h1{
     font-family:'Inter Tight',sans-serif; font-weight:800;
     /* Set by the fit pass, so this is a starting point rather than the

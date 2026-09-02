@@ -49,8 +49,7 @@ await renderCard({
   // over.
   fit: { from: 52, to: 30 },
   css: `${PANEL_CSS}
-  .frame{ padding:64px 76px; }
-  .mid{ flex:1; display:flex; flex-direction:column; justify-content:center; gap:30px; padding-top:34px; }
+  .frame{ padding:56px 76px; }
   h1{
     font-family:'Inter Tight',sans-serif; font-weight:800;
     font-size:52px; line-height:1.05; letter-spacing:-0.035em;
