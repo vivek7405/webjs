@@ -449,7 +449,7 @@ export default function LandingPage() {
              title's longest line from 768 up. Re-measure all of them before
              touching any of the three numbers; they are chosen against the wrap
              points, not picked. -->
-        <h1 class="font-display font-extrabold text-[clamp(1.5rem,0.53rem+5.5vw,4.125rem)] leading-[0.98] tracking-[-0.038em] mx-auto mt-2 mb-6 max-w-[64rem] text-balance">
+        <h1 class="font-display font-extrabold text-hero-h1 leading-[0.98] tracking-[-0.038em] mx-auto mt-2 mb-6 max-w-[64rem] text-balance">
           Conventions your agent follows.<br>Architecture you still own.
         </h1>
         <!-- Two sentences. The second one is the PAGE'S THESIS, and it took a

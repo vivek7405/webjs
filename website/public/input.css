@@ -78,6 +78,19 @@
   --text-section: clamp(20px, 3vw, 26px);
 
   --text-display: clamp(2.9rem, 1.55rem + 4.5vw, 5.5rem);
+  /* The marketing HERO h1, shared by /, /what-is-webjs and /why-webjs so the
+     three read as one page family. It is a SEPARATE step from --text-display
+     (which the /brand h1 still uses) because a hero headline and a page title
+     want different floors: this curve's floor is 1.5rem where --text-display's
+     is 2.9rem, and 2.9rem is reached by the preferred term at a 476px viewport,
+     so every phone rendered one identical size and the type stopped responding
+     exactly where it mattered.
+
+     It lived inline on the home page until the three heroes were aligned. The
+     numbers are solved against WRAP POINTS rather than picked, so the long
+     comment above the home h1 in app/page.ts is the reference for what each one
+     costs. Re-measure ALL THREE heroes before touching any of them now. */
+  --text-hero-h1: clamp(1.5rem, 0.53rem + 5.5vw, 4.125rem);
   --text-h2:      clamp(1.7rem, 1.2rem + 1.4vw, 2.5rem);
   /* Two lede steps, because the landing hero and a page lede are not the same
      role and were fighting over one number. The hero wants to be half the

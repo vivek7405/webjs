@@ -113,11 +113,11 @@ export default function Why() {
   return html`
     <main id="main" tabindex="-1" class="focus:outline-none">
 
-    <section class="text-center px-6 pt-12 md:pt-16 lg:pt-24 pb-10 md:pb-16">
-      <h1 class="font-display font-extrabold text-display leading-[1.04] tracking-[-0.035em] mx-auto mt-4 mb-4 max-w-[16ch] text-balance">
+    <section class="text-center px-6 pt-12 md:pt-20 lg:pt-28 pb-10 md:pb-16">
+      <h1 class="font-display font-extrabold text-hero-h1 leading-[1.04] tracking-[-0.035em] mx-auto mt-2 mb-4 max-w-[16ch] text-balance">
         The framework your AI agent already understands
       </h1>
-      <p class="text-lede leading-[1.6] text-fg-muted max-w-[56ch] mx-auto mb-8 text-pretty">
+      <p class="text-hero-lede leading-[1.6] text-fg-muted max-w-[56ch] mx-auto mb-8 text-pretty">
         WebJs is a full-stack JavaScript framework with no build step, so
         nothing is hidden from your agent. The framework ships in node_modules as
         plain JavaScript, so an agent opens the file it is calling instead of
