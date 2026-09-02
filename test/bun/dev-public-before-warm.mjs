@@ -40,14 +40,27 @@ const runtime = process.versions.bun ? `bun ${process.versions.bun}` : `node ${p
 // 9700-9949, dev-extra-watch 9750-9989 and dev-overlay-scope 9800-9979, which
 // overlap each other freely. That is pre-existing and not this file's to fix;
 // what this file can do is sit entirely ABOVE all of them. 9989 is the highest
-// port any of them reaches, so 10000-10255 cannot collide with any of the four
-// for any pair of pids. The per-pid offset is NOT doing that work and should
+// port any of them reaches, so 10100-10355 cannot collide with any of the four
+// for any pair of pids.
+//
+// The base ALSO has to clear 10080, and that is the constraint this file
+// learned the hard way. 10080 is the last entry on the WHATWG Fetch bad-ports
+// list, so `fetch()` rejects it with "bad port" before it opens a socket, and
+// no server is involved in the failure at all. The range used to be
+// 10000-10255, which contains it, so a run whose pid happened to be 80 mod 256
+// failed every request in this file with a TypeError that named nothing in the
+// code under test. It is about one run in 256 and deterministic given the pid,
+// which is exactly what makes it read as flake. Nothing above 10080 is blocked
+// (verified by scanning 9400-10700: 10080 is the only one), so any base past it
+// is permanently safe.
+//
+// The per-pid offset is NOT doing that work and should
 // not be credited with it: the node and bun runs are sequential steps and each
 // runner runs a given file once, so nothing here races for a port. It is only
 // defensive against a leftover socket from a prior run lingering in TIME_WAIT,
 // which is the same account `dev-hot-reload.mjs` gives of the identical
 // `base + pid % n` construct.
-const PORT = 10000 + (process.pid % 256);
+const PORT = 10100 + (process.pid % 256);
 const BASE = `http://localhost:${PORT}`;
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));

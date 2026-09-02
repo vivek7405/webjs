@@ -38,7 +38,13 @@ const __dirname = dirname(fileURLToPath(import.meta.url));
 const ROOT = resolve(__dirname, '../..');
 const CLI = join(ROOT, 'packages/cli/bin/webjs.js');
 const runtime = process.versions.bun ? `bun ${process.versions.bun}` : `node ${process.versions.node}`;
-const PORT = 9990 + (process.pid % 240);
+// Based past 10080, the last entry on the WHATWG Fetch bad-ports list, which
+// `fetch()` rejects with "bad port" before opening a socket. The range was
+// 9990-10229, which contains it, so a run whose pid landed there failed for a
+// reason unrelated to anything this file tests. See the longer account in
+// dev-public-before-warm.mjs, where it actually fired. Nothing above 10080 is
+// blocked, and 10400-10639 also stays clear of that file's 10100-10355.
+const PORT = 10400 + (process.pid % 240);
 const BASE = `http://localhost:${PORT}`;
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
