@@ -9,9 +9,13 @@ import { DOCS_START_PATH, GH_URL, NEW_TAB } from '#lib/links.ts';
  *
  * The developer pitch page. Where the home page shows the framework's shape
  * (progressive enhancement, the three-file stack, the weight stats), this page
- * makes the single argument that matters most for the AI era: an agent can read
- * the whole framework, so it needs no training data and no single blessed model
- * to build a WebJs app well.
+ * makes the single argument that matters most for the AI era: an agent reads the
+ * framework source it is calling, from the app's own node_modules at the version
+ * installed there, so it needs no training data and no single blessed model to
+ * build a WebJs app well. The claim is about LOCATION, not volume. Nothing reads
+ * the whole framework (see the comment above DESCRIPTION in app/layout.ts for
+ * the line counts), and the located version is the stronger claim anyway,
+ * because it holds however large the framework grows.
  *
  * It deliberately reuses the home page's design language (the KICKER label, the
  * section rhythm, the terminal "windows", the bento grid, and the closing CTA
