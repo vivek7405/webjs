@@ -238,7 +238,7 @@ export default function WhatIsWebJs() {
         <h1 class="font-display font-extrabold text-hero-h1 leading-[1.04] tracking-[-0.035em] mx-auto mt-2 mb-6 max-w-[14ch] text-balance">
           What is WebJs?
         </h1>
-        <p class="text-hero-lede leading-[1.6] text-fg-muted max-w-[56ch] mx-auto mb-6 text-pretty">
+        <p class="text-hero-lede leading-[1.3] text-fg-muted max-w-[64rem] mx-auto mb-6 text-balance">
           <strong class="text-fg font-semibold">WebJs is an AI-first full-stack JavaScript web
           framework built on web components.</strong> It server-renders every page and component to
           real HTML, needs no build step or bundler, and runs on Node 24+ or Bun.
