@@ -117,17 +117,17 @@ export function generateMetadata() {
       title: TITLE,
       description: DESCRIPTION,
       url: CANONICAL,
-      image: `${SITE_URL}/public/og.png`,
+      image: `${SITE_URL}/public/og-what.png`,
       'image:width': '1200',
       'image:height': '630',
-      'image:alt': 'WebJs, a full-stack JavaScript framework built on web components',
+      'image:alt': 'What is WebJs? An AI-first full-stack JavaScript web framework built on web components',
       'site_name': 'WebJs',
     },
     twitter: {
       card: 'summary_large_image',
       title: TITLE,
       description: DESCRIPTION,
-      image: `${SITE_URL}/public/og.png`,
+      image: `${SITE_URL}/public/og-what.png`,
     },
     jsonLd: [
       {
