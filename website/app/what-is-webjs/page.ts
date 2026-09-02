@@ -244,8 +244,9 @@ export default function WhatIsWebJs() {
           real HTML, needs no build step or bundler, and runs on Node 24+ or Bun.
         </p>
         <p class="text-base leading-[1.7] text-fg-muted max-w-[56ch] mx-auto mb-8 text-pretty">
-          Nothing is hidden from your agent. The framework ships in node_modules as plain
-          JavaScript, so an agent opens the router or the renderer it is calling instead of
+          You get production-ready architecture from your very first prompt, and none of it is
+          hidden from your agent. The framework ships in node_modules as plain JavaScript, so
+          an agent opens the router or the renderer it is calling instead of
           recalling an API from training data, and your app code is served to the browser
           exactly as written. Any model debugs the running app against the real source, with
           no single blessed model, on the web components and standard HTML every model
