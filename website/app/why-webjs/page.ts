@@ -114,16 +114,19 @@ export default function Why() {
     <main id="main" tabindex="-1" class="focus:outline-none">
 
     <section class="text-center px-6 pt-12 md:pt-20 lg:pt-28 pb-10 md:pb-16">
-      <h1 class="font-display font-extrabold text-hero-h1 leading-[1.04] tracking-[-0.035em] mx-auto mt-2 mb-4 max-w-[16ch] text-balance">
+      <h1 class="font-display font-extrabold text-hero-h1 leading-[1.04] tracking-[-0.035em] mx-auto mt-2 mb-6 max-w-[64rem] text-balance">
         The framework your AI agent already understands
       </h1>
-      <p class="text-hero-lede leading-[1.3] text-fg-muted max-w-[64rem] mx-auto mb-8 text-balance">
-        WebJs is a full-stack JavaScript framework with no build step, so
-        nothing is hidden from your agent. The framework ships in node_modules as
-        plain JavaScript, so an agent opens the file it is calling instead of
-        recalling an API from training data, and your app code is served to the
-        browser exactly as written. Any model debugs the running app against the
-        real source, on the web components and standard HTML it already knows.
+      <p class="text-hero-lede leading-[1.3] text-fg-muted max-w-[64rem] mx-auto mb-6 text-balance">
+        <strong class="text-fg font-semibold">WebJs is a full-stack JavaScript framework with no
+        build step, so nothing is hidden from your agent.</strong> The framework ships in
+        node_modules as plain JavaScript, at the version your app installed.
+      </p>
+      <p class="text-base leading-[1.7] text-fg-muted max-w-[56ch] mx-auto mb-8 text-pretty">
+        An agent opens the file it is calling instead of recalling an API from training data,
+        and your app code is served to the browser exactly as written. Any model debugs the
+        running app against the real source, on the web components and standard HTML it
+        already knows.
       </p>
       <div class="flex gap-3 justify-center flex-wrap mb-8">
         <a class=${BTN_PRIMARY} href=${DOCS_START_PATH}>
