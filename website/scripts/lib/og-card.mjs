@@ -123,11 +123,9 @@ export const PANEL_CSS = `
     padding:24px 26px; display:flex; flex-direction:column; gap:12px;
   }
   .clabel{
-    display:flex; align-items:center; gap:9px;
     font-family:'JetBrains Mono',monospace; font-weight:500;
     font-size:14px; letter-spacing:0.1em; text-transform:uppercase; color:${T.accent};
   }
-  .cnum{ color:${T.fgSubtle}; }
   .ctext{ font-size:21px; line-height:1.42; color:${T.fg}; font-weight:400; }
   .ctext .q{ color:${T.fgMuted}; }
   .mono{ font-family:'JetBrains Mono',monospace; font-size:0.86em; color:${T.fgMuted}; }
@@ -137,8 +135,8 @@ export const PANEL_CSS = `
 export const panels = (facts) => `<div class="cards">
         ${facts
           .map(
-            (f, i) => `<div class="card">
-          <div class="clabel"><span class="cnum">0${i + 1}</span> ${f.label}</div>
+            (f) => `<div class="card">
+          <div class="clabel">${f.label}</div>
           <div class="ctext">${f.text}</div>
         </div>`,
           )
