@@ -117,17 +117,17 @@ export function generateMetadata() {
       title: TITLE,
       description: DESCRIPTION,
       url: CANONICAL,
-      image: `${SITE_URL}/public/og.png`,
+      image: `${SITE_URL}/public/og-what.png`,
       'image:width': '1200',
       'image:height': '630',
-      'image:alt': 'WebJs, a full-stack JavaScript framework built on web components',
+      'image:alt': 'What is WebJs? An AI-first full-stack JavaScript web framework built on web components',
       'site_name': 'WebJs',
     },
     twitter: {
       card: 'summary_large_image',
       title: TITLE,
       description: DESCRIPTION,
-      image: `${SITE_URL}/public/og.png`,
+      image: `${SITE_URL}/public/og-what.png`,
     },
     jsonLd: [
       {
@@ -234,18 +234,19 @@ export default function WhatIsWebJs() {
   return html`
     <main id="main" tabindex="-1" class="focus:outline-none">
 
-      <section class="text-center px-6 pt-12 md:pt-16 lg:pt-24 pb-10 md:pb-16">
-        <h1 class="font-display font-extrabold text-display leading-[1.04] tracking-[-0.035em] mx-auto mt-4 mb-6 max-w-[14ch] text-balance">
+      <section class="text-center px-6 pt-12 md:pt-20 lg:pt-28 pb-10 md:pb-16">
+        <h1 class="font-display font-extrabold text-hero-h1 leading-[1.04] tracking-[-0.035em] mx-auto mt-2 mb-6 max-w-[14ch] text-balance">
           What is WebJs?
         </h1>
-        <p class="text-lede leading-[1.6] text-fg-muted max-w-[56ch] mx-auto mb-6 text-pretty">
+        <p class="text-hero-lede leading-[1.3] text-fg-muted max-w-[64rem] mx-auto mb-6 text-balance">
           <strong class="text-fg font-semibold">WebJs is an AI-first full-stack JavaScript web
           framework built on web components.</strong> It server-renders every page and component to
           real HTML, needs no build step or bundler, and runs on Node 24+ or Bun.
         </p>
         <p class="text-base leading-[1.7] text-fg-muted max-w-[56ch] mx-auto mb-8 text-pretty">
-          Nothing is hidden from your agent. The framework ships in node_modules as plain
-          JavaScript, so an agent opens the router or the renderer it is calling instead of
+          You get production-ready architecture from your very first prompt, and none of it is
+          hidden from your agent. The framework ships in node_modules as plain JavaScript, so
+          an agent opens the router or the renderer it is calling instead of
           recalling an API from training data, and your app code is served to the browser
           exactly as written. Any model debugs the running app against the real source, with
           no single blessed model, on the web components and standard HTML every model

@@ -1,142 +1,77 @@
 /**
- * Regenerate public/og.png, the 1200x630 social card.
+ * Regenerate public/og.png, the site-wide 1200x630 social card.
  *
- * Manual dev tool, not part of the build or deploy. It renders an on-brand
- * dark card with headless Chromium (Playwright) at 2x, then downscales to an
- * exact 1200x630 with ImageMagick for crisp text. Run it whenever the headline
- * or look changes:
+ * Manual dev tool, not part of the build or deploy. Run it whenever the
+ * headline, the tagline or the palette changes:
  *
  *   node scripts/generate-og.mjs
  *
- * Prerequisites: ImageMagick (the `magick` binary) on PATH. Playwright is a
- * website devDependency (shared with the browser-test toolchain) and resolves
- * from node_modules. ImageMagick is the only external, non-npm tool. The card
- * mirrors the dark-theme design tokens declared in
- * app/layout.ts
- * (background, foreground, accent, the warm accent glow) and the hero
- * headline, so a regenerated card always matches the live site.
+ * The shell (palette, faces, lockup, top row, panels, footer, render) lives in
+ * scripts/lib/og-card.mjs and is shared with the other two cards. Only this
+ * card's own content is here. See that file for why the cards are light while
+ * the site is dark-first.
  */
-import { chromium } from 'playwright';
-import { execFileSync } from 'node:child_process';
-import { mkdtempSync, rmSync, readFileSync } from 'node:fs';
-import { tmpdir } from 'node:os';
-import { join, resolve } from 'node:path';
+import { resolve } from 'node:path';
+import { T, PANEL_CSS, panels, renderCard } from './lib/og-card.mjs';
 
-const OUT = resolve(process.argv[2] || 'public/og.png');
-// The card carries the REAL lockup file rather than a redrawn copy, for the
-// same reason the site does: a redraw is how the logo drifted once already.
-// Inlined rather than <img> so the card render has no file:// fetch to race.
-const LOCKUP_SVG = readFileSync(resolve('public/brand/webjs-lockup-on-dark.svg'), 'utf8');
+// The promise, verbatim from the homepage hero and the site-wide meta
+// description. One string on every surface, so a shared link and the page it
+// opens say the same sentence.
+const TITLE = 'Production-ready architecture from your very first prompt';
+// Accented through the first two words only. The whole headline in accent
+// competes with the lockup above it, and accenting the tail buries the
+// differentiating claim in the colour the eye reaches last.
+const TITLE_HTML = TITLE.replace('Production-ready', '<span class="accent">Production-ready</span>');
 
-// Dark-theme tokens, copied from the :root[data-theme='dark'] block in
-// app/layout.ts so the card and the site stay in lockstep (pure-black
-// surfaces, warm hue-52 accent).
-const T = {
-  bg: 'oklch(0 0 0)',
-  bgDeep: 'oklch(0.135 0 0)',
-  fg: 'oklch(0.96 0 0)',
-  fgMuted: 'oklch(0.74 0 0)',
-  fgSubtle: 'oklch(0.62 0 0)',
-  accent: 'oklch(0.78 0.18 58)',
-  accentLive: 'oklch(0.78 0.18 58)',
-  border: 'oklch(0.32 0 0 / 0.9)',
-  // The logo mark stops, copied from the dark-theme --logo-from/--logo-to in
-  // app/layout.ts. An OG card is not theme-adaptive (social unfurlers render
-  // one static image), so the dark card carries the DARK navbar mark.
-  logoFrom: 'oklch(0.8 0.16 58)',
-  logoTo: 'oklch(0.62 0.18 44)',
-};
+// What the thing IS, under what it PROMISES. The lockup already says the name,
+// so the sentence opens on the category instead of repeating it.
+const SUB = '<b>An AI-first full-stack JavaScript web components framework</b> with no build step.';
 
-const html0 = `<!doctype html><html lang="en"><head><meta charset="utf-8">
-<link rel="preconnect" href="https://fonts.googleapis.com">
-<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter+Tight:wght@500;600;700;800&family=Inter:wght@400;500&family=JetBrains+Mono:wght@500&display=swap">
-<style>
-  *{ margin:0; padding:0; box-sizing:border-box; }
-  html,body{ width:1200px; height:630px; }
-  body{
-    font-family:'Inter',system-ui,sans-serif;
-    background:${T.bg};
-    color:${T.fg};
-    position:relative;
-    overflow:hidden;
-  }
-  .glow{
-    position:absolute; inset:0; pointer-events:none;
-    background:
-      radial-gradient(58% 50% at 50% -8%, color-mix(in oklch, ${T.accentLive} 26%, transparent), transparent 72%),
-      radial-gradient(46% 42% at 90% 6%, color-mix(in oklch, ${T.accentLive} 20%, transparent), transparent 70%),
-      radial-gradient(70% 60% at 50% 120%, ${T.bgDeep}, transparent 60%);
-  }
-  .frame{
-    position:relative; z-index:1;
-    width:100%; height:100%;
-    padding:72px 76px;
-    display:flex; flex-direction:column;
-  }
-  .brand{ display:flex; align-items:center; }
-  .brand svg{ height:44px; width:auto; display:block; }
-  .mid{ flex:1; display:flex; flex-direction:column; justify-content:center; }
+// The two halves of the promise above, each stated as something checkable. The
+// first is the site's own account of what a scaffold decides for you; the
+// second is what "no build step" means in practice rather than as a slogan.
+const FACTS = [
+  {
+    label: 'From one prompt',
+    text: 'The architecture, a real database and a design system <span class="q">arrive without being specified.</span>',
+  },
+  {
+    label: 'What you ship',
+    text: 'Source files are served as native ES modules, <span class="q">so what you write is what runs.</span>',
+  },
+];
+
+// Three claims, so the strip cannot afford a repeated suffix: this read
+// "AI-FIRST / WEB-COMPONENTS-FIRST / NO BUILD", and two of them ending the same
+// way landed as a tic rather than as two separate stances. "-first" was also
+// the wrong word for the middle one. Web components are not a preference this
+// framework ranks highly, they are its component model, the way Next is
+// React-based rather than React-first. As a bare fact it matches the register
+// of NO BUILD beside it. The hyphens went with the suffix, since they only ever
+// bound the compound modifier and the platform feature is two plain words.
+const TAGS = 'AI-FIRST &nbsp;&middot;&nbsp; WEB COMPONENTS &nbsp;&middot;&nbsp; NO BUILD';
+
+await renderCard({
+  out: resolve(process.argv[2] || 'public/og.png'),
+  fit: { from: 52, to: 30 },
+  css: `${PANEL_CSS}
+  .frame{ padding:56px 76px; }
   h1{
     font-family:'Inter Tight',sans-serif; font-weight:800;
-    font-size:66px; line-height:1.05; letter-spacing:-0.035em;
-    max-width:18ch;
+    /* Set by the fit pass, so this is a starting point rather than the
+       designed size. */
+    font-size:52px; line-height:1.05; letter-spacing:-0.035em;
+    max-width:22ch;
   }
-  .accent{
-    white-space:nowrap;
-    background:linear-gradient(105deg, ${T.accent}, color-mix(in oklch, ${T.accentLive} 72%, ${T.fg}));
-    -webkit-background-clip:text; background-clip:text; color:transparent;
+  .sub{
+    font-size:22px; line-height:1.4; color:${T.fgMuted}; font-weight:400;
+    max-width:40ch; margin-top:-12px;
   }
-  p.lede{
-    margin-top:26px; max-width:30ch;
-    font-size:25px; line-height:1.5; color:${T.fgMuted};
-  }
-  .foot{
-    display:flex; align-items:center; justify-content:space-between;
-    font-family:'JetBrains Mono',monospace; font-weight:500;
-    font-size:15px; letter-spacing:0.04em; color:${T.fgSubtle};
-  }
-  .foot .tags{ display:flex; align-items:center; gap:10px; text-transform:uppercase; }
-  .dot{ width:7px; height:7px; border-radius:50%; background:${T.accent}; }
-  hr{ border:0; border-top:1px solid ${T.border}; margin-bottom:24px; }
-</style></head>
-<body>
-  <div class="glow"></div>
-  <div class="frame">
-    <div class="brand">__LOCKUP__</div>
-    <div class="mid">
-      <h1>The <span class="accent">web framework</span> for AI agents</h1>
-      <p class="lede">A full-stack framework built on web components, SSR, and progressive enhancement, with zero build step. Standards that outlast frameworks.</p>
-    </div>
-    <div>
-      <hr>
-      <div class="foot">
-        <div class="tags"><span class="dot"></span>AI-FIRST &nbsp;&middot;&nbsp; WEB-COMPONENTS-FIRST &nbsp;&middot;&nbsp; NO BUILD</div>
-        <div>github.com/webjsdev/webjs</div>
-      </div>
-    </div>
-  </div>
-</body></html>`;
-const html = html0.replace('__LOCKUP__', LOCKUP_SVG);
-
-const tmp = mkdtempSync(join(tmpdir(), 'webjs-og-'));
-const big = join(tmp, 'og-2x.png');
-
-const browser = await chromium.launch();
-try {
-  const page = await browser.newPage({ viewport: { width: 1200, height: 630 }, deviceScaleFactor: 2 });
-  await page.setContent(html, { waitUntil: 'networkidle' });
-  await page.evaluate(() => document.fonts.ready);
-  await page.screenshot({ path: big, clip: { x: 0, y: 0, width: 1200, height: 630 } });
-} finally {
-  await browser.close();
-}
-
-// Downscale the 2400x1260 capture to an exact 1200x630 for crisp text, and
-// losslessly optimize: strip metadata and use max PNG compression. Lossy
-// quantization / WebP are deliberately avoided here: the card is gradient-heavy
-// (low color counts band the soft radials) and PNG is the safe og:image format
-// for every social unfurler.
-execFileSync('magick', [big, '-resize', '1200x630', '-strip', '-define', 'png:compression-level=9', OUT], { stdio: 'inherit' });
-rmSync(tmp, { recursive: true, force: true });
-console.log('wrote', OUT);
+  .sub b{ color:${T.fg}; font-weight:600; }`,
+  body: `<div class="mid">
+      <h1>${TITLE_HTML}</h1>
+      <div class="sub">${SUB}</div>
+      ${panels(FACTS)}
+    </div>`,
+  tags: TAGS,
+});

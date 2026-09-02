@@ -9,9 +9,13 @@ import { DOCS_START_PATH, GH_URL, NEW_TAB } from '#lib/links.ts';
  *
  * The developer pitch page. Where the home page shows the framework's shape
  * (progressive enhancement, the three-file stack, the weight stats), this page
- * makes the single argument that matters most for the AI era: an agent can read
- * the whole framework, so it needs no training data and no single blessed model
- * to build a WebJs app well.
+ * makes the single argument that matters most for the AI era: an agent reads the
+ * framework source it is calling, from the app's own node_modules at the version
+ * installed there, so it needs no training data and no single blessed model to
+ * build a WebJs app well. The claim is about LOCATION, not volume. Nothing reads
+ * the whole framework (see the comment above DESCRIPTION in app/layout.ts for
+ * the line counts), and the located version is the stronger claim anyway,
+ * because it holds however large the framework grows.
  *
  * It deliberately reuses the home page's design language (the KICKER label, the
  * section rhythm, the terminal "windows", the bento grid, and the closing CTA
@@ -109,17 +113,20 @@ export default function Why() {
   return html`
     <main id="main" tabindex="-1" class="focus:outline-none">
 
-    <section class="text-center px-6 pt-12 md:pt-16 lg:pt-24 pb-10 md:pb-16">
-      <h1 class="font-display font-extrabold text-display leading-[1.04] tracking-[-0.035em] mx-auto mt-4 mb-4 max-w-[16ch] text-balance">
+    <section class="text-center px-6 pt-12 md:pt-20 lg:pt-28 pb-10 md:pb-16">
+      <h1 class="font-display font-extrabold text-hero-h1 leading-[1.04] tracking-[-0.035em] mx-auto mt-2 mb-6 max-w-[64rem] text-balance">
         The framework your AI agent already understands
       </h1>
-      <p class="text-lede leading-[1.6] text-fg-muted max-w-[56ch] mx-auto mb-8 text-pretty">
-        WebJs is a full-stack JavaScript framework with no build step, so
-        nothing is hidden from your agent. The framework ships in node_modules as
-        plain JavaScript, so an agent opens the file it is calling instead of
-        recalling an API from training data, and your app code is served to the
-        browser exactly as written. Any model debugs the running app against the
-        real source, on the web components and standard HTML it already knows.
+      <p class="text-hero-lede leading-[1.3] text-fg-muted max-w-[64rem] mx-auto mb-6 text-balance">
+        <strong class="text-fg font-semibold">WebJs is a full-stack JavaScript framework with no
+        build step, so nothing is hidden from your agent.</strong> The framework ships in
+        node_modules as plain JavaScript, at the version your app installed.
+      </p>
+      <p class="text-base leading-[1.7] text-fg-muted max-w-[56ch] mx-auto mb-8 text-pretty">
+        An agent opens the file it is calling instead of recalling an API from training data,
+        and your app code is served to the browser exactly as written. Any model debugs the
+        running app against the real source, on the web components and standard HTML it
+        already knows.
       </p>
       <div class="flex gap-3 justify-center flex-wrap mb-8">
         <a class=${BTN_PRIMARY} href=${DOCS_START_PATH}>
@@ -165,7 +172,7 @@ server/src/ssr.js: const html = await renderToString(tree)
             </figure>
           </div>
           <div class="flex flex-col min-w-0">
-            <p class="font-mono font-semibold text-xs leading-[1.4] tracking-widest uppercase text-fg-subtle mb-2.5 ml-1">Your app code, served to the browser as written</p>
+            <p class="font-mono font-semibold text-xs leading-[1.4] tracking-widest uppercase text-fg-subtle mb-2.5 ml-1">Your app code, served as written</p>
             <figure class=${WIN}>
               <figcaption class=${WINBAR}>${DOTS}<span class=${WINNAME}>terminal</span></figcaption>
               <pre class="scroll-thin m-0 p-4 overflow-x-auto font-mono text-sm leading-[1.7] [tab-size:2] flex-1" role="region" tabindex="0" aria-label="Fetching an app module served unbundled"><code><span class="text-accent">$</span> curl localhost:5001/components/counter.ts
