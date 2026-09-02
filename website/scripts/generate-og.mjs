@@ -69,6 +69,16 @@ const TITLE_HTML = TITLE.replace('Production-ready', '<span class="accent">Produ
 // so the sentence opens on the category instead of repeating it.
 const LEDE = 'An AI-first full-stack JavaScript web components framework with no build step.';
 
+// Three claims, so the strip cannot afford a repeated suffix: this read
+// "AI-FIRST / WEB-COMPONENTS-FIRST / NO BUILD", and two of them ending the same
+// way landed as a tic rather than as two separate stances. "-first" was also
+// the wrong word for the middle one. Web components are not a preference this
+// framework ranks highly, they are its component model, the way Next is
+// React-based rather than React-first. As a bare fact it matches the register
+// of NO BUILD beside it. The hyphens went with the suffix, since they only ever
+// bound the compound modifier and the platform feature is two plain words.
+const TAGS = 'AI-FIRST &nbsp;&middot;&nbsp; WEB COMPONENTS &nbsp;&middot;&nbsp; NO BUILD';
+
 const html0 = `<!doctype html><html lang="en"><head><meta charset="utf-8">
 <style>
   @font-face{font-family:'Inter Tight';font-weight:100 900;src:url('${INTER_TIGHT}') format('woff2');}
@@ -129,7 +139,7 @@ const html0 = `<!doctype html><html lang="en"><head><meta charset="utf-8">
     <div>
       <hr>
       <div class="foot">
-        <div class="tags"><span class="dot"></span>AI-FIRST &nbsp;&middot;&nbsp; WEB-COMPONENTS-FIRST &nbsp;&middot;&nbsp; NO BUILD</div>
+        <div class="tags"><span class="dot"></span>${TAGS}</div>
         <div>github.com/webjsdev/webjs</div>
       </div>
     </div>
