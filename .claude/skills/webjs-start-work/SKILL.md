@@ -298,7 +298,7 @@ Beyond review findings, proactively record the *reasoning* behind a PR as commen
 
 ### Merge is gated on green CI, enforced at the branch level, not by trust
 
-A PR must not merge until all CI checks pass. `main` branch protection requires the five `ci.yml` checks (Conventions, Unit+integration, Browser, E2E, Build) before any merge. If `gh api repos/webjsdev/webjs/branches/main/protection` shows `required_status_checks: null`, run `bash scripts/protect-main.sh` once (needs repo admin) to restore it. Do not work around a red or pending check. Wait for green, and fix whatever is red before merging.
+A PR must not merge until all CI checks pass. `main` branch protection requires the six `ci.yml` checks (Conventions, Unit+integration, Browser, E2E, Build, In-repo app tests) before any merge, plus one approving review from a CODEOWNER (`.github/CODEOWNERS` names @vivek7405 for every path, so that means the maintainer). If `gh api repos/webjsdev/webjs/branches/main/protection` shows `required_status_checks: null`, run `bash scripts/protect-main.sh` once (needs repo admin) to restore it. Do not work around a red or pending check. Wait for green, and fix whatever is red before merging.
 
 CI is read ONCE, at merge, never in a mid-work sleep loop. Read `gh pr checks` in full rather than trusting the merge button to have judged for you, because `ci.yml` defines roughly twice as many jobs as `main` requires, so the non-required ones are held by this instruction rather than by anything that can refuse a merge.
 

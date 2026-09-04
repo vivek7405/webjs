@@ -1,0 +1,13 @@
+# Every path in this repo is owned by the maintainer.
+#
+# This exists to give branch protection something to key on. `main` requires
+# one approving review, and with `require_code_owner_reviews` turned on in
+# scripts/protect-main.sh, only an approval from an owner listed here counts
+# toward it. Without this file that setting matches nothing and the gate is a
+# no-op, so the two are a pair: neither works alone.
+#
+# A drive-by contributor approving another contributor's PR therefore does not
+# unblock a merge. Their review is still welcome and still visible, it just is
+# not the one the gate is waiting for.
+
+*       @vivek7405
