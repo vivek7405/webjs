@@ -13,6 +13,12 @@
 # locking solo PRs. Flip enforce_admins to true only once a second reviewer
 # (a human or a bot account) exists to provide the non-author approval.
 #
+# NOTE on require_code_owner_reviews: it is paired with .github/CODEOWNERS,
+# which names @vivek7405 for every path. Without that file the setting matches
+# nothing and silently does nothing, so the two ship together. With both in
+# place, the one required approval must come from the maintainer, which is
+# what stops two drive-by contributors from approving each other onto main.
+#
 #   bash scripts/protect-main.sh
 #
 # The contexts below must match the `name:` of each job in ci.yml exactly,
@@ -40,10 +46,10 @@ gh api -X PUT "repos/${REPO}/branches/main/protection" \
   "required_pull_request_reviews": {
     "required_approving_review_count": 1,
     "dismiss_stale_reviews": false,
-    "require_code_owner_reviews": false
+    "require_code_owner_reviews": true
   },
   "restrictions": null
 }
 JSON
 
-echo "main is now protected: 1 approving review + all CI checks required before merge."
+echo "main is now protected: 1 approving CODEOWNER review + all CI checks required before merge."
