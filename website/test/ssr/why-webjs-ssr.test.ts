@@ -43,7 +43,15 @@ test('the two prompts differ only by the architecture one of them has to spell o
   // property that makes the contrast real: the appended instructions appear in
   // one prompt and in neither the other prompt nor as something WebJs asks for.
   const out = await renderToString(Why());
-  const open = out.slice(out.indexOf('aria-label="A prompt that has to specify'), out.indexOf('Where they are already made'));
+  // Both slices are bounded by aria-labels rather than by the visible column
+  // headings, which are editorial and have been renamed once. A missing
+  // boundary returns -1, which silently widens the slice to the rest of the
+  // document and makes every includes() below pass vacuously, so assert the
+  // boundaries exist before slicing on them.
+  for (const boundary of ['aria-label="A prompt that has to specify', 'aria-label="The same request on WebJs', 'Both prompts should produce']) {
+    assert.ok(out.includes(boundary), `the slice boundary ${boundary} still exists`);
+  }
+  const open = out.slice(out.indexOf('aria-label="A prompt that has to specify'), out.indexOf('aria-label="The same request on WebJs'));
   const made = out.slice(out.indexOf('aria-label="The same request on WebJs'), out.indexOf('Both prompts should produce'));
 
   const ask = 'Build me a table booking app';
