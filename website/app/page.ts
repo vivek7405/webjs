@@ -717,17 +717,22 @@ export default function LandingPage() {
                answer to it. Keep the two pages saying the same thing: if the
                wording moves there, move it here too.
 
-               Streaming and the client router gave up the fourth card to
-               elision. Elision is the one claim on this grid no other framework
-               can make, and the chips under "The first paint is the whole page"
-               assert it ("Display components ship 0 KB") without ever explaining
-               it, so this card is the only explanation the page carries.
+               The fourth card is model-agnosticism, which /why-webjs spends a
+               whole page arguing and this page otherwise never states. It is a
+               claim about LOCATION rather than about volume: the source is in
+               the working directory the agent is already in, at the version
+               installed, so a model reads it instead of recalling it. Do not
+               restate it as "the source is open", which is true of every
+               framework and argues nothing.
 
-               Know what that trade cost, because nothing else on the page covers
-               it: streaming survives only as a word in the scaffold inventory
-               near the bottom, and the client router is now claimed NOWHERE on
-               the landing page. If either gets a card back, this is the note
-               that says why it should. -->
+               Know what this grid no longer covers, because nothing else on the
+               page covers it either. ELISION lost this slot: the chips under
+               "The first paint is the whole page" still assert it ("Display
+               components ship 0 KB") but nothing explains it any more, and it is
+               the one claim here no other framework can make. STREAMING is down
+               to a word in the scaffold inventory near the bottom. The CLIENT
+               ROUTER is claimed nowhere on the landing page at all. If a slot
+               ever frees up, this is the note that says which to bring back. -->
           <div class="${CARD}">
             <div class="mb-6">
               <h3 class="font-display font-bold text-base leading-[1.3] tracking-[-0.02em] mt-0 mb-2">The architecture arrives decided</h3>
@@ -766,16 +771,13 @@ export default function LandingPage() {
 
           <div class="${CARD}">
             <div class="mb-6">
-              <h3 class="font-display font-bold text-base leading-[1.3] tracking-[-0.02em] mt-0 mb-2">Some components ship no JavaScript</h3>
-              <p class="m-0 text-sm leading-[1.6] text-fg-muted">Components render on the server. An interactive one hydrates on its own when the browser upgrades its tag, and a display-only one is stripped from the browser entirely, module and vendor imports included.</p>
+              <h3 class="font-display font-bold text-base leading-[1.3] tracking-[-0.02em] mt-0 mb-2">Model agnostic by construction</h3>
+              <p class="m-0 text-sm leading-[1.6] text-fg-muted">An agent does not need to have seen WebJs before. There is no build step, so the framework sits in your node_modules as plain JavaScript at the version you installed, and a model opens the router or the renderer it is calling instead of recalling an API. Switching models does not change the answer.</p>
             </div>
-            <div class="bg-[var(--editor-sidebar-bg)] border border-[var(--editor-border)] rounded-xl p-2.5 flex flex-col gap-1.5 font-mono text-xs text-[var(--editor-fg)] select-none">
-              <div class="flex justify-between items-center gap-2 px-2 py-1 bg-[var(--editor-bg)] border border-[var(--accent-border)] rounded">
-                <span>&lt;price-tag&gt;</span> <span class="text-[var(--accent-text)] whitespace-nowrap">0 KB</span>
-              </div>
-              <div class="flex justify-between items-center gap-2 px-2 py-1 bg-[var(--editor-bg)] border border-[var(--editor-border)] rounded text-fg-subtle">
-                <span>&lt;add-to-cart&gt;</span> <span class="whitespace-nowrap">hydrates</span>
-              </div>
+            <div class="bg-[var(--editor-sidebar-bg)] border border-[var(--editor-border)] rounded-xl p-3.5 font-mono text-xs leading-[1.7] text-[var(--editor-fg)] select-none">
+              <div>node_modules/@webjsdev/core<span class="text-[var(--accent-text)]">/src</span></div>
+              <div>&nbsp;&nbsp;router-client.js<span class="text-fg-subtle"> → read, not recalled</span></div>
+              <div class="text-fg-subtle"># no training data, so no blessed model</div>
             </div>
           </div>
 
