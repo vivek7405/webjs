@@ -93,7 +93,7 @@ const ARRIVES = [
   },
   {
     title: 'Type safety, end to end',
-    body: 'Types run the whole way through. A component importing a server function keeps that function\'s argument and return types at the call site, and a database row carries its schema type into the markup that renders it, with no code generation anywhere in between. An agent has no reason to reach for any.',
+    body: 'Types run the whole way through. A component importing a server function keeps that function\'s argument and return types at the call site, and a database row carries its schema type into the markup that renders it, with no code generation anywhere in between.',
   },
   {
     title: 'Database',

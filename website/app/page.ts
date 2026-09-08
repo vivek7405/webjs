@@ -745,7 +745,7 @@ export default function LandingPage() {
           <div class="${CARD}">
             <div class="mb-6">
               <h3 class="font-display font-bold text-base leading-[1.3] tracking-[-0.02em] mt-0 mb-2">Types run the whole way through</h3>
-              <p class="m-0 text-sm leading-[1.6] text-fg-muted">A component importing a server function keeps that function's argument and return types at the call site, and a database row carries its schema type into the markup that renders it, with no code generation anywhere in between. An agent has no reason to reach for <code class="font-mono text-[0.9em]">any</code>.</p>
+              <p class="m-0 text-sm leading-[1.6] text-fg-muted">A component importing a server function keeps that function's argument and return types at the call site, and a database row carries its schema type into the markup that renders it, with no code generation anywhere in between.</p>
             </div>
             <div class="bg-[var(--editor-sidebar-bg)] border border-[var(--editor-border)] rounded-xl p-3.5 font-mono text-xs leading-[1.7] text-[var(--editor-fg)] select-none">
               <div>posts.<span class="text-fg-subtle">$inferSelect</span> <span class="text-[var(--accent-text)]">→ Post</span></div>
