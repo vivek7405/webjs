@@ -27,7 +27,7 @@ const TITLE = 'The framework your <span class="accent">AI agent</span> already u
 // node_modules at the installed version, so the agent opens the file it is
 // calling instead of recalling an API from training data. That is also the
 // stronger claim, because it holds no matter how large the framework grows.
-const SUB = '<b>A full-stack JavaScript framework</b> with no build step, so nothing is hidden from your agent.';
+const SUB = '<b>A full-stack JavaScript web components framework</b> with no build step, so nothing is hidden from your agent.';
 
 const FACTS = [
   {

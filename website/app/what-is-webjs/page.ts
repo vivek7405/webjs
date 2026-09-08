@@ -41,7 +41,7 @@ const TITLE = 'What is WebJs?';
 // Front-loaded so the first 160 characters answer the query on their own, which
 // is what a SERP snippet and an AI answer engine both quote.
 const DESCRIPTION =
-  'WebJs is an AI-first full-stack JavaScript web framework built on web components. It renders on the server, ships no build step, and runs on Node 24+ or Bun. Pages are real HTML that work before any script loads.';
+  'WebJs is a full-stack JavaScript web framework built on web components. It renders on the server, ships no build step, and runs on Node 24+ or Bun. Pages are real HTML that work before any script loads.';
 
 /**
  * The visible FAQ. Rendered into the page AND parsed into FAQPage JSON-LD from
@@ -53,7 +53,7 @@ const FAQ = [
   {
     question: 'What is WebJs?',
     answer:
-      'WebJs is an AI-first full-stack JavaScript web framework built on web components. It server-renders every page and component to real HTML, needs no build step or bundler, and runs on Node 24+ or Bun. The framework serves your source to the browser exactly as you wrote it, so the code you read is the code that runs.',
+      'WebJs is a full-stack JavaScript web framework built on web components. It server-renders every page and component to real HTML, needs no build step or bundler, and runs on Node 24+ or Bun. The framework serves your source to the browser exactly as you wrote it, so the code you read is the code that runs.',
   },
   {
     question: 'What makes WebJs AI-first?',
@@ -120,7 +120,7 @@ export function generateMetadata() {
       image: `${SITE_URL}/public/og-what.png`,
       'image:width': '1200',
       'image:height': '630',
-      'image:alt': 'What is WebJs? An AI-first full-stack JavaScript web framework built on web components',
+      'image:alt': 'What is WebJs? A full-stack JavaScript web framework built on web components',
       'site_name': 'WebJs',
     },
     twitter: {
@@ -239,7 +239,7 @@ export default function WhatIsWebJs() {
           What is WebJs?
         </h1>
         <p class="text-hero-lede leading-[1.3] text-fg-muted max-w-[64rem] mx-auto mb-6 text-balance">
-          <strong class="text-fg font-semibold">WebJs is an AI-first full-stack JavaScript web
+          <strong class="text-fg font-semibold">WebJs is a full-stack JavaScript web
           framework built on web components.</strong> It server-renders every page and component to
           real HTML, needs no build step or bundler, and runs on Node 24+ or Bun.
         </p>

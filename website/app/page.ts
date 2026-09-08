@@ -42,7 +42,7 @@ export const metadata = {
       '@id': `${SITE_URL}#website`,
       name: 'WebJs',
       url: SITE_URL,
-      description: 'An AI-first, web-components-first full-stack web framework with no build step.',
+      description: 'A web-components-first full-stack web framework with no build step.',
       publisher: { '@id': `${SITE_URL}#organization` },
     },
     {
@@ -187,6 +187,13 @@ export const metadata = {
 
 // Chips for the progressive-enhancement section: the concrete things that
 // keep working with JavaScript disabled, because the server sends real HTML.
+// The chips run in the order the section argues: what a component IS, then
+// what the browser does with it, then what that buys. The last two are the
+// progressive-enhancement and elision claims, which the section keeps even
+// though its heading no longer leads with them, because they are consequences
+// of the component model rather than a separate topic, and the P.S. dare below
+// invites the reader to check the fourth one in their own browser.
+//
 // 'No whole-page hydration' is the precise form and the ONLY one to use here.
 // WebJs does hydrate: a shipping component loads @webjsdev/core, and
 // createInstance() in render-client.js does container.replaceChildren(...),
@@ -196,7 +203,7 @@ export const metadata = {
 // all, and elided components never ship. Anything shorter ("no hydration
 // runtime", "no hydration overhead") reads as zero cost and is refuted by one
 // look at the network tab.
-const PE_CHIPS = ['No whole-page hydration', 'Content reads', 'Links navigate', 'Forms submit', 'Display components ship 0 KB'];
+const PE_CHIPS = ['Standard custom elements', 'No virtual DOM', 'Server-rendered, then upgraded', 'No whole-page hydration', 'Reads and submits before JS', 'Display components ship 0 KB'];
 
 // The hero stage shows this source beside the very component it declares,
 // running. Keep the two in step: the panel to its right is a real
@@ -245,92 +252,6 @@ function sourceWindow(title: string, sample: string) {
     </figure>
   `;
 }
-
-/**
- * The landing page's intro video, self-hosted rather than embedded.
- *
- * The player is the browser's own, so it works with scripting disabled. The
- * YouTube iframe this replaced could not, because its player needs JS inside
- * the frame, so the section used to hide itself from a JS-off reader rather
- * than show a broken embed.
- *
- * REPLACING THE VIDEO, for whoever does it next.
- *
- * The bytes live in the Cloudflare R2 bucket `webjs-videos`, served from
- * videos.webjs.dev. The key carries no version, so a new cut overwrites
- * `intro.mp4` in place and nothing in this file changes:
- *
- *   env -u CLOUDFLARE_API_TOKEN npx wrangler r2 object put \
- *     webjs-videos/intro.mp4 --file <new-cut.mp4> \
- *     --content-type video/mp4 \
- *     --cache-control "public, max-age=86400, s-maxage=31536000" \
- *     --remote
- *
- * Then purge that URL at the edge (Caching, then Purge Cache, then the custom
- * single-file purge), or the old bytes keep serving for the `s-maxage` year.
- *
- * Three things about this are easy to get wrong.
- *
- * 1. R2 object metadata cannot be edited after upload. `Cache-Control` is set
- *    at write time or not at all, so every upload has to pass it again. There
- *    is no bucket-level setting, and the dashboard uploader has no field for
- *    it, which is why an upload made there serves no header of its own.
- *
- * 2. The `env -u` is load bearing. A `CLOUDFLARE_API_TOKEN` in the environment
- *    overrides wrangler's OAuth credentials, and that token carries no R2
- *    permission, so the upload fails with an authentication error that names
- *    nothing. Unsetting it for the one call falls back to the OAuth login.
- *
- * 3. A purge clears the edge and never a browser. That is why `max-age` is a
- *    day rather than a year, and why the header is deliberately not
- *    `immutable`: anyone holding the old file needs a way to pick the new one
- *    up, and 24 hours is that way. `s-maxage` keeps the edge copy long lived
- *    regardless, since the edge can be purged and a browser cannot.
- *
- * A versioned key (`intro-2026-08-21.mp4`) is the other valid shape. Take it
- * and the tradeoff inverts: put `immutable` back, raise `max-age` to a year,
- * and update the src below on every cut.
- *
- * The thumbnail at `intro-thumbnail.webp` is uploaded the same way, with
- * `--content-type image/webp`. It is 1920 wide because the box is capped at
- * max-w-3xl (about 718 CSS px), so that already covers a 2x display and a
- * wider encode buys nothing a viewport can show.
- */
-const INTRO_VIDEO = html`
-    <section class="intro-video pb-16">
-      <div class="max-w-3xl mx-auto px-6">
-        <!-- preload="none" fetches nothing but the thumbnail until someone
-             presses play. It is deliberately not "metadata", which is the
-             usual choice and what rubyonrails.org uses. Their file is 658
-             kbps and this one is 2315, and at 400 kbps the metadata read
-             starved the poster: the video had pulled 6.2 MB by the time the
-             thumbnail painted, 25.8 seconds in. The cost is that the controls
-             cannot show the duration until the first play.
-
-             playsinline stops iOS Safari taking the video fullscreen. The
-             width and height state the intrinsic size, which
-             this layout does not lean on (the wrapper is aspect-video and the
-             element is w-full h-full, so CSS fixes the ratio), but which keeps
-             the shape right if the stylesheet ever fails. The src is absolute and
-             cross-origin, so it must not be wrapped in asset(), which resolves
-             a public/ path and would mangle it. -->
-        <div class="aspect-video overflow-hidden border border-border-strong shadow-[var(--shadow)] bg-black">
-          <video
-            class="intro-video-player w-full h-full"
-            src="https://videos.webjs.dev/intro.mp4"
-            poster="https://videos.webjs.dev/intro-thumbnail.webp"
-            aria-label="WebJs introduction video"
-            width="1920"
-            height="1080"
-            preload="none"
-            playsinline
-            controls
-          ></video>
-        </div>
-      </div>
-    </section>
-`;
-
 
 export default function LandingPage() {
   return html`
@@ -535,7 +456,7 @@ export default function LandingPage() {
              bought that back).
 -->
         <p class="text-hero-lede leading-[1.3] text-fg-muted max-w-[64rem] mx-auto mb-9 text-balance">
-          <span class="text-fg font-medium">WebJs is an AI-first full-stack JavaScript web components framework with no build step.</span>
+          <span class="text-fg font-medium">WebJs is a full-stack JavaScript web components framework with no build step.</span>
           You get production-ready architecture from your very first prompt.
         </p>
         <div class="flex gap-3 justify-center flex-wrap items-center">
@@ -556,16 +477,16 @@ export default function LandingPage() {
       </div>
     </section>
 
-    ${INTRO_VIDEO}
-
     <section class="py-16">
       <div class="max-w-6xl mx-auto px-6">
         <div class="max-w-3xl mx-auto mb-12 text-center">
-          <h2 class="font-display font-bold text-h2 leading-[1.12] tracking-[-0.03em] my-3 text-balance">The first paint is the whole page</h2>
-          <!-- 31 words, down from 106, and the shortening was a FACT-CHECK rather
-               than an edit. The old version made three claims about frameworks in
-               general and not one of them survived being checked against the Next
-               source sitting on this machine.
+          <h2 class="font-display font-bold text-h2 leading-[1.12] tracking-[-0.03em] my-3 text-balance">Native web components the browser already understands, with better DX</h2>
+          <!-- THE RULE FOR THIS LEDE, kept from the version before it: claim
+               nothing about another framework, and nothing that needs a footnote
+               about which configuration you are in. It was learned the hard way.
+               An earlier 106-word draft made three claims about frameworks in
+               general and not one survived being checked against the Next source
+               sitting on this machine.
                  "The runtime has to load, parse, and hydrate before the page can
                be read at all" is false: Next server-renders client components too
                (use-flight-response.tsx feeds the Flight stream through
@@ -580,37 +501,54 @@ export default function LandingPage() {
                component in the root layout puts every page under it back on the
                runtime. This website is the proof: all five routes ship core,
                because the layout renders theme-toggle and site-nav-menu.
-                 So the rule for this lede: claim nothing about another framework
-               and nothing that needs a footnote about which configuration you are
-               in. The chips below enumerate, the P.S. below runs the comparison
-               in the reader's own browser, and the prose only has to be true.
+                 The chips below enumerate, the P.S. below runs the comparison in
+               the reader's own browser, and the prose only has to be true.
 
-               The term "progressive enhancement" comes LAST, after the three
+               THE DX CLAIM IS MADE IN NOUNS, never as a comparison. "Better DX"
+               in the heading is the promise; the lede has to pay it with things
+               a reader can check in the stage below, which is why it names
+               reactive properties in the class signature, signals, a tagged
+               template literal for markup, and the absence of a decorator or a
+               build step. The template syntax IS lit's, and the comment down by
+               the familiarity argument says so, but this lede does not name it:
+               a reader who knows lit does not need telling here, and one who
+               does not reads a dependency the framework does not have. Do not
+               cash it as
+               "less boilerplate" or "better than X": the first needs a baseline
+               the page never states and the second breaks the rule above. The
+               stage is the evidence, so keep the lede naming what HERO_SAMPLE
+               visibly does.
+
+               "Nothing sits between your class and the DOM it renders" is about
+               the RENDER PATH, not about shipped bytes: core is on the page for
+               any shipping component. Do not upgrade it to "no runtime", which
+               one look at the network tab refutes.
+
+               The term "progressive enhancement" still comes LAST, after the
                concrete behaviours, and it is the one label allowed in here. Put
                it first and a reader pattern-matches it to no-JS purism and skips
                the section, which is a constraint they think they know rather
                than a capability they can check. After the demonstration it is a
                handle for what they just read, plus the phrase they would search
-               for, next to the brand name. That naming is also why this lede
-               says WebJs at all: nothing else in the section does, and someone
-               arriving here from a search result needs to know whose page this
-               is. "Here it is the default" said nothing to them.
+               for. Keep it in the same paragraph as the WebJs mention for that
+               reason: nothing else in the section names the project, and someone
+               arriving from a search result needs to know whose page this is.
 
-               The third sentence leads with JavaScript on purpose. It read
-               "What loads afterwards is only the components that are actually
-               interactive", which says the MARKUP arrives late, the opposite of
-               this section's claim: every component is server-rendered into the
-               first paint, and what follows is the module for the interactive
-               ones. Naming JavaScript first makes the sentence unreadable as a
-               statement about markup. -->
+               The last sentence leads with the component being server-rendered,
+               on purpose. An earlier draft said "what loads afterwards is only
+               the components that are actually interactive", which says the
+               MARKUP arrives late, the opposite of this section's claim. -->
 
           <p class="text-fg-muted text-base leading-[1.6] m-0">
-            The server sends a finished page. It reads, its links navigate, and
-            its forms submit before a single script runs. What loads afterwards
-            is JavaScript, and only for the components that are actually
-            interactive. That is
-            progressive enhancement, and with WebJs it is the default rather
-            than an effort.
+            A component here is a real custom element. The browser owns
+            registration, upgrade, and the lifecycle, so nothing sits between
+            your class and the DOM it renders. What WebJs adds is the
+            ergonomics. Reactive properties are declared in the class signature,
+            state runs on signals, markup is a tagged template literal, and
+            none of it needs a decorator or a build step. Every
+            component is server-rendered first, so the page reads and its forms
+            submit before a script runs, which makes progressive enhancement the
+            default rather than an effort.
           </p>
           <!-- The dare belongs to THIS section, whose chips below enumerate the
                very things it invites you to check. It stays a dare by naming
@@ -702,8 +640,23 @@ export default function LandingPage() {
     <section class="py-16">
       <div class="max-w-6xl mx-auto px-6">
         <div class="max-w-3xl mx-auto mb-12 text-center">
-          <h2 class="font-display font-bold text-h2 leading-[1.12] tracking-[-0.03em] my-3 text-balance">Nothing is compiled away</h2>
-          <!-- The two windows below are NOT the same kind of file, and the lede
+          <h2 class="font-display font-bold text-h2 leading-[1.12] tracking-[-0.03em] my-3 text-balance">What you write is what runs</h2>
+          <!-- THE HEADING IS STRONGER THAN THE SECTION, deliberately, and the
+               lede has to bring it back inside two carve-outs it does not state
+               itself. "What you write is what runs" is true of the files that
+               SHIP, and there are two ways a file is not one of them. The action
+               window on the left never reaches the browser at all (invariant 1),
+               which the lede covers with "the action becomes an RPC call". And
+               an elided display-only component is not served either, which the
+               chips in the section above claim and this section does not mention
+               on purpose, since the reader has just read it. Do not widen the
+               lede to "every file you write is served", which both of those
+               refute, and do not answer the tension by softening the heading:
+               it is the same sentence /why-webjs uses for its first reason card,
+               so the two pages state the claim identically. Rename one and
+               rename the other.
+
+               The two windows below are NOT the same kind of file, and the lede
                must not say they are. It read "both served to the browser exactly
                as they sit on disk", which denies invariant 1: the action is a
                'use server' .server.ts, so it NEVER reaches the browser, and its
@@ -716,8 +669,8 @@ export default function LandingPage() {
 
                "Because there is no build step" is the section NAMING what it has
                spent four sentences demonstrating, the same demonstrate-then-name
-               move the first-paint lede makes with progressive enhancement. It
-               was missing: the phrase appeared twice on the whole page, both
+               move the web-components lede above makes with progressive
+               enhancement. It was missing: the phrase appeared twice on the whole page, both
                times in the hero, and the section that proves it said only
                "without a bundler", attributed to Rails. So a reader landing here
                cold got the evidence and never the name. It also rescues the Rails
@@ -763,16 +716,16 @@ export default function LandingPage() {
         <div class="max-w-3xl mx-auto mb-12 text-center">
           <h2 class="font-display font-bold text-h2 leading-[1.12] tracking-[-0.03em] my-3 text-balance">The browser is the framework. The rest is here.</h2>
           <!-- The lede opened with "Everything below falls out of the decision to
-               skip the build step" and that was false of five of the six cards.
-               File routing, server actions, streaming, auth, and the caching /
-               rate-limit / storage / WebSocket set all exist in frameworks that
-               DO build; only elision has even a weak link, being per-module
-               because there is no bundler to tree-shake instead. It also fought
-               the header, which promises the cards are what the BROWSER does not
-               give you, so a reader hunting the build-step connection in "Auth is
-               not a side quest" found nothing. The organising principle is the
-               header's, not the build step's. Do not reintroduce a causal frame
-               here: check any new opener against all six cards first. -->
+               skip the build step" and that was false of nearly every card, then
+               and now. Architecture, types, auth, and the caching / rate-limit /
+               storage / WebSocket set all exist in frameworks that DO build; only
+               elision has even a weak link, being per-module because there is no
+               bundler to tree-shake instead. It also fought the header, which
+               promises the cards are what the BROWSER does not give you, so a
+               reader hunting the build-step connection in "Auth is not a side
+               quest" found nothing. The organising principle is the header's, not
+               the build step's. Do not reintroduce a causal frame here: check any
+               new opener against all six cards first. -->
           <p class="text-fg-muted text-base leading-[1.6] m-0">Staying close to the platform is usually where a framework starts asking you to give things up, so each card is a place WebJs takes the standard and keeps the ergonomics anyway. Everything you need to ship, none of the build toolchain you don't.</p>
         </div>
         <div class="grid gap-px overflow-hidden rounded-2xl border border-border bg-border grid-cols-1 xs:grid-cols-2 wide:grid-cols-3 shadow-[var(--shadow-sm)]">
@@ -782,65 +735,90 @@ export default function LandingPage() {
                inset carries the concrete noun so the grid still SKIMS. A reader
                who never reads a body should still be able to tell from the six
                insets that routing, data, auth, and the rest are covered, because
+               that is why the architecture inset carries a route path and a
+               .server file rather than prose, and why the type-safety one shows
+               a row type reaching a template. Nothing else on the grid names
+               them any more.
                "is this framework complete?" is the objection this grid exists to
                answer and no other section on the page answers it.
 
-               Two cards were deleted rather than reworded when this grid was
-               rewritten, and they should not come back: "Zero build step" and
-               "Progressive enhancement" each restated a whole section the reader
-               had just finished ("Nothing is compiled away" and "The first paint
-               is the whole page"). They also contradicted this section's header,
-               which promises the cards are what the BROWSER does not give you. -->
+               "Zero build step" was deleted from this grid and should not come
+               back: it restated "What you write is what runs", a section the
+               reader has just finished, and it contradicted this section's header, which
+               promises the cards are what the BROWSER does not give you.
+
+               "Progressive enhancement" was deleted for the same reason and
+               should stay out: the web-components section above this grid ends
+               on it, and the P.S. dare there invites the reader to check it.
+
+               The first four cards are the model-agnosticism, architecture,
+               design-system and type-safety claims from /why-webjs, which is
+               where each is argued at length. They are here because this grid
+               answers "is this complete", and what a reader gets WITHOUT asking
+               is the strongest answer to it. Keep the two pages saying the same
+               thing: if the wording moves there, move it here too.
+
+               Model-agnosticism leads because it is the reason to try this
+               framework at all, and the rest of the grid is what you find once
+               you have. It is a claim about LOCATION rather than about volume:
+               the source is in the working directory the agent is already in,
+               at the version installed, so a model reads it instead of recalling
+               it. Do not restate it as "the source is open", which is true of
+               every framework and argues nothing.
+
+               Know what this grid no longer covers, because nothing else on the
+               page covers it either. ELISION lost this slot: the chips under
+               the web-components section above still assert it ("Display
+               components ship 0 KB") but nothing explains it any more, and it is
+               the one claim here no other framework can make. STREAMING is down
+               to a word in the scaffold inventory near the bottom. The CLIENT
+               ROUTER is claimed nowhere on the landing page at all. If a slot
+               ever frees up, this is the note that says which to bring back. -->
           <div class="${CARD}">
             <div class="mb-6">
-              <h3 class="font-display font-bold text-base leading-[1.3] tracking-[-0.02em] mt-0 mb-2">Your folders are the routes</h3>
-              <p class="m-0 text-sm leading-[1.6] text-fg-muted">A <code class="font-mono text-[0.9em]">page.ts</code> is a route, a <code class="font-mono text-[0.9em]">layout.ts</code> wraps everything under it, and a <code class="font-mono text-[0.9em]">route.ts</code> is an HTTP handler. Dynamic segments, groups, catch-alls, and error boundaries all follow the folder tree, so the URL map is the directory listing.</p>
+              <h3 class="font-display font-bold text-base leading-[1.3] tracking-[-0.02em] mt-0 mb-2">Model agnostic by construction</h3>
+              <p class="m-0 text-sm leading-[1.6] text-fg-muted">An agent does not need to have seen WebJs before. There is no build step, so the framework sits in your node_modules as plain JavaScript at the version you installed, and a model opens the router or the renderer it is calling instead of recalling an API. Switching models does not change the answer.</p>
             </div>
             <div class="bg-[var(--editor-sidebar-bg)] border border-[var(--editor-border)] rounded-xl p-3.5 font-mono text-xs leading-[1.7] text-[var(--editor-fg)] select-none">
-              <div class="text-fg-subtle">app/</div>
-              <div>&nbsp;&nbsp;page.ts<span class="text-fg-subtle"> → /</span></div>
-              <div>&nbsp;&nbsp;posts/[id]/page.ts<span class="text-fg-subtle"> → /posts/7</span></div>
-              <div>&nbsp;&nbsp;api/hooks/route.ts<span class="text-fg-subtle"> → POST</span></div>
+              <div>node_modules/@webjsdev/core<span class="text-[var(--accent-text)]">/src</span></div>
+              <div>&nbsp;&nbsp;router-client.js<span class="text-fg-subtle"> → read, not recalled</span></div>
+              <div class="text-fg-subtle"># no training data, so no blessed model</div>
             </div>
           </div>
 
           <div class="${CARD}">
             <div class="mb-6">
-              <h3 class="font-display font-bold text-base leading-[1.3] tracking-[-0.02em] mt-0 mb-2">Call the server like a function</h3>
-              <p class="m-0 text-sm leading-[1.6] text-fg-muted">Mark a file <code class="font-mono text-[0.9em]">'use server'</code> and import it. The call site keeps the function's real argument and return types with no code generation in between, and Date, Map, Set, BigInt, and Blob round-trip across the wire. You never hand-write a fetch.</p>
+              <h3 class="font-display font-bold text-base leading-[1.3] tracking-[-0.02em] mt-0 mb-2">The architecture arrives decided</h3>
+              <p class="m-0 text-sm leading-[1.6] text-fg-muted">Where a page lives, where a form submission is handled, and which code is allowed to touch the server are settled by the framework rather than improvised per app. What comes back is in the shape a reviewer expects.</p>
             </div>
-            <div class="bg-[var(--editor-sidebar-bg)] border border-[var(--editor-border)] rounded-xl p-3.5 flex items-center justify-between text-xs font-mono select-none text-[var(--editor-fg)]">
-              <div class="text-fg-subtle px-2 py-1 bg-[var(--editor-bg)] rounded border border-[var(--editor-border)]">Client</div>
-              <div class="flex-1 flex items-center justify-center relative"><span class="h-px bg-[var(--editor-border)] flex-1 mx-2"></span><span class="absolute text-xs bg-[var(--editor-sidebar-bg)] text-[var(--accent-text)] px-1 border border-[var(--editor-border)] rounded">RPC</span></div>
-              <div class="text-fg-subtle px-2 py-1 bg-[var(--editor-bg)] rounded border border-[var(--editor-border)]">Server action</div>
-            </div>
-          </div>
-
-          <div class="${CARD}">
-            <div class="mb-6">
-              <h3 class="font-display font-bold text-base leading-[1.3] tracking-[-0.02em] mt-0 mb-2">Some components ship no JavaScript</h3>
-              <p class="m-0 text-sm leading-[1.6] text-fg-muted">Components render on the server. An interactive one hydrates on its own when the browser upgrades its tag, and a display-only one is stripped from the browser entirely, module and vendor imports included.</p>
-            </div>
-            <div class="bg-[var(--editor-sidebar-bg)] border border-[var(--editor-border)] rounded-xl p-2.5 flex flex-col gap-1.5 font-mono text-xs text-[var(--editor-fg)] select-none">
-              <div class="flex justify-between items-center gap-2 px-2 py-1 bg-[var(--editor-bg)] border border-[var(--accent-border)] rounded">
-                <span>&lt;price-tag&gt;</span> <span class="text-[var(--accent-text)] whitespace-nowrap">0 KB</span>
-              </div>
-              <div class="flex justify-between items-center gap-2 px-2 py-1 bg-[var(--editor-bg)] border border-[var(--editor-border)] rounded text-fg-subtle">
-                <span>&lt;add-to-cart&gt;</span> <span class="whitespace-nowrap">hydrates</span>
-              </div>
+            <div class="bg-[var(--editor-sidebar-bg)] border border-[var(--editor-border)] rounded-xl p-3.5 font-mono text-xs leading-[1.7] text-[var(--editor-fg)] select-none">
+              <div>app/posts/[id]/page.ts<span class="text-fg-subtle"> → /posts/7</span></div>
+              <div>modules/posts/actions<span class="text-fg-subtle"> → mutations</span></div>
+              <div>db/schema<span class="text-[var(--accent-text)]">.server</span>.ts<span class="text-fg-subtle"> → never shipped</span></div>
             </div>
           </div>
 
           <div class="${CARD}">
             <div class="mb-6">
-              <h3 class="font-display font-bold text-base leading-[1.3] tracking-[-0.02em] mt-0 mb-2">Slow data never blocks the first byte</h3>
-              <p class="m-0 text-sm leading-[1.6] text-fg-muted">Wrap a slow region and the shell paints immediately while the data streams in behind it. Navigation is client-side already, with nothing to import and nothing to configure.</p>
+              <h3 class="font-display font-bold text-base leading-[1.3] tracking-[-0.02em] mt-0 mb-2">A design system, not scattered values</h3>
+              <p class="m-0 text-sm leading-[1.6] text-fg-muted">A palette and a type scale ship as design tokens rather than values spread through components, so every screen the app grows shares them and restyling the whole thing means editing the tokens instead of hunting through markup.</p>
             </div>
-            <div class="bg-[var(--editor-sidebar-bg)] border border-[var(--editor-border)] rounded-xl p-3.5 flex flex-col gap-2 text-[var(--editor-fg)]">
-              <div class="h-3 w-1/3 bg-[var(--editor-border)] rounded"></div>
-              <div class="h-8 w-full bg-[var(--editor-bg)] rounded border border-[var(--editor-border)] flex items-center px-3 gap-2 select-none">
-                <span class="w-1.5 h-1.5 rounded-full bg-[var(--accent-text)]"></span><span class="text-xs font-mono text-fg-subtle">streaming data chunk...</span>
-              </div>
+            <div class="bg-[var(--editor-sidebar-bg)] border border-[var(--editor-border)] rounded-xl p-3.5 font-mono text-xs leading-[1.7] text-[var(--editor-fg)] select-none">
+              <div class="flex items-center gap-2"><span class="w-3 h-3 rounded-sm bg-[var(--accent-text)] shrink-0"></span><span>--color-accent</span></div>
+              <div class="flex items-center gap-2"><span class="w-3 h-3 rounded-sm bg-[var(--editor-fg)] shrink-0"></span><span>--color-fg</span></div>
+              <div class="flex items-center gap-2"><span class="w-3 h-3 rounded-sm border border-[var(--editor-border)] bg-[var(--editor-bg)] shrink-0"></span><span>--text-h2</span></div>
+            </div>
+          </div>
+
+          <div class="${CARD}">
+            <div class="mb-6">
+              <h3 class="font-display font-bold text-base leading-[1.3] tracking-[-0.02em] mt-0 mb-2">Types run the whole way through</h3>
+              <p class="m-0 text-sm leading-[1.6] text-fg-muted">A component importing a server function keeps that function's argument and return types at the call site, and a database row carries its schema type into the markup that renders it, with no code generation anywhere in between.</p>
+            </div>
+            <div class="bg-[var(--editor-sidebar-bg)] border border-[var(--editor-border)] rounded-xl p-3.5 font-mono text-xs leading-[1.7] text-[var(--editor-fg)] select-none">
+              <div>posts.<span class="text-fg-subtle">$inferSelect</span> <span class="text-[var(--accent-text)]">→ Post</span></div>
+              <div>getPost(id) <span class="text-[var(--accent-text)]">→ Promise&lt;Post&gt;</span></div>
+              <div>&lt;post-card .post=<span class="text-[var(--accent-text)]">\${post}</span>&gt;</div>
             </div>
           </div>
 
@@ -1025,9 +1003,9 @@ db/schema.server.ts
               <pre class="scroll-thin m-0 p-4 overflow-x-auto font-mono text-sm leading-[1.7] [tab-size:2] flex-1" role="region" tabindex="0" aria-label="Installing a kit component and the design tokens that theme it"><code><span class="text-accent">$</span> webjs ui add button
 <span class="text-accent">✔</span> Wrote components/ui/button.ts
 
---background   --primary
---foreground   --border
---card         --muted
+<span aria-hidden="true" class="inline-block w-2.5 h-2.5 rounded-sm align-middle mr-1.5 bg-[var(--editor-bg)] border border-[var(--editor-border)]"></span>--background
+<span aria-hidden="true" class="inline-block w-2.5 h-2.5 rounded-sm align-middle mr-1.5 bg-[var(--editor-fg)]"></span>--foreground
+<span aria-hidden="true" class="inline-block w-2.5 h-2.5 rounded-sm align-middle mr-1.5 bg-[var(--accent-text)]"></span>--primary
 <span class="text-accent">class="bg-background ..."</span>
 <span class="text-fg-subtle"># the component is a file you own.</span>
 <span class="text-fg-subtle"># the palette is tokens, so</span>
@@ -1040,8 +1018,9 @@ db/schema.server.ts
 
     <!-- Sits HERE, after the scaffold section, because its first sentence picks
          up that section's demos and skill. It was drafted for the slot after
-         "Nothing is compiled away", where it chains off the no-build decision
-         instead, and that reads well until you notice the lede would be naming
+         "What you write is what runs", where it chains off the no-build
+         decision instead, and that reads well until you notice the lede would
+         be naming
          a ladder (demos, then skill, then source) the reader has not climbed
          yet. The trigger decides the slot.
 

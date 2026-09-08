@@ -93,7 +93,7 @@ const ARRIVES = [
   },
   {
     title: 'Type safety, end to end',
-    body: 'Types run the whole way through. A component importing a server function keeps that function\'s argument and return types at the call site, and a database row carries its schema type into the markup that renders it, with no code generation anywhere in between. An agent has no reason to reach for any.',
+    body: 'Types run the whole way through. A component importing a server function keeps that function\'s argument and return types at the call site, and a database row carries its schema type into the markup that renders it, with no code generation anywhere in between.',
   },
   {
     title: 'Database',
@@ -118,8 +118,8 @@ export default function Why() {
         The framework your AI agent already understands
       </h1>
       <p class="text-hero-lede leading-[1.3] text-fg-muted max-w-[64rem] mx-auto mb-6 text-balance">
-        <strong class="text-fg font-semibold">WebJs is a full-stack JavaScript framework with no
-        build step, so nothing is hidden from your agent.</strong> The framework ships in
+        <strong class="text-fg font-semibold">WebJs is a full-stack JavaScript web components
+        framework with no build step, so nothing is hidden from your agent.</strong> The framework ships in
         node_modules as plain JavaScript, at the version your app installed.
       </p>
       <p class="text-base leading-[1.7] text-fg-muted max-w-[56ch] mx-auto mb-8 text-pretty">
@@ -223,7 +223,7 @@ Counter.register('counter');
         </div>
         <div class="grid grid-cols-1 wide:grid-cols-2 gap-4 items-stretch max-w-3xl mx-auto mb-12">
           <div class="flex flex-col min-w-0">
-            <p class="font-mono font-semibold text-xs leading-[1.4] tracking-widest uppercase text-fg-subtle mb-2.5 ml-1">Where the decisions are still open</p>
+            <p class="font-mono font-semibold text-xs leading-[1.4] tracking-widest uppercase text-fg-subtle mb-2.5 ml-1">Other frameworks</p>
             <figure class=${WIN}>
               <figcaption class=${WINBAR}>${DOTS}<span class=${WINNAME}>prompt</span></figcaption>
               <pre class="scroll-thin m-0 p-4 overflow-x-auto font-mono text-sm leading-[1.7] [tab-size:2] flex-1" role="region" tabindex="0" aria-label="A prompt that has to specify the architecture as well as the app"><code><span class="text-accent">&gt;</span> Build me a table booking app
@@ -234,7 +234,7 @@ Counter.register('counter');
             </figure>
           </div>
           <div class="flex flex-col min-w-0">
-            <p class="font-mono font-semibold text-xs leading-[1.4] tracking-widest uppercase text-fg-subtle mb-2.5 ml-1">Where they are already made</p>
+            <p class="font-mono font-semibold text-xs leading-[1.4] tracking-widest uppercase text-fg-subtle mb-2.5 ml-1">WebJs</p>
             <figure class=${WIN}>
               <figcaption class=${WINBAR}>${DOTS}<span class=${WINNAME}>prompt</span></figcaption>
               <pre class="scroll-thin m-0 p-4 overflow-x-auto font-mono text-sm leading-[1.7] [tab-size:2] flex-1" role="region" tabindex="0" aria-label="The same request on WebJs, with no architecture appended"><code><span class="text-accent">&gt;</span> Build me a table booking app
