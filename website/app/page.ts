@@ -187,6 +187,13 @@ export const metadata = {
 
 // Chips for the progressive-enhancement section: the concrete things that
 // keep working with JavaScript disabled, because the server sends real HTML.
+// The chips run in the order the section argues: what a component IS, then
+// what the browser does with it, then what that buys. The last two are the
+// progressive-enhancement and elision claims, which the section keeps even
+// though its heading no longer leads with them, because they are consequences
+// of the component model rather than a separate topic, and the P.S. dare below
+// invites the reader to check the fourth one in their own browser.
+//
 // 'No whole-page hydration' is the precise form and the ONLY one to use here.
 // WebJs does hydrate: a shipping component loads @webjsdev/core, and
 // createInstance() in render-client.js does container.replaceChildren(...),
@@ -196,7 +203,7 @@ export const metadata = {
 // all, and elided components never ship. Anything shorter ("no hydration
 // runtime", "no hydration overhead") reads as zero cost and is refuted by one
 // look at the network tab.
-const PE_CHIPS = ['No whole-page hydration', 'Content reads', 'Links navigate', 'Forms submit', 'Display components ship 0 KB'];
+const PE_CHIPS = ['Standard custom elements', 'No virtual DOM', 'Server-rendered, then upgraded', 'No whole-page hydration', 'Reads and submits before JS', 'Display components ship 0 KB'];
 
 // The hero stage shows this source beside the very component it declares,
 // running. Keep the two in step: the panel to its right is a real
@@ -473,11 +480,13 @@ export default function LandingPage() {
     <section class="py-16">
       <div class="max-w-6xl mx-auto px-6">
         <div class="max-w-3xl mx-auto mb-12 text-center">
-          <h2 class="font-display font-bold text-h2 leading-[1.12] tracking-[-0.03em] my-3 text-balance">The first paint is the whole page</h2>
-          <!-- 31 words, down from 106, and the shortening was a FACT-CHECK rather
-               than an edit. The old version made three claims about frameworks in
-               general and not one of them survived being checked against the Next
-               source sitting on this machine.
+          <h2 class="font-display font-bold text-h2 leading-[1.12] tracking-[-0.03em] my-3 text-balance">Native web components the browser already understands, with better DX</h2>
+          <!-- THE RULE FOR THIS LEDE, kept from the version before it: claim
+               nothing about another framework, and nothing that needs a footnote
+               about which configuration you are in. It was learned the hard way.
+               An earlier 106-word draft made three claims about frameworks in
+               general and not one survived being checked against the Next source
+               sitting on this machine.
                  "The runtime has to load, parse, and hydrate before the page can
                be read at all" is false: Next server-renders client components too
                (use-flight-response.tsx feeds the Flight stream through
@@ -492,37 +501,50 @@ export default function LandingPage() {
                component in the root layout puts every page under it back on the
                runtime. This website is the proof: all five routes ship core,
                because the layout renders theme-toggle and site-nav-menu.
-                 So the rule for this lede: claim nothing about another framework
-               and nothing that needs a footnote about which configuration you are
-               in. The chips below enumerate, the P.S. below runs the comparison
-               in the reader's own browser, and the prose only has to be true.
+                 The chips below enumerate, the P.S. below runs the comparison in
+               the reader's own browser, and the prose only has to be true.
 
-               The term "progressive enhancement" comes LAST, after the three
+               THE DX CLAIM IS MADE IN NOUNS, never as a comparison. "Better DX"
+               in the heading is the promise; the lede has to pay it with things
+               a reader can check in the stage below, which is why it names
+               reactive properties in the class signature, signals, lit template
+               syntax, and the absence of a decorator or a build step. Do not
+               cash it as
+               "less boilerplate" or "better than X": the first needs a baseline
+               the page never states and the second breaks the rule above. The
+               stage is the evidence, so keep the lede naming what HERO_SAMPLE
+               visibly does.
+
+               "Nothing sits between your class and the DOM it renders" is about
+               the RENDER PATH, not about shipped bytes: core is on the page for
+               any shipping component. Do not upgrade it to "no runtime", which
+               one look at the network tab refutes.
+
+               The term "progressive enhancement" still comes LAST, after the
                concrete behaviours, and it is the one label allowed in here. Put
                it first and a reader pattern-matches it to no-JS purism and skips
                the section, which is a constraint they think they know rather
                than a capability they can check. After the demonstration it is a
                handle for what they just read, plus the phrase they would search
-               for, next to the brand name. That naming is also why this lede
-               says WebJs at all: nothing else in the section does, and someone
-               arriving here from a search result needs to know whose page this
-               is. "Here it is the default" said nothing to them.
+               for. Keep it in the same paragraph as the WebJs mention for that
+               reason: nothing else in the section names the project, and someone
+               arriving from a search result needs to know whose page this is.
 
-               The third sentence leads with JavaScript on purpose. It read
-               "What loads afterwards is only the components that are actually
-               interactive", which says the MARKUP arrives late, the opposite of
-               this section's claim: every component is server-rendered into the
-               first paint, and what follows is the module for the interactive
-               ones. Naming JavaScript first makes the sentence unreadable as a
-               statement about markup. -->
+               The last sentence leads with the component being server-rendered,
+               on purpose. An earlier draft said "what loads afterwards is only
+               the components that are actually interactive", which says the
+               MARKUP arrives late, the opposite of this section's claim. -->
 
           <p class="text-fg-muted text-base leading-[1.6] m-0">
-            The server sends a finished page. It reads, its links navigate, and
-            its forms submit before a single script runs. What loads afterwards
-            is JavaScript, and only for the components that are actually
-            interactive. That is
-            progressive enhancement, and with WebJs it is the default rather
-            than an effort.
+            A component here is a real custom element. The browser owns
+            registration, upgrade, and the lifecycle, so nothing sits between
+            your class and the DOM it renders. What WebJs adds is the
+            ergonomics. Reactive properties are declared in the class signature,
+            state runs on signals, templates are lit's, and none of it needs a
+            decorator or a build step. Every
+            component is server-rendered first, so the page reads and its forms
+            submit before a script runs, which makes progressive enhancement the
+            default rather than an effort.
           </p>
           <!-- The dare belongs to THIS section, whose chips below enumerate the
                very things it invites you to check. It stays a dare by naming
@@ -707,8 +729,8 @@ export default function LandingPage() {
                promises the cards are what the BROWSER does not give you.
 
                "Progressive enhancement" was deleted for the same reason and
-               should stay out: "The first paint is the whole page" sits directly
-               above this grid and already owns it.
+               should stay out: the web-components section above this grid ends
+               on it, and the P.S. dare there invites the reader to check it.
 
                The first four cards are the model-agnosticism, architecture,
                design-system and type-safety claims from /why-webjs, which is
@@ -727,7 +749,7 @@ export default function LandingPage() {
 
                Know what this grid no longer covers, because nothing else on the
                page covers it either. ELISION lost this slot: the chips under
-               "The first paint is the whole page" still assert it ("Display
+               the web-components section above still assert it ("Display
                components ship 0 KB") but nothing explains it any more, and it is
                the one claim here no other framework can make. STREAMING is down
                to a word in the scaffold inventory near the bottom. The CLIENT

@@ -36,3 +36,28 @@ test('the hero lede leads with what WebJs is, without the AI-first label', async
   );
   assert.doesNotMatch(out, /AI-first full-stack/, 'the adjective is out of the definition');
 });
+
+test('the web-components section pays its DX claim in checkable nouns', async () => {
+  const out = await render();
+  // The heading promises "better DX", which is the one kind of claim this
+  // section's own rules forbid leaving unpaid: it needs a baseline the page
+  // never states. The lede has to cash it in things the stage below visibly
+  // does, so pin those rather than the adjective.
+  assert.match(out, /Native web components the browser already understands/);
+  for (const paid of ['custom element', 'signals', 'decorator', 'build step']) {
+    assert.ok(out.includes(paid), `the lede pays the DX claim with ${paid}`);
+  }
+});
+
+test('the progressive-enhancement and elision claims survive the heading change', async () => {
+  const out = await render();
+  // The section stopped LEADING with these when it was renamed. They are still
+  // the only place the page states either, and the P.S. dare below invites the
+  // reader to check the first one, so a chip going missing is a real loss and
+  // not a copy tidy.
+  assert.ok(out.includes('Reads and submits before JS'), 'the no-JS claim is still on the page');
+  assert.ok(out.includes('Display components ship 0 KB'), 'the elision claim is still on the page');
+  assert.ok(out.includes('No whole-page hydration'), 'the precise hydration wording, not a shorter one');
+  assert.doesNotMatch(out, /No hydration (runtime|overhead)/, 'those read as zero cost and are false');
+  assert.ok(out.includes('P.S. Turn JavaScript off'), 'the dare that lets a reader verify it');
+});
