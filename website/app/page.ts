@@ -507,8 +507,12 @@ export default function LandingPage() {
                THE DX CLAIM IS MADE IN NOUNS, never as a comparison. "Better DX"
                in the heading is the promise; the lede has to pay it with things
                a reader can check in the stage below, which is why it names
-               reactive properties in the class signature, signals, lit template
-               syntax, and the absence of a decorator or a build step. Do not
+               reactive properties in the class signature, signals, a tagged
+               template literal for markup, and the absence of a decorator or a
+               build step. The template syntax IS lit's, and the comment down by
+               the familiarity argument says so, but this lede does not name it:
+               a reader who knows lit does not need telling here, and one who
+               does not reads a dependency the framework does not have. Do not
                cash it as
                "less boilerplate" or "better than X": the first needs a baseline
                the page never states and the second breaks the rule above. The
@@ -540,8 +544,8 @@ export default function LandingPage() {
             registration, upgrade, and the lifecycle, so nothing sits between
             your class and the DOM it renders. What WebJs adds is the
             ergonomics. Reactive properties are declared in the class signature,
-            state runs on signals, templates are lit's, and none of it needs a
-            decorator or a build step. Every
+            state runs on signals, markup is a tagged template literal, and
+            none of it needs a decorator or a build step. Every
             component is server-rendered first, so the page reads and its forms
             submit before a script runs, which makes progressive enhancement the
             default rather than an effort.
