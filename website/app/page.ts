@@ -675,16 +675,16 @@ export default function LandingPage() {
         <div class="max-w-3xl mx-auto mb-12 text-center">
           <h2 class="font-display font-bold text-h2 leading-[1.12] tracking-[-0.03em] my-3 text-balance">The browser is the framework. The rest is here.</h2>
           <!-- The lede opened with "Everything below falls out of the decision to
-               skip the build step" and that was false of five of the six cards.
-               File routing, server actions, streaming, auth, and the caching /
-               rate-limit / storage / WebSocket set all exist in frameworks that
-               DO build; only elision has even a weak link, being per-module
-               because there is no bundler to tree-shake instead. It also fought
-               the header, which promises the cards are what the BROWSER does not
-               give you, so a reader hunting the build-step connection in "Auth is
-               not a side quest" found nothing. The organising principle is the
-               header's, not the build step's. Do not reintroduce a causal frame
-               here: check any new opener against all six cards first. -->
+               skip the build step" and that was false of nearly every card, then
+               and now. Architecture, types, auth, and the caching / rate-limit /
+               storage / WebSocket set all exist in frameworks that DO build; only
+               elision has even a weak link, being per-module because there is no
+               bundler to tree-shake instead. It also fought the header, which
+               promises the cards are what the BROWSER does not give you, so a
+               reader hunting the build-step connection in "Auth is not a side
+               quest" found nothing. The organising principle is the header's, not
+               the build step's. Do not reintroduce a causal frame here: check any
+               new opener against all six cards first. -->
           <p class="text-fg-muted text-base leading-[1.6] m-0">Staying close to the platform is usually where a framework starts asking you to give things up, so each card is a place WebJs takes the standard and keeps the ergonomics anyway. Everything you need to ship, none of the build toolchain you don't.</p>
         </div>
         <div class="grid gap-px overflow-hidden rounded-2xl border border-border bg-border grid-cols-1 xs:grid-cols-2 wide:grid-cols-3 shadow-[var(--shadow-sm)]">
@@ -694,6 +694,10 @@ export default function LandingPage() {
                inset carries the concrete noun so the grid still SKIMS. A reader
                who never reads a body should still be able to tell from the six
                insets that routing, data, auth, and the rest are covered, because
+               that is why the architecture inset carries a route path and a
+               .server file rather than prose, and why the type-safety one shows
+               a row type reaching a template. Nothing else on the grid names
+               them any more.
                "is this framework complete?" is the objection this grid exists to
                answer and no other section on the page answers it.
 
@@ -713,11 +717,17 @@ export default function LandingPage() {
                answer to it. Keep the two pages saying the same thing: if the
                wording moves there, move it here too.
 
-               Elision lost its card to the type-safety one. The claim is not
-               gone from the page, since the chips under "The first paint is the
-               whole page" still carry "Display components ship 0 KB", but this
-               grid was the only place it was EXPLAINED. If a card is ever freed
-               up again, that is the one to bring back. -->
+               Streaming and the client router gave up the fourth card to
+               elision. Elision is the one claim on this grid no other framework
+               can make, and the chips under "The first paint is the whole page"
+               assert it ("Display components ship 0 KB") without ever explaining
+               it, so this card is the only explanation the page carries.
+
+               Know what that trade cost, because nothing else on the page covers
+               it: streaming survives only as a word in the scaffold inventory
+               near the bottom, and the client router is now claimed NOWHERE on
+               the landing page. If either gets a card back, this is the note
+               that says why it should. -->
           <div class="${CARD}">
             <div class="mb-6">
               <h3 class="font-display font-bold text-base leading-[1.3] tracking-[-0.02em] mt-0 mb-2">The architecture arrives decided</h3>
@@ -756,13 +766,15 @@ export default function LandingPage() {
 
           <div class="${CARD}">
             <div class="mb-6">
-              <h3 class="font-display font-bold text-base leading-[1.3] tracking-[-0.02em] mt-0 mb-2">Slow data never blocks the first byte</h3>
-              <p class="m-0 text-sm leading-[1.6] text-fg-muted">Wrap a slow region and the shell paints immediately while the data streams in behind it. Navigation is client-side already, with nothing to import and nothing to configure.</p>
+              <h3 class="font-display font-bold text-base leading-[1.3] tracking-[-0.02em] mt-0 mb-2">Some components ship no JavaScript</h3>
+              <p class="m-0 text-sm leading-[1.6] text-fg-muted">Components render on the server. An interactive one hydrates on its own when the browser upgrades its tag, and a display-only one is stripped from the browser entirely, module and vendor imports included.</p>
             </div>
-            <div class="bg-[var(--editor-sidebar-bg)] border border-[var(--editor-border)] rounded-xl p-3.5 flex flex-col gap-2 text-[var(--editor-fg)]">
-              <div class="h-3 w-1/3 bg-[var(--editor-border)] rounded"></div>
-              <div class="h-8 w-full bg-[var(--editor-bg)] rounded border border-[var(--editor-border)] flex items-center px-3 gap-2 select-none">
-                <span class="w-1.5 h-1.5 rounded-full bg-[var(--accent-text)]"></span><span class="text-xs font-mono text-fg-subtle">streaming data chunk...</span>
+            <div class="bg-[var(--editor-sidebar-bg)] border border-[var(--editor-border)] rounded-xl p-2.5 flex flex-col gap-1.5 font-mono text-xs text-[var(--editor-fg)] select-none">
+              <div class="flex justify-between items-center gap-2 px-2 py-1 bg-[var(--editor-bg)] border border-[var(--accent-border)] rounded">
+                <span>&lt;price-tag&gt;</span> <span class="text-[var(--accent-text)] whitespace-nowrap">0 KB</span>
+              </div>
+              <div class="flex justify-between items-center gap-2 px-2 py-1 bg-[var(--editor-bg)] border border-[var(--editor-border)] rounded text-fg-subtle">
+                <span>&lt;add-to-cart&gt;</span> <span class="whitespace-nowrap">hydrates</span>
               </div>
             </div>
           </div>
