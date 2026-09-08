@@ -636,8 +636,23 @@ export default function LandingPage() {
     <section class="py-16">
       <div class="max-w-6xl mx-auto px-6">
         <div class="max-w-3xl mx-auto mb-12 text-center">
-          <h2 class="font-display font-bold text-h2 leading-[1.12] tracking-[-0.03em] my-3 text-balance">Nothing is compiled away</h2>
-          <!-- The two windows below are NOT the same kind of file, and the lede
+          <h2 class="font-display font-bold text-h2 leading-[1.12] tracking-[-0.03em] my-3 text-balance">What you write is what runs</h2>
+          <!-- THE HEADING IS STRONGER THAN THE SECTION, deliberately, and the
+               lede has to bring it back inside two carve-outs it does not state
+               itself. "What you write is what runs" is true of the files that
+               SHIP, and there are two ways a file is not one of them. The action
+               window on the left never reaches the browser at all (invariant 1),
+               which the lede covers with "the action becomes an RPC call". And
+               an elided display-only component is not served either, which the
+               chips in the section above claim and this section does not mention
+               on purpose, since the reader has just read it. Do not widen the
+               lede to "every file you write is served", which both of those
+               refute, and do not answer the tension by softening the heading:
+               it is the same sentence /why-webjs uses for its first reason card,
+               so the two pages state the claim identically. Rename one and
+               rename the other.
+
+               The two windows below are NOT the same kind of file, and the lede
                must not say they are. It read "both served to the browser exactly
                as they sit on disk", which denies invariant 1: the action is a
                'use server' .server.ts, so it NEVER reaches the browser, and its
@@ -650,8 +665,8 @@ export default function LandingPage() {
 
                "Because there is no build step" is the section NAMING what it has
                spent four sentences demonstrating, the same demonstrate-then-name
-               move the first-paint lede makes with progressive enhancement. It
-               was missing: the phrase appeared twice on the whole page, both
+               move the web-components lede above makes with progressive
+               enhancement. It was missing: the phrase appeared twice on the whole page, both
                times in the hero, and the section that proves it said only
                "without a bundler", attributed to Rails. So a reader landing here
                cold got the evidence and never the name. It also rescues the Rails
@@ -724,8 +739,8 @@ export default function LandingPage() {
                answer and no other section on the page answers it.
 
                "Zero build step" was deleted from this grid and should not come
-               back: it restated "Nothing is compiled away", a section the reader
-               has just finished, and it contradicted this section's header, which
+               back: it restated "What you write is what runs", a section the
+               reader has just finished, and it contradicted this section's header, which
                promises the cards are what the BROWSER does not give you.
 
                "Progressive enhancement" was deleted for the same reason and
@@ -999,8 +1014,9 @@ db/schema.server.ts
 
     <!-- Sits HERE, after the scaffold section, because its first sentence picks
          up that section's demos and skill. It was drafted for the slot after
-         "Nothing is compiled away", where it chains off the no-build decision
-         instead, and that reads well until you notice the lede would be naming
+         "What you write is what runs", where it chains off the no-build
+         decision instead, and that reads well until you notice the lede would
+         be naming
          a ladder (demos, then skill, then source) the reader has not climbed
          yet. The trigger decides the slot.
 
