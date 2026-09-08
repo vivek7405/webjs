@@ -752,7 +752,7 @@ export default function LandingPage() {
             </div>
             <div class="bg-[var(--editor-sidebar-bg)] border border-[var(--editor-border)] rounded-xl p-3.5 font-mono text-xs leading-[1.7] text-[var(--editor-fg)] select-none">
               <div>app/posts/[id]/page.ts<span class="text-fg-subtle"> → /posts/7</span></div>
-              <div>modules/posts/actions/<span class="text-fg-subtle">the writes</span></div>
+              <div>modules/posts/actions<span class="text-fg-subtle"> → mutations</span></div>
               <div>db/schema<span class="text-[var(--accent-text)]">.server</span>.ts<span class="text-fg-subtle"> → never shipped</span></div>
             </div>
           </div>
