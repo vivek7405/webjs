@@ -42,7 +42,7 @@ export const metadata = {
       '@id': `${SITE_URL}#website`,
       name: 'WebJs',
       url: SITE_URL,
-      description: 'An AI-first, web-components-first full-stack web framework with no build step.',
+      description: 'A web-components-first full-stack web framework with no build step.',
       publisher: { '@id': `${SITE_URL}#organization` },
     },
     {
@@ -245,92 +245,6 @@ function sourceWindow(title: string, sample: string) {
     </figure>
   `;
 }
-
-/**
- * The landing page's intro video, self-hosted rather than embedded.
- *
- * The player is the browser's own, so it works with scripting disabled. The
- * YouTube iframe this replaced could not, because its player needs JS inside
- * the frame, so the section used to hide itself from a JS-off reader rather
- * than show a broken embed.
- *
- * REPLACING THE VIDEO, for whoever does it next.
- *
- * The bytes live in the Cloudflare R2 bucket `webjs-videos`, served from
- * videos.webjs.dev. The key carries no version, so a new cut overwrites
- * `intro.mp4` in place and nothing in this file changes:
- *
- *   env -u CLOUDFLARE_API_TOKEN npx wrangler r2 object put \
- *     webjs-videos/intro.mp4 --file <new-cut.mp4> \
- *     --content-type video/mp4 \
- *     --cache-control "public, max-age=86400, s-maxage=31536000" \
- *     --remote
- *
- * Then purge that URL at the edge (Caching, then Purge Cache, then the custom
- * single-file purge), or the old bytes keep serving for the `s-maxage` year.
- *
- * Three things about this are easy to get wrong.
- *
- * 1. R2 object metadata cannot be edited after upload. `Cache-Control` is set
- *    at write time or not at all, so every upload has to pass it again. There
- *    is no bucket-level setting, and the dashboard uploader has no field for
- *    it, which is why an upload made there serves no header of its own.
- *
- * 2. The `env -u` is load bearing. A `CLOUDFLARE_API_TOKEN` in the environment
- *    overrides wrangler's OAuth credentials, and that token carries no R2
- *    permission, so the upload fails with an authentication error that names
- *    nothing. Unsetting it for the one call falls back to the OAuth login.
- *
- * 3. A purge clears the edge and never a browser. That is why `max-age` is a
- *    day rather than a year, and why the header is deliberately not
- *    `immutable`: anyone holding the old file needs a way to pick the new one
- *    up, and 24 hours is that way. `s-maxage` keeps the edge copy long lived
- *    regardless, since the edge can be purged and a browser cannot.
- *
- * A versioned key (`intro-2026-08-21.mp4`) is the other valid shape. Take it
- * and the tradeoff inverts: put `immutable` back, raise `max-age` to a year,
- * and update the src below on every cut.
- *
- * The thumbnail at `intro-thumbnail.webp` is uploaded the same way, with
- * `--content-type image/webp`. It is 1920 wide because the box is capped at
- * max-w-3xl (about 718 CSS px), so that already covers a 2x display and a
- * wider encode buys nothing a viewport can show.
- */
-const INTRO_VIDEO = html`
-    <section class="intro-video pb-16">
-      <div class="max-w-3xl mx-auto px-6">
-        <!-- preload="none" fetches nothing but the thumbnail until someone
-             presses play. It is deliberately not "metadata", which is the
-             usual choice and what rubyonrails.org uses. Their file is 658
-             kbps and this one is 2315, and at 400 kbps the metadata read
-             starved the poster: the video had pulled 6.2 MB by the time the
-             thumbnail painted, 25.8 seconds in. The cost is that the controls
-             cannot show the duration until the first play.
-
-             playsinline stops iOS Safari taking the video fullscreen. The
-             width and height state the intrinsic size, which
-             this layout does not lean on (the wrapper is aspect-video and the
-             element is w-full h-full, so CSS fixes the ratio), but which keeps
-             the shape right if the stylesheet ever fails. The src is absolute and
-             cross-origin, so it must not be wrapped in asset(), which resolves
-             a public/ path and would mangle it. -->
-        <div class="aspect-video overflow-hidden border border-border-strong shadow-[var(--shadow)] bg-black">
-          <video
-            class="intro-video-player w-full h-full"
-            src="https://videos.webjs.dev/intro.mp4"
-            poster="https://videos.webjs.dev/intro-thumbnail.webp"
-            aria-label="WebJs introduction video"
-            width="1920"
-            height="1080"
-            preload="none"
-            playsinline
-            controls
-          ></video>
-        </div>
-      </div>
-    </section>
-`;
-
 
 export default function LandingPage() {
   return html`
@@ -535,7 +449,7 @@ export default function LandingPage() {
              bought that back).
 -->
         <p class="text-hero-lede leading-[1.3] text-fg-muted max-w-[64rem] mx-auto mb-9 text-balance">
-          <span class="text-fg font-medium">WebJs is an AI-first full-stack JavaScript web components framework with no build step.</span>
+          <span class="text-fg font-medium">WebJs is a full-stack JavaScript web components framework with no build step.</span>
           You get production-ready architecture from your very first prompt.
         </p>
         <div class="flex gap-3 justify-center flex-wrap items-center">
@@ -555,8 +469,6 @@ export default function LandingPage() {
         </div>
       </div>
     </section>
-
-    ${INTRO_VIDEO}
 
     <section class="py-16">
       <div class="max-w-6xl mx-auto px-6">

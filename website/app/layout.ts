@@ -43,7 +43,7 @@ const TITLE = 'WebJs: Full-stack web components framework, no build step';
 // The true version of that idea is about LOCATION, not volume: the source sits
 // in the app's own node_modules at the installed version, so an agent opens
 // the file it needs instead of recalling an API from training data.
-const DESCRIPTION = 'An AI-first full-stack JavaScript web components framework with no build step. Production-ready architecture from your very first prompt. Node 24+ or Bun.';
+const DESCRIPTION = 'A full-stack JavaScript web components framework with no build step. Production-ready architecture from your very first prompt. Node 24+ or Bun.';
 
 const NAV = [
   { label: 'Docs', href: DOCS_START_PATH, ext: false },

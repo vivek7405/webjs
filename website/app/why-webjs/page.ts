@@ -118,8 +118,8 @@ export default function Why() {
         The framework your AI agent already understands
       </h1>
       <p class="text-hero-lede leading-[1.3] text-fg-muted max-w-[64rem] mx-auto mb-6 text-balance">
-        <strong class="text-fg font-semibold">WebJs is a full-stack JavaScript framework with no
-        build step, so nothing is hidden from your agent.</strong> The framework ships in
+        <strong class="text-fg font-semibold">WebJs is a full-stack JavaScript web components
+        framework with no build step, so nothing is hidden from your agent.</strong> The framework ships in
         node_modules as plain JavaScript, at the version your app installed.
       </p>
       <p class="text-base leading-[1.7] text-fg-muted max-w-[56ch] mx-auto mb-8 text-pretty">

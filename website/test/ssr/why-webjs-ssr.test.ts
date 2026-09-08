@@ -17,7 +17,7 @@ test('the pitch page SSRs with its headline, terminals, reason cards, and a main
   const out = await renderToString(Why());
   assert.ok(out.length > 1000, 'renders substantial HTML');
   assert.ok(out.includes('already understands'), 'includes the hero headline');
-  assert.ok(out.includes('full-stack JavaScript framework'), 'states the full-stack framework category');
+  assert.match(out, /full-stack JavaScript web\s+components\s+framework/, 'states the web-components framework category');
   assert.ok(out.includes('npm create webjs@latest my-app'), 'includes the install command');
   assert.ok(out.includes('No training data required'), 'includes the core pitch reason');
   assert.ok(out.includes('node_modules/@webjsdev/core/src'), 'includes the read-the-source terminal proof');

@@ -24,7 +24,7 @@ const TITLE = 'What is <span class="accent">WebJs</span>?';
 
 // The definition sentence from the page, which is also the first 160 characters
 // of its meta description, so the card and the search result agree.
-const SUB = '<b>An AI-first full-stack JavaScript web framework built on web components,</b> server-rendered with no build step.';
+const SUB = '<b>A full-stack JavaScript web framework built on web components,</b> server-rendered with no build step.';
 
 // The definition above says what it IS. These say what that MEANS, and they
 // carry the feature terms the site-wide meta description gave up to fit.

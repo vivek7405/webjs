@@ -25,7 +25,7 @@ const TITLE_HTML = TITLE.replace('Production-ready', '<span class="accent">Produ
 
 // What the thing IS, under what it PROMISES. The lockup already says the name,
 // so the sentence opens on the category instead of repeating it.
-const SUB = '<b>An AI-first full-stack JavaScript web components framework</b> with no build step.';
+const SUB = '<b>A full-stack JavaScript web components framework</b> with no build step.';
 
 // The two halves of the promise above, each stated as something checkable. The
 // first is the site's own account of what a scaffold decides for you; the
