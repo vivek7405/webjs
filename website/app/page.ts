@@ -960,9 +960,9 @@ db/schema.server.ts
               <pre class="scroll-thin m-0 p-4 overflow-x-auto font-mono text-sm leading-[1.7] [tab-size:2] flex-1" role="region" tabindex="0" aria-label="Installing a kit component and the design tokens that theme it"><code><span class="text-accent">$</span> webjs ui add button
 <span class="text-accent">✔</span> Wrote components/ui/button.ts
 
---background   --primary
---foreground   --border
---card         --muted
+<span aria-hidden="true" class="inline-block w-2.5 h-2.5 rounded-sm align-middle mr-1.5 bg-[var(--editor-bg)] border border-[var(--editor-border)]"></span>--background
+<span aria-hidden="true" class="inline-block w-2.5 h-2.5 rounded-sm align-middle mr-1.5 bg-[var(--editor-fg)]"></span>--foreground
+<span aria-hidden="true" class="inline-block w-2.5 h-2.5 rounded-sm align-middle mr-1.5 bg-[var(--accent-text)]"></span>--primary
 <span class="text-accent">class="bg-background ..."</span>
 <span class="text-fg-subtle"># the component is a file you own.</span>
 <span class="text-fg-subtle"># the palette is tokens, so</span>
