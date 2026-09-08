@@ -706,12 +706,18 @@ export default function LandingPage() {
                should stay out: "The first paint is the whole page" sits directly
                above this grid and already owns it.
 
-               The first two cards are the architecture and design-system claims
-               from /why-webjs, which is where they are argued at length. They
-               are here because this grid answers "is this complete", and what a
-               reader gets WITHOUT asking is the strongest answer to it. Keep the
-               two pages saying the same thing: if the wording moves there, move
-               it here too. -->
+               The first three cards are the architecture, design-system and
+               type-safety claims from /why-webjs, which is where they are argued
+               at length. They are here because this grid answers "is this
+               complete", and what a reader gets WITHOUT asking is the strongest
+               answer to it. Keep the two pages saying the same thing: if the
+               wording moves there, move it here too.
+
+               Elision lost its card to the type-safety one. The claim is not
+               gone from the page, since the chips under "The first paint is the
+               whole page" still carry "Display components ship 0 KB", but this
+               grid was the only place it was EXPLAINED. If a card is ever freed
+               up again, that is the one to bring back. -->
           <div class="${CARD}">
             <div class="mb-6">
               <h3 class="font-display font-bold text-base leading-[1.3] tracking-[-0.02em] mt-0 mb-2">The architecture arrives decided</h3>
@@ -738,16 +744,13 @@ export default function LandingPage() {
 
           <div class="${CARD}">
             <div class="mb-6">
-              <h3 class="font-display font-bold text-base leading-[1.3] tracking-[-0.02em] mt-0 mb-2">Some components ship no JavaScript</h3>
-              <p class="m-0 text-sm leading-[1.6] text-fg-muted">Components render on the server. An interactive one hydrates on its own when the browser upgrades its tag, and a display-only one is stripped from the browser entirely, module and vendor imports included.</p>
+              <h3 class="font-display font-bold text-base leading-[1.3] tracking-[-0.02em] mt-0 mb-2">Types run the whole way through</h3>
+              <p class="m-0 text-sm leading-[1.6] text-fg-muted">A component importing a server function keeps that function's argument and return types at the call site, and a database row carries its schema type into the markup that renders it, with no code generation anywhere in between. An agent has no reason to reach for <code class="font-mono text-[0.9em]">any</code>.</p>
             </div>
-            <div class="bg-[var(--editor-sidebar-bg)] border border-[var(--editor-border)] rounded-xl p-2.5 flex flex-col gap-1.5 font-mono text-xs text-[var(--editor-fg)] select-none">
-              <div class="flex justify-between items-center gap-2 px-2 py-1 bg-[var(--editor-bg)] border border-[var(--accent-border)] rounded">
-                <span>&lt;price-tag&gt;</span> <span class="text-[var(--accent-text)] whitespace-nowrap">0 KB</span>
-              </div>
-              <div class="flex justify-between items-center gap-2 px-2 py-1 bg-[var(--editor-bg)] border border-[var(--editor-border)] rounded text-fg-subtle">
-                <span>&lt;add-to-cart&gt;</span> <span class="whitespace-nowrap">hydrates</span>
-              </div>
+            <div class="bg-[var(--editor-sidebar-bg)] border border-[var(--editor-border)] rounded-xl p-3.5 font-mono text-xs leading-[1.7] text-[var(--editor-fg)] select-none">
+              <div>posts.<span class="text-fg-subtle">$inferSelect</span> <span class="text-[var(--accent-text)]">→ Post</span></div>
+              <div>getPost(id) <span class="text-[var(--accent-text)]">→ Promise&lt;Post&gt;</span></div>
+              <div>&lt;post-card .post=<span class="text-[var(--accent-text)]">\${post}</span>&gt;</div>
             </div>
           </div>
 
