@@ -702,38 +702,37 @@ export default function LandingPage() {
                has just finished, and it contradicted this section's header, which
                promises the cards are what the BROWSER does not give you.
 
-               A progressive-enhancement card was deleted for the same reason and
-               was later brought back deliberately, so keep it aimed where the
-               earlier one was not. "The first paint is the whole page" above
-               already owns the READ path, so this card owns the WRITE path: a
-               form bound to a server action posts with scripting off. That is
-               the half the browser does not give you on its own, and it is the
-               objection ("fine, but my forms need JS") the section exists to
-               answer. Do not widen it back into a general PE restatement. -->
+               "Progressive enhancement" was deleted for the same reason and
+               should stay out: "The first paint is the whole page" sits directly
+               above this grid and already owns it.
+
+               The first two cards are the architecture and design-system claims
+               from /why-webjs, which is where they are argued at length. They
+               are here because this grid answers "is this complete", and what a
+               reader gets WITHOUT asking is the strongest answer to it. Keep the
+               two pages saying the same thing: if the wording moves there, move
+               it here too. -->
           <div class="${CARD}">
             <div class="mb-6">
-              <h3 class="font-display font-bold text-base leading-[1.3] tracking-[-0.02em] mt-0 mb-2">Your forms post before the JavaScript lands</h3>
-              <p class="m-0 text-sm leading-[1.6] text-fg-muted">Bind a server action to a <code class="font-mono text-[0.9em]">&lt;form&gt;</code> and that is the whole wiring. It submits, validates, and redirects with scripting off. With scripting on, the same submission is intercepted and applied in place, so you write the write path once.</p>
+              <h3 class="font-display font-bold text-base leading-[1.3] tracking-[-0.02em] mt-0 mb-2">The architecture arrives decided</h3>
+              <p class="m-0 text-sm leading-[1.6] text-fg-muted">Where a page lives, where a form submission is handled, and which code is allowed to touch the server are settled by the framework rather than improvised per app. What comes back is in the shape a reviewer expects.</p>
             </div>
             <div class="bg-[var(--editor-sidebar-bg)] border border-[var(--editor-border)] rounded-xl p-3.5 font-mono text-xs leading-[1.7] text-[var(--editor-fg)] select-none">
-              <div>&lt;form action=<span class="text-[var(--accent-text)]">\${createPost}</span>&gt;</div>
-              <div class="text-fg-subtle">&nbsp;&nbsp;JS off: full page post, 303 redirect</div>
-              <div class="text-fg-subtle">&nbsp;&nbsp;JS on: same post, swapped in place</div>
+              <div>app/posts/[id]/page.ts<span class="text-fg-subtle"> → /posts/7</span></div>
+              <div>modules/posts/actions/<span class="text-fg-subtle">the writes</span></div>
+              <div>db/schema<span class="text-[var(--accent-text)]">.server</span>.ts<span class="text-fg-subtle"> → never shipped</span></div>
             </div>
           </div>
 
           <div class="${CARD}">
             <div class="mb-6">
-              <h3 class="font-display font-bold text-base leading-[1.3] tracking-[-0.02em] mt-0 mb-2">Mutations land now and undo themselves</h3>
-              <p class="m-0 text-sm leading-[1.6] text-fg-muted">Queue the change against the action's promise with <code class="font-mono text-[0.9em]">optimistic()</code> and the UI updates before the round trip. It releases when the promise settles and rolls back when it rejects, so there is no cached copy to restore and no temporary id to reconcile.</p>
+              <h3 class="font-display font-bold text-base leading-[1.3] tracking-[-0.02em] mt-0 mb-2">A design system, not scattered values</h3>
+              <p class="m-0 text-sm leading-[1.6] text-fg-muted">A palette and a type scale ship as design tokens rather than values spread through components, so every screen the app grows shares them and restyling the whole thing means editing the tokens instead of hunting through markup.</p>
             </div>
-            <div class="bg-[var(--editor-sidebar-bg)] border border-[var(--editor-border)] rounded-xl p-2.5 flex flex-col gap-1.5 font-mono text-xs text-[var(--editor-fg)] select-none">
-              <div class="flex justify-between items-center gap-2 px-2 py-1 bg-[var(--editor-bg)] border border-[var(--accent-border)] rounded">
-                <span>Ship the docs</span> <span class="text-[var(--accent-text)] whitespace-nowrap">on screen</span>
-              </div>
-              <div class="flex justify-between items-center gap-2 px-2 py-1 bg-[var(--editor-bg)] border border-[var(--editor-border)] rounded text-fg-subtle">
-                <span>createTodo()</span> <span class="whitespace-nowrap">in flight</span>
-              </div>
+            <div class="bg-[var(--editor-sidebar-bg)] border border-[var(--editor-border)] rounded-xl p-3.5 font-mono text-xs leading-[1.7] text-[var(--editor-fg)] select-none">
+              <div class="flex items-center gap-2"><span class="w-3 h-3 rounded-sm bg-[var(--accent-text)] shrink-0"></span><span>--color-accent</span></div>
+              <div class="flex items-center gap-2"><span class="w-3 h-3 rounded-sm bg-[var(--editor-fg)] shrink-0"></span><span>--color-fg</span></div>
+              <div class="flex items-center gap-2"><span class="w-3 h-3 rounded-sm border border-[var(--editor-border)] bg-[var(--editor-bg)] shrink-0"></span><span>--text-h2</span></div>
             </div>
           </div>
 
